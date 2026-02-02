@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIDI Orchestra Visualizer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- コントロールパネル -->
+  <div id="controls">
+    <div class="control-group">
+      <label>MIDI</label>
+      <input type="file" id="midiInput" accept=".mid,.midi">
+      <span id="midiFileName">未選択</span>
+    </div>
+    <div class="control-group">
+      <button id="playBtn" disabled>▶ 再生</button>
+      <button id="stopBtn" disabled>■ 停止</button>
+      <button id="resetBtn" disabled>|◀ 最初から</button>
+    </div>
+    <div class="control-group">
+      <label>再生位置: <span id="currentTime">0:00</span></label>
+    </div>
+  </div>
+
+  <!-- オーケストラ配置エリア -->
+  <div id="orchestra-area">
+    <div id="orchestra-stage">
+      <!-- 楽器アイコンはJavaScriptで動的に生成 -->
+    </div>
+  </div>
+
+  <!-- Three.js キャンバス -->
+  <div id="canvas-container"></div>
+
+  <!-- トラック情報パネル -->
+  <div id="track-panel">
+    <h3>トラック情報</h3>
+    <div id="track-list"></div>
+
+    <h3>表示設定</h3>
+    <div id="settings-list">
+      <div class="setting-item">
+        <label>ノートの太さ</label>
+        <input type="range" id="noteHeight" min="0.3" max="3" step="0.1" value="0.8">
+        <span id="noteHeightValue">0.8</span>
+      </div>
+      <div class="setting-item">
+        <label>ノートの奥行き</label>
+        <input type="range" id="noteDepth" min="1" max="10" step="0.5" value="3">
+        <span id="noteDepthValue">3</span>
+      </div>
+      <div class="setting-item">
+        <label>ノートの透明度</label>
+        <input type="range" id="noteOpacity" min="0.1" max="1" step="0.05" value="0.85">
+        <span id="noteOpacityValue">0.85</span>
+      </div>
+      <div class="setting-item">
+        <label>トラック間隔</label>
+        <input type="range" id="trackSpacing" min="1" max="10" step="0.5" value="3">
+        <span id="trackSpacingValue">3</span>
+      </div>
+      <div class="setting-item">
+        <label>時間スケール</label>
+        <input type="range" id="timeScale" min="10" max="100" step="5" value="50">
+        <span id="timeScaleValue">50</span>
+      </div>
+      <div class="setting-item">
+        <label>幕の透明度</label>
+        <input type="range" id="timelineOpacity" min="0" max="0.5" step="0.05" value="0.25">
+        <span id="timelineOpacityValue">0.25</span>
+      </div>
+      <div class="setting-item">
+        <label>背景色</label>
+        <input type="color" id="bgColor" value="#1a1a2e">
+      </div>
+      <div class="setting-item">
+        <label>幕の色</label>
+        <input type="color" id="timelineColor" value="#ff4444">
+      </div>
+      <div class="setting-item">
+        <label>
+          <input type="checkbox" id="rippleEnabled" checked>
+          波紋エフェクト
+        </label>
+      </div>
+      <div class="setting-item">
+        <label>
+          <input type="checkbox" id="gridEnabled" checked>
+          グリッド表示
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- ライブラリ読み込み -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
