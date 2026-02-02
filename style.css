@@ -91,11 +91,32 @@ button:disabled {
   background: #d32f2f;
 }
 
+/* 表示設定パネル（左） */
+#settings-panel {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  width: 200px;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 15px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+#settings-panel h3 {
+  font-size: 14px;
+  color: #888;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #333;
+}
+
 /* オーケストラ配置エリア */
 #orchestra-area {
   position: fixed;
   top: 60px;
-  left: 0;
+  left: 200px;
   right: 280px;
   height: 180px;
   background: linear-gradient(to bottom, #0d1117, #161b22);
@@ -157,12 +178,32 @@ button:disabled {
   color: #fff;
 }
 
+/* ポンッと弾けるアニメーション */
+@keyframes iconPop {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.8);
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1.3);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.4);
+  }
+}
+
+.instrument-icon.pop {
+  animation: iconPop 0.25s ease-out forwards;
+}
+
 /* キャンバスコンテナ */
 #canvas-container {
   position: fixed;
-  top: 240px;
-  left: 0;
-  right: 280px;
+  top: 60px;
+  left: 200px;
+  right: 320px;
   bottom: 0;
 }
 
@@ -171,10 +212,11 @@ button:disabled {
   position: fixed;
   top: 60px;
   right: 0;
-  width: 280px;
+  width: 320px;
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
   padding: 15px;
+  padding-left: 60px;
   overflow-y: auto;
 }
 
@@ -200,6 +242,53 @@ button:disabled {
   background: #2d2d44;
   border-radius: 4px;
   font-size: 13px;
+  transition: background 0.1s ease;
+  position: relative;
+}
+
+.track-item.playing {
+  background: #3d3d5c;
+}
+
+.track-icon {
+  position: absolute;
+  left: -50px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 32px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.1s ease;
+}
+
+.track-item.playing .track-icon {
+  transform: translateY(-50%) scale(1.4);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+}
+
+@keyframes trackIconPop {
+  0% { transform: translateY(-50%) scale(1); }
+  30% { transform: translateY(-50%) scale(1.8); }
+  60% { transform: translateY(-50%) scale(1.3); }
+  100% { transform: translateY(-50%) scale(1.4); }
+}
+
+.track-icon.pop {
+  animation: trackIconPop 0.25s ease-out forwards;
+}
+
+.track-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .track-color {
@@ -277,8 +366,22 @@ button:disabled {
 #settings-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   margin-top: 10px;
+}
+
+.setting-category {
+  font-size: 12px;
+  font-weight: bold;
+  color: #4fc3f7;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #333;
+}
+
+.setting-category:first-child {
+  margin-top: 0;
 }
 
 .setting-item {

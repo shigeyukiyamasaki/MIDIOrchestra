@@ -13,8 +13,10 @@ const state = {
   noteObjects: [],      // Three.jsのノートオブジェクト
   iconSprites: [],      // 3Dアイコンスプライト
   ripples: [],          // 波紋エフェクト
+  popIcons: [],         // 飛び出すアイコンエフェクト
   triggeredNotes: new Set(), // 波紋を発生させたノートのID
   lastFrameTime: 0,     // 前フレームの時刻
+  cameraInitialized: false, // カメラ初期化済みフラグ
 };
 
 // Three.js オブジェクト
@@ -26,6 +28,9 @@ let gridHelper;         // グリッド
 const settings = {
   rippleEnabled: true,
   gridEnabled: true,
+  bounceScale: 1,
+  bounceDuration: 0.2,
+  popIconScale: 1,
 };
 
 // デバウンス用タイマー
@@ -47,11 +52,11 @@ const CONFIG = {
   // 空間のスケール
   timeScale: 50,        // 1秒 = 50単位（横軸）
   pitchScale: 1,        // 1半音 = 1単位（縦軸）
-  trackSpacing: 3,      // トラック間の距離（奥行き）
+  trackSpacing: 6,      // トラック間の距離（奥行き）
 
   // ノートの見た目
   noteHeight: 0.8,      // ノートの高さ（Y方向の厚み）
-  noteDepth: 3,         // ノートの奥行き（Z方向）
+  noteDepth: 1,         // ノートの奥行き（Z方向）
 
   // カメラ
   cameraDistance: 100,
@@ -65,27 +70,42 @@ const INSTRUMENTS = {
   violin2:    { name: 'Violin 2',    category: 'strings',    color: 0xd4956a, icon: '🎻', position: [40, 80] },
   viola:      { name: 'Viola',       category: 'strings',    color: 0x8b5a2b, icon: '🎻', position: [60, 80] },
   cello:      { name: 'Cello',       category: 'strings',    color: 0x6b4423, icon: '🎻', position: [75, 75] },
-  contrabass: { name: 'Contrabass',  category: 'strings',    color: 0x4a3728, icon: '🎸', position: [88, 65] },
+  contrabass: { name: 'Contrabass',  category: 'strings',    color: 0x4a3728, icon: '🎻', position: [88, 65] },
   harp:       { name: 'Harp',        category: 'strings',    color: 0xdaa520, icon: '🪕', position: [10, 50] },
 
   // 木管楽器（緑系）- 中央後方左
-  flute:      { name: 'Flute',       category: 'woodwind',   color: 0x7cb342, icon: '🪈', position: [25, 35] },
-  oboe:       { name: 'Oboe',        category: 'woodwind',   color: 0x558b2f, icon: '🪈', position: [35, 30] },
-  clarinet:   { name: 'Clarinet',    category: 'woodwind',   color: 0x33691e, icon: '🎷', position: [25, 50] },
-  bassoon:    { name: 'Bassoon',     category: 'woodwind',   color: 0x827717, icon: '🎷', position: [35, 45] },
-  piccolo:    { name: 'Piccolo',     category: 'woodwind',   color: 0x9ccc65, icon: '🪈', position: [20, 25] },
+  flute:       { name: 'Flute',        category: 'woodwind',   color: 0x7cb342, icon: '🪈', position: [25, 35] },
+  oboe:        { name: 'Oboe',         category: 'woodwind',   color: 0x558b2f, icon: '🪈', position: [35, 30] },
+  englishhorn: { name: 'English Horn', category: 'woodwind',   color: 0x4a6741, icon: '🪈', position: [40, 35] },
+  clarinet:     { name: 'Clarinet',      category: 'woodwind',   color: 0x33691e, icon: '🎷', position: [25, 50] },
+  bassclarinet: { name: 'Bass Clarinet',category: 'woodwind',   color: 0x2e5016, icon: '🎷', position: [30, 55] },
+  bassoon:      { name: 'Bassoon',      category: 'woodwind',   color: 0x827717, icon: '🎷', position: [35, 45] },
+  piccolo:     { name: 'Piccolo',      category: 'woodwind',   color: 0x9ccc65, icon: '🪈', position: [20, 25] },
 
   // 金管楽器（金系）- 中央後方右
   horn:       { name: 'Horn',        category: 'brass',      color: 0xffc107, icon: '📯', position: [55, 35] },
   trumpet:    { name: 'Trumpet',     category: 'brass',      color: 0xffb300, icon: '🎺', position: [65, 30] },
   trombone:   { name: 'Trombone',    category: 'brass',      color: 0xff8f00, icon: '🎺', position: [75, 35] },
   tuba:       { name: 'Tuba',        category: 'brass',      color: 0xff6f00, icon: '📯', position: [65, 45] },
+  flugelhorn: { name: 'Flugelhorn',  category: 'brass',      color: 0xffa000, icon: '🎺', position: [70, 40] },
 
   // 打楽器（グレー/シルバー系）- 最後方
-  timpani:    { name: 'Timpani',     category: 'percussion', color: 0x78909c, icon: '🥁', position: [50, 15] },
-  percussion: { name: 'Percussion',  category: 'percussion', color: 0x607d8b, icon: '🥁', position: [80, 20] },
-  drums:      { name: 'Drums',       category: 'percussion', color: 0x546e7a, icon: '🥁', position: [85, 30] },
-  cymbals:    { name: 'Cymbals',     category: 'percussion', color: 0xb0bec5, icon: '🔔', position: [90, 15] },
+  timpani:      { name: 'Timpani',       category: 'percussion', color: 0x78909c, icon: '🥁', position: [50, 15] },
+  snare:        { name: 'Snare Drum',    category: 'percussion', color: 0x90a4ae, icon: '🥁', position: [55, 20] },
+  bassdrum:     { name: 'Bass Drum',     category: 'percussion', color: 0x546e7a, icon: '🥁', position: [60, 20] },
+  xylophone:    { name: 'Xylophone',     category: 'percussion', color: 0x8d6e63, icon: '🎵', position: [65, 15] },
+  marimba:      { name: 'Marimba',       category: 'percussion', color: 0x6d4c41, icon: '🎵', position: [67, 18] },
+  vibraphone:   { name: 'Vibraphone',    category: 'percussion', color: 0x7e57c2, icon: '🎵', position: [69, 15] },
+  glocken:      { name: 'Glockenspiel',  category: 'percussion', color: 0xb0bec5, icon: '🔔', position: [70, 15] },
+  tubularbells: { name: 'Tubular Bells', category: 'percussion', color: 0x9e9e9e, icon: '🔔', position: [72, 18] },
+  triangle:     { name: 'Triangle',      category: 'percussion', color: 0xbdbdbd, icon: '🔔', position: [74, 15] },
+  windchimes:   { name: 'Wind Chimes',   category: 'percussion', color: 0xc0c0c0, icon: '🎐', position: [76, 18] },
+  tambourine:   { name: 'Tambourine',    category: 'percussion', color: 0xa1887f, icon: '🥁', position: [78, 15] },
+  tamtam:       { name: 'Tam-tam',       category: 'percussion', color: 0x455a64, icon: '🔔', position: [75, 20] },
+  cymbals:      { name: 'Cymbals',       category: 'percussion', color: 0xb0bec5, icon: '🔔', position: [80, 15] },
+  hihat:        { name: 'Hi-Hat',        category: 'percussion', color: 0xcfd8dc, icon: '🔔', position: [82, 18] },
+  percussion:   { name: 'Percussion',    category: 'percussion', color: 0x607d8b, icon: '🥁', position: [85, 20] },
+  drums:        { name: 'Drums',         category: 'percussion', color: 0x546e7a, icon: '🥁', position: [88, 30] },
 
   // 鍵盤楽器（青系）- 左端
   piano:      { name: 'Piano',       category: 'keyboard',   color: 0x1976d2, icon: '🎹', position: [10, 70] },
@@ -104,6 +124,7 @@ const INSTRUMENT_KEYWORDS = [
   { id: 'trumpet',    keywords: ['trumpet', 'trumpets', 'tromba', 'trp'] },
   { id: 'trombone',   keywords: ['trombone', 'trombones', 'trb'] },
   { id: 'tuba',       keywords: ['tuba', 'tubas'] },
+  { id: 'flugelhorn', keywords: ['flugelhorn', 'flugel', 'flügelhorn'] },
 
   // 弦楽器
   { id: 'violin1',    keywords: ['violin 1', 'violin i', 'vln 1', 'vln1', 'vn1', 'vn 1', '1st violin', 'violins 1'] },
@@ -114,23 +135,168 @@ const INSTRUMENT_KEYWORDS = [
   { id: 'harp',       keywords: ['harp', 'harps'] },
 
   // 木管楽器
-  { id: 'piccolo',    keywords: ['piccolo', 'picc'] },
-  { id: 'flute',      keywords: ['flute', 'flutes', 'flauto'] },
-  { id: 'oboe',       keywords: ['oboe', 'oboes', 'oboi'] },
-  { id: 'clarinet',   keywords: ['clarinet', 'clarinets', 'clarinetto'] },
-  { id: 'bassoon',    keywords: ['bassoon', 'bassoons', 'fagotto'] },
+  { id: 'piccolo',     keywords: ['piccolo', 'picc'] },
+  { id: 'flute',       keywords: ['flute', 'flutes', 'flauto'] },
+  { id: 'englishhorn', keywords: ['english horn', 'englishhorn', 'cor anglais', 'corno inglese', 'eng horn', 'e.h.'] },
+  { id: 'oboe',        keywords: ['oboe', 'oboes', 'oboi'] },
+  { id: 'bassclarinet', keywords: ['bass clarinet', 'bassclarinet', 'bass cl', 'b.cl', 'bcl', 'clarinetto basso'] },
+  { id: 'clarinet',     keywords: ['clarinet', 'clarinets', 'clarinetto'] },
+  { id: 'bassoon',      keywords: ['bassoon', 'bassoons', 'fagotto'] },
 
-  // 打楽器
-  { id: 'timpani',    keywords: ['timpani', 'timp', 'kettle'] },
-  { id: 'percussion', keywords: ['percussion', 'perc', 'xylophone', 'marimba', 'vibraphone', 'glockenspiel', 'chimes', 'bells', 'triangle', 'snare', 'bass drum', 'tam-tam', 'gong'] },
-  { id: 'drums',      keywords: ['drums', 'drum'] },
-  { id: 'cymbals',    keywords: ['cymbal', 'cymbals'] },
+  // 打楽器（具体的なものを先に）
+  { id: 'timpani',      keywords: ['timpani', 'timp', 'kettle'] },
+  { id: 'snare',        keywords: ['snare', 'snaredrum', 'snare drum', 'sd', 's.d.'] },
+  { id: 'bassdrum',     keywords: ['bass drum', 'bassdrum', 'bd', 'b.d.', 'gran cassa'] },
+  { id: 'marimba',      keywords: ['marimba'] },
+  { id: 'vibraphone',   keywords: ['vibraphone', 'vibes', 'vibrafon'] },
+  { id: 'xylophone',    keywords: ['xylophone', 'xylo'] },
+  { id: 'glocken',      keywords: ['glockenspiel', 'glock', 'bells'] },
+  { id: 'tubularbells', keywords: ['tubular bells', 'tubular', 'chimes', 'orchestral chimes'] },
+  { id: 'triangle',     keywords: ['triangle', 'tri'] },
+  { id: 'windchimes',   keywords: ['wind chimes', 'windchimes', 'wind chime', 'mark tree'] },
+  { id: 'tambourine',   keywords: ['tambourine', 'tamb'] },
+  { id: 'tamtam',       keywords: ['tam-tam', 'tamtam', 'gong', '銅鑼', 'dora'] },
+  { id: 'cymbals',      keywords: ['cymbal', 'cymbals', 'crash'] },
+  { id: 'hihat',        keywords: ['hi-hat', 'hihat', 'hi hat', 'hh'] },
+  { id: 'drums',        keywords: ['drums', 'drum', 'drum kit'] },
+  { id: 'percussion',   keywords: ['percussion', 'perc'] },
 
   // 鍵盤楽器
   { id: 'piano',      keywords: ['piano'] },
   { id: 'celesta',    keywords: ['celesta'] },
   { id: 'organ',      keywords: ['organ'] },
 ];
+
+// オーケストラスコア順のソート用（上から下への順番）
+const ORCHESTRAL_ORDER = {
+  // 木管楽器
+  piccolo: 1,
+  flute: 2,
+  oboe: 3,
+  englishhorn: 4,
+  clarinet: 5,
+  bassclarinet: 6,
+  bassoon: 7,
+  // 金管楽器
+  horn: 10,
+  trumpet: 11,
+  flugelhorn: 12,
+  trombone: 13,
+  tuba: 14,
+  // 打楽器
+  timpani: 20,
+  snare: 21,
+  bassdrum: 22,
+  xylophone: 23,
+  marimba: 24,
+  vibraphone: 25,
+  glocken: 26,
+  tubularbells: 27,
+  triangle: 28,
+  windchimes: 29,
+  tambourine: 30,
+  tamtam: 31,
+  cymbals: 32,
+  hihat: 33,
+  percussion: 34,
+  drums: 35,
+  // 鍵盤楽器
+  piano: 40,
+  celesta: 41,
+  organ: 42,
+  harp: 43,
+  // 弦楽器
+  violin1: 50,
+  violin2: 51,
+  viola: 52,
+  cello: 53,
+  contrabass: 54,
+  // その他
+  other: 99,
+};
+
+// カスタムアイコン画像のパス（存在する楽器のみ）
+// ファイル名は楽器ID.png（例: violin1.png, timpani.png）
+const CUSTOM_ICON_PATH = 'assets/icons/';
+
+// 読み込み済みのカスタムアイコンテクスチャをキャッシュ
+const customIconCache = new Map();
+
+// カスタムアイコンを読み込み（グリーンバック除去付き）
+async function loadCustomIcon(instrumentId) {
+  // キャッシュにあればそれを返す
+  if (customIconCache.has(instrumentId)) {
+    return customIconCache.get(instrumentId);
+  }
+
+  const imagePath = `${CUSTOM_ICON_PATH}${instrumentId}.png`;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      // Canvasでグリーンバック除去
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      // ピクセルデータを取得
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // ターゲットの緑色 #388f48
+      const targetR = 0x38; // 56
+      const targetG = 0x8f; // 143
+      const targetB = 0x48; // 72
+
+      // 緑色の許容範囲（閾値）
+      const threshold = 60;
+
+      // 各ピクセルをチェック
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // ターゲット緑色との距離を計算
+        const distance = Math.sqrt(
+          Math.pow(r - targetR, 2) +
+          Math.pow(g - targetG, 2) +
+          Math.pow(b - targetB, 2)
+        );
+
+        // 閾値以内なら透明に
+        if (distance < threshold) {
+          data[i + 3] = 0; // alpha = 0
+        }
+      }
+
+      // 処理後のデータを書き戻す
+      ctx.putImageData(imageData, 0, 0);
+
+      // キャッシュに保存
+      customIconCache.set(instrumentId, canvas);
+      resolve(canvas);
+    };
+
+    img.onerror = () => {
+      // 画像が見つからない場合はnullを返す（絵文字フォールバック）
+      customIconCache.set(instrumentId, null);
+      resolve(null);
+    };
+
+    img.src = imagePath;
+  });
+}
+
+// すべてのカスタムアイコンを事前読み込み
+async function preloadCustomIcons() {
+  const instrumentIds = Object.keys(INSTRUMENTS);
+  const promises = instrumentIds.map(id => loadCustomIcon(id));
+  await Promise.all(promises);
+  console.log('Custom icons preloaded');
+}
 
 // トラック名から楽器を推定
 function guessInstrument(trackName) {
@@ -150,9 +316,10 @@ function guessInstrument(trackName) {
 // ============================================
 // 初期化
 // ============================================
-function init() {
+async function init() {
   setupThreeJS();
   setupEventListeners();
+  await preloadCustomIcons(); // カスタムアイコンを事前読み込み
   animate();
   console.log('MIDI Orchestra Visualizer initialized');
 }
@@ -194,9 +361,9 @@ function setupThreeJS() {
   directionalLight.position.set(50, 100, 50);
   scene.add(directionalLight);
 
-  // グリッド（床）
+  // グリッド（床 / 地面）
   gridHelper = new THREE.GridHelper(500, 50, 0x444444, 0x333333);
-  gridHelper.position.y = -5;
+  gridHelper.position.y = -10; // 地面の位置
   scene.add(gridHelper);
 
   // タイムライン平面（現在位置を示す「幕」）
@@ -207,6 +374,7 @@ function setupThreeJS() {
     transparent: true,
     opacity: 0.25,
     side: THREE.DoubleSide,
+    depthWrite: false,  // 後ろのノートが見えるように
   });
   timelinePlane = new THREE.Mesh(timelineGeometry, timelineMaterial);
   timelinePlane.rotation.y = Math.PI / 2;
@@ -258,6 +426,39 @@ function setupEventListeners() {
     if (e.code === 'Space') {
       e.preventDefault();
       togglePlay();
+    }
+  });
+
+  // ドラッグ&ドロップでMIDIファイルを読み込み
+  const canvasContainer = document.getElementById('canvas-container');
+
+  canvasContainer.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    canvasContainer.style.outline = '3px dashed #4fc3f7';
+  });
+
+  canvasContainer.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    canvasContainer.style.outline = 'none';
+  });
+
+  canvasContainer.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    canvasContainer.style.outline = 'none';
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      // MIDIファイルかチェック
+      if (file.name.match(/\.(mid|midi)$/i)) {
+        document.getElementById('midiFileName').textContent = file.name;
+        await loadMidi(file);
+      } else {
+        console.warn('MIDIファイル (.mid, .midi) をドロップしてください');
+      }
     }
   });
 
@@ -314,6 +515,16 @@ function setupEventListeners() {
     debouncedRebuildNotes();
   });
 
+  // Y軸スケール
+  const pitchScaleInput = document.getElementById('pitchScale');
+  const pitchScaleValue = document.getElementById('pitchScaleValue');
+  pitchScaleInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    pitchScaleValue.textContent = value;
+    CONFIG.pitchScale = value;
+    debouncedRebuildNotes();
+  });
+
   // 幕の透明度
   const timelineOpacityInput = document.getElementById('timelineOpacity');
   const timelineOpacityValue = document.getElementById('timelineOpacityValue');
@@ -359,6 +570,33 @@ function setupEventListeners() {
       gridHelper.visible = settings.gridEnabled;
     }
   });
+
+  // バウンスの大きさ
+  const bounceScaleInput = document.getElementById('bounceScale');
+  const bounceScaleValue = document.getElementById('bounceScaleValue');
+  bounceScaleInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    bounceScaleValue.textContent = value;
+    settings.bounceScale = value;
+  });
+
+  // バウンスの時間
+  const bounceDurationInput = document.getElementById('bounceDuration');
+  const bounceDurationValue = document.getElementById('bounceDurationValue');
+  bounceDurationInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    bounceDurationValue.textContent = value;
+    settings.bounceDuration = value;
+  });
+
+  // 飛び出すアイコンの大きさ
+  const popIconScaleInput = document.getElementById('popIconScale');
+  const popIconScaleValue = document.getElementById('popIconScaleValue');
+  popIconScaleInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    popIconScaleValue.textContent = value;
+    settings.popIconScale = value;
+  });
 }
 
 // ============================================
@@ -372,6 +610,7 @@ async function loadMidi(file) {
   state.duration = midi.duration;
   state.currentTime = 0;
   state.isPlaying = false;
+  state.cameraInitialized = false; // 新しいMIDI読み込み時はカメラをリセット
 
   console.log('MIDI loaded:', midi.name, 'Tracks:', midi.tracks.length);
 
@@ -413,6 +652,13 @@ async function loadMidi(file) {
   });
   state.groupedTracks = Array.from(groupMap.values());
 
+  // オーケストラスコア順にソート
+  state.groupedTracks.sort((a, b) => {
+    const orderA = ORCHESTRAL_ORDER[a.instrumentId] || 99;
+    const orderB = ORCHESTRAL_ORDER[b.instrumentId] || 99;
+    return orderA - orderB;
+  });
+
   console.log(`Grouped into ${state.groupedTracks.length} instruments`);
 
   // UIを更新
@@ -421,9 +667,6 @@ async function loadMidi(file) {
 
   // 3D空間にノートを配置
   createNoteObjects();
-
-  // オーケストラ配置エリアを生成
-  createOrchestraArea();
 }
 
 // ============================================
@@ -438,21 +681,61 @@ function updateTrackPanel() {
     .map(([id, inst]) => `<option value="${id}">${inst.name}</option>`)
     .join('');
 
-  // グループ化された楽器で表示
-  state.groupedTracks.forEach((group) => {
+  // 元のMIDIトラック名でグループ化（同名トラックをまとめる）
+  const trackNameGroups = new Map();
+  state.tracks.forEach(track => {
+    if (track.noteCount === 0) return;
+
+    if (!trackNameGroups.has(track.name)) {
+      trackNameGroups.set(track.name, {
+        name: track.name,
+        instrumentId: track.instrumentId,
+        trackIndices: [],
+        totalNotes: 0,
+      });
+    }
+    const group = trackNameGroups.get(track.name);
+    group.trackIndices.push(track.index);
+    group.totalNotes += track.noteCount;
+  });
+
+  // オーケストラ順にソート
+  const sortedGroups = Array.from(trackNameGroups.values()).sort((a, b) => {
+    const orderA = ORCHESTRAL_ORDER[a.instrumentId] || 99;
+    const orderB = ORCHESTRAL_ORDER[b.instrumentId] || 99;
+    return orderA - orderB;
+  });
+
+  // 表示
+  sortedGroups.forEach((group) => {
     const instrument = INSTRUMENTS[group.instrumentId];
+
+    // カスタムアイコンがあるかチェック
+    const customIcon = customIconCache.get(group.instrumentId);
+    let iconHtml;
+    if (customIcon) {
+      // カスタム画像をData URLに変換して使用
+      iconHtml = `<img src="${customIcon.toDataURL()}" class="track-icon-img" alt="${instrument.name}">`;
+    } else {
+      // 絵文字フォールバック
+      iconHtml = instrument.icon;
+    }
 
     const item = document.createElement('div');
     item.className = 'track-item';
+    item.id = `track-item-${group.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    item.dataset.trackName = group.name;
+    item.dataset.trackIndices = JSON.stringify(group.trackIndices);
     item.innerHTML = `
-      <div class="track-color" id="color-group-${group.instrumentId}" style="background: #${group.color.toString(16).padStart(6, '0')}"></div>
+      <div class="track-icon">${iconHtml}</div>
+      <div class="track-color" style="background: #${instrument.color.toString(16).padStart(6, '0')}"></div>
       <div class="track-info">
-        <div class="track-name">${group.instrumentName}</div>
-        <select class="instrument-select" data-instrument="${group.instrumentId}">
+        <div class="track-name">${group.name}</div>
+        <select class="instrument-select" data-track-name="${group.name}">
           ${instrumentOptions}
         </select>
       </div>
-      <div class="track-notes">${group.trackIndices.length}tr / ${group.totalNotes}音</div>
+      <div class="track-notes">${group.totalNotes}音</div>
     `;
 
     // 現在の楽器を選択状態にする
@@ -461,59 +744,79 @@ function updateTrackPanel() {
 
     // 楽器変更イベント
     select.addEventListener('change', (e) => {
-      const oldInstrumentId = e.target.dataset.instrument;
+      const trackName = e.target.dataset.trackName;
       const newInstrumentId = e.target.value;
-      updateGroupInstrument(oldInstrumentId, newInstrumentId);
+      updateTrackInstrument(trackName, newInstrumentId);
     });
 
     trackList.appendChild(item);
   });
 }
 
-// グループの楽器を変更
-function updateGroupInstrument(oldInstrumentId, newInstrumentId) {
+// トラック名に基づいて楽器を変更
+function updateTrackInstrument(trackName, newInstrumentId) {
   const newInstrument = INSTRUMENTS[newInstrumentId];
 
-  // このグループに属する全トラックを更新
+  // このトラック名を持つ全トラックを更新
+  const trackIndices = [];
   state.tracks.forEach(track => {
-    if (track.instrumentId === oldInstrumentId) {
+    if (track.name === trackName) {
       track.instrumentId = newInstrumentId;
       track.instrumentName = newInstrument.name;
       track.color = newInstrument.color;
+      trackIndices.push(track.index);
     }
   });
 
-  // グループ情報も更新
-  const group = state.groupedTracks.find(g => g.instrumentId === oldInstrumentId);
-  if (group) {
-    group.instrumentId = newInstrumentId;
-    group.instrumentName = newInstrument.name;
-    group.color = newInstrument.color;
-  }
+  // groupedTracksを再構築
+  rebuildGroupedTracks();
 
-  // 色表示を更新
-  const colorEl = document.getElementById(`color-group-${oldInstrumentId}`);
-  if (colorEl) {
-    colorEl.id = `color-group-${newInstrumentId}`;
-    colorEl.style.background = `#${newInstrument.color.toString(16).padStart(6, '0')}`;
-  }
-
-  // このグループに属するトラックのノートの色を更新
-  const trackIndices = new Set(group ? group.trackIndices : []);
+  // ノートの色を更新
+  const trackIndexSet = new Set(trackIndices);
   state.noteObjects.forEach(mesh => {
-    if (trackIndices.has(mesh.userData.trackIndex)) {
+    if (trackIndexSet.has(mesh.userData.trackIndex)) {
       mesh.material.color.setHex(newInstrument.color);
       mesh.userData.originalColor = newInstrument.color;
     }
   });
 
-  // オーケストラエリアを再生成
-  createOrchestraArea();
+  // トラックパネルを再生成
+  updateTrackPanel();
 
-  // 3Dアイコンを再生成
-  create3DInstrumentIcons();
+  // 3Dノートを再構築（Z位置の更新）
+  debouncedRebuildNotes();
 
-  console.log(`Group ${oldInstrumentId} changed to ${newInstrumentId}`);
+  console.log(`Track "${trackName}" changed to ${newInstrumentId}`);
+}
+
+// groupedTracksを再構築
+function rebuildGroupedTracks() {
+  const groupMap = new Map();
+  state.tracks.forEach(track => {
+    if (track.noteCount === 0) return;
+
+    if (!groupMap.has(track.instrumentId)) {
+      const instrument = INSTRUMENTS[track.instrumentId];
+      groupMap.set(track.instrumentId, {
+        instrumentId: track.instrumentId,
+        instrumentName: instrument.name,
+        color: instrument.color,
+        trackIndices: [],
+        totalNotes: 0,
+      });
+    }
+    const group = groupMap.get(track.instrumentId);
+    group.trackIndices.push(track.index);
+    group.totalNotes += track.noteCount;
+  });
+  state.groupedTracks = Array.from(groupMap.values());
+
+  // オーケストラスコア順にソート
+  state.groupedTracks.sort((a, b) => {
+    const orderA = ORCHESTRAL_ORDER[a.instrumentId] || 99;
+    const orderB = ORCHESTRAL_ORDER[b.instrumentId] || 99;
+    return orderA - orderB;
+  });
 }
 
 function enableControls() {
@@ -522,78 +825,54 @@ function enableControls() {
   document.getElementById('resetBtn').disabled = false;
 }
 
-// ============================================
-// オーケストラ配置エリア
-// ============================================
-function createOrchestraArea() {
-  const stage = document.getElementById('orchestra-stage');
-  stage.innerHTML = '';
 
-  // 使用されている楽器を収集（重複排除）
-  const usedInstruments = new Map();
-  state.tracks.forEach(track => {
-    if (track.noteCount > 0 && !usedInstruments.has(track.instrumentId)) {
-      usedInstruments.set(track.instrumentId, {
-        ...INSTRUMENTS[track.instrumentId],
-        id: track.instrumentId,
-        trackIndices: [],
-      });
-    }
-    if (track.noteCount > 0) {
-      usedInstruments.get(track.instrumentId).trackIndices.push(track.index);
+// アイコンのポップアニメーションをトリガー
+function triggerIconPop(trackIndex) {
+  // トラック名でアイテムを探す
+  const trackInfo = state.tracks[trackIndex];
+  if (!trackInfo) return;
+
+  document.querySelectorAll('.track-item').forEach(item => {
+    if (item.dataset.trackName === trackInfo.name) {
+      const icon = item.querySelector('.track-icon');
+      if (icon) {
+        // アニメーションをリセットして再トリガー
+        icon.classList.remove('pop');
+        void icon.offsetWidth; // リフロー強制
+        icon.classList.add('pop');
+      }
     }
   });
-
-  // 各楽器のアイコンを生成
-  usedInstruments.forEach((inst, id) => {
-    const iconEl = document.createElement('div');
-    iconEl.className = 'instrument-icon';
-    iconEl.id = `orchestra-icon-${id}`;
-    iconEl.style.left = `${inst.position[0]}%`;
-    iconEl.style.top = `${inst.position[1]}%`;
-    iconEl.style.transform = 'translate(-50%, -50%)';
-
-    const colorHex = `#${inst.color.toString(16).padStart(6, '0')}`;
-
-    iconEl.innerHTML = `
-      <div class="icon" style="border-color: ${colorHex}; color: ${colorHex};">${inst.icon}</div>
-      <div class="label">${inst.name}</div>
-    `;
-
-    // データ属性にトラックインデックスを保存
-    iconEl.dataset.trackIndices = JSON.stringify(inst.trackIndices);
-
-    stage.appendChild(iconEl);
-  });
-
-  console.log(`Orchestra area created with ${usedInstruments.size} instruments`);
 }
 
-// オーケストラアイコンのハイライト更新
+// トラックリストのハイライト更新
 function updateOrchestraHighlights() {
   const currentTime = state.currentTime;
 
   // 各トラックが現在鳴っているかチェック
-  const playingTracks = new Set();
+  const playingTrackNames = new Set();
 
   state.noteObjects.forEach(mesh => {
     const { trackIndex, startTime, endTime } = mesh.userData;
     if (currentTime >= startTime && currentTime <= endTime) {
-      playingTracks.add(trackIndex);
+      const trackInfo = state.tracks[trackIndex];
+      if (trackInfo) {
+        playingTrackNames.add(trackInfo.name);
+      }
     }
   });
 
-  // 各楽器アイコンの状態を更新
-  document.querySelectorAll('.instrument-icon').forEach(iconEl => {
-    const trackIndices = JSON.parse(iconEl.dataset.trackIndices || '[]');
-    const isPlaying = trackIndices.some(idx => playingTracks.has(idx));
+  // 各トラックアイテムの状態を更新
+  document.querySelectorAll('.track-item').forEach(item => {
+    const trackName = item.dataset.trackName;
+    const isPlaying = playingTrackNames.has(trackName);
 
     if (isPlaying) {
-      iconEl.classList.add('playing');
-      iconEl.style.transform = 'translate(-50%, -50%) scale(1.4)';
+      item.classList.add('playing');
     } else {
-      iconEl.classList.remove('playing');
-      iconEl.style.transform = 'translate(-50%, -50%) scale(1)';
+      item.classList.remove('playing');
+      const icon = item.querySelector('.track-icon');
+      if (icon) icon.classList.remove('pop');
     }
   });
 }
@@ -623,9 +902,35 @@ function createNoteObjects() {
   });
   const pitchCenter = (minPitch + maxPitch) / 2;
 
-  // ノートがあるトラック数を計算（中央揃え用）
-  const tracksWithNotes = midi.tracks.filter(t => t.notes.length > 0).length;
-  let noteTrackIndex = 0;
+  // トラック名でユニークなZ位置を計算（オーケストラ順）
+  const uniqueTrackNames = [];
+  const trackNameToZIndex = new Map();
+
+  // まずユニークなトラック名を収集してソート
+  midi.tracks.forEach((track, trackIndex) => {
+    if (track.notes.length === 0) return;
+    if (!trackNameToZIndex.has(track.name)) {
+      const trackInfo = state.tracks[trackIndex];
+      uniqueTrackNames.push({
+        name: track.name,
+        instrumentId: trackInfo.instrumentId
+      });
+    }
+  });
+
+  // オーケストラ順にソート
+  uniqueTrackNames.sort((a, b) => {
+    const orderA = ORCHESTRAL_ORDER[a.instrumentId] || 99;
+    const orderB = ORCHESTRAL_ORDER[b.instrumentId] || 99;
+    return orderA - orderB;
+  });
+
+  // Z位置マッピングを作成
+  uniqueTrackNames.forEach((item, idx) => {
+    trackNameToZIndex.set(item.name, idx);
+  });
+
+  const totalUniqueNames = uniqueTrackNames.length;
 
   // トラックごとにノートを生成
   midi.tracks.forEach((track, trackIndex) => {
@@ -633,9 +938,9 @@ function createNoteObjects() {
 
     const trackInfo = state.tracks[trackIndex];
     const color = trackInfo.color;
-    // 中央揃え: トラックを中央を基準に配置
-    const zPosition = (noteTrackIndex - tracksWithNotes / 2) * CONFIG.trackSpacing;
-    noteTrackIndex++;
+    // トラック名に基づいてZ位置を決定
+    const zIdx = trackNameToZIndex.get(track.name) || 0;
+    const zPosition = (zIdx - totalUniqueNames / 2) * CONFIG.trackSpacing;
 
     track.notes.forEach(note => {
       // ノートの位置とサイズ
@@ -678,7 +983,7 @@ function createNoteObjects() {
   });
 
   // タイムライン平面のサイズをトラック範囲に合わせて更新
-  const totalDepth = tracksWithNotes * CONFIG.trackSpacing + 20; // 余白を追加
+  const totalDepth = totalUniqueNames * CONFIG.trackSpacing + 20; // 余白を追加
   const totalHeight = (maxPitch - minPitch) * CONFIG.pitchScale + 20;
 
   // 既存のジオメトリを破棄して新しいサイズで作成
@@ -686,15 +991,20 @@ function createNoteObjects() {
   timelinePlane.geometry = new THREE.PlaneGeometry(totalDepth, totalHeight);
   timelinePlane.position.y = 0; // 中央に配置
 
-  // カメラ位置を調整（タイムラインX=0、Z=0を中心に見る）
-  // 斜め手前上から見下ろすアングル
-  camera.position.set(-100, 80, 120);
-  camera.lookAt(0, 0, 0);
+  // グリッドを最低音の下に配置（地面として）
+  const lowestNoteY = (minPitch - pitchCenter) * CONFIG.pitchScale;
+  if (gridHelper) {
+    gridHelper.position.y = lowestNoteY - 15;
+  }
+
+  // 初回読み込み時のみカメラ位置を調整（スライダー操作時は維持）
+  if (!state.cameraInitialized) {
+    camera.position.set(-100, 80, 120);
+    camera.lookAt(0, 0, 0);
+    state.cameraInitialized = true;
+  }
 
   console.log(`Created ${state.noteObjects.length} note objects`);
-
-  // 3Dアイコンを作成
-  create3DInstrumentIcons();
 }
 
 // ============================================
@@ -870,21 +1180,149 @@ function updateRipples(delta) {
   }
 }
 
-function checkNoteRipples() {
-  // 波紋が無効の場合はスキップ
-  if (!settings.rippleEnabled) return;
+// 飛び出すアイコンを生成
+function createPopIcon(y, z, instrumentId) {
+  // スケールが0ならスキップ
+  if (settings.popIconScale <= 0) return;
 
+  const instrument = INSTRUMENTS[instrumentId];
+  if (!instrument) return;
+
+  // アイコン用のCanvasテクスチャを作成
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+
+  // 背景を透明にクリア
+  ctx.clearRect(0, 0, 128, 160);
+
+  // カスタムアイコンがあれば使用、なければ絵文字
+  const customIcon = customIconCache.get(instrumentId);
+  if (customIcon) {
+    // カスタム画像を描画（中央に配置、サイズ調整）
+    const iconSize = 90;
+    const offsetX = (128 - iconSize) / 2;
+    const offsetY = 5;
+    ctx.drawImage(customIcon, offsetX, offsetY, iconSize, iconSize);
+  } else {
+    // 絵文字フォールバック
+    ctx.font = '70px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(instrument.icon, 64, 55);
+  }
+
+  // 楽器名
+  ctx.font = 'bold 24px sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 4;
+  ctx.strokeText(instrument.name, 64, 135);
+  ctx.fillText(instrument.name, 64, 135);
+
+  // テクスチャ作成
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.premultiplyAlpha = true;
+
+  const spriteMaterial = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 1,
+    alphaTest: 0.1,
+    depthWrite: false,
+  });
+
+  const sprite = new THREE.Sprite(spriteMaterial);
+  sprite.position.set(0, y, z); // タイムライン上からスタート
+  const baseScale = 3 * settings.popIconScale;
+  sprite.scale.set(baseScale, baseScale, 1);
+
+  sprite.userData = {
+    age: 0,
+    maxAge: 0.8,       // 0.8秒で消える
+    startY: y,
+    startZ: z,
+    velocityY: 25,     // 上方向への速度
+    velocityX: -20,    // 前方へ
+    baseScale: baseScale,
+  };
+
+  scene.add(sprite);
+  state.popIcons.push(sprite);
+}
+
+// 飛び出すアイコンを更新
+function updatePopIcons(delta) {
+  for (let i = state.popIcons.length - 1; i >= 0; i--) {
+    const icon = state.popIcons[i];
+    icon.userData.age += delta;
+
+    const progress = icon.userData.age / icon.userData.maxAge;
+
+    if (progress >= 1) {
+      // アイコンを削除
+      scene.remove(icon);
+      icon.material.map.dispose();
+      icon.material.dispose();
+      state.popIcons.splice(i, 1);
+    } else {
+      // 泡のように上昇（減速しながら）
+      const easeOut = 1 - progress; // 徐々に減速
+      icon.position.y += icon.userData.velocityY * easeOut * delta;
+      icon.position.x += icon.userData.velocityX * delta;
+
+      // ポンっと膨らんで縮む（泡っぽい）
+      const base = icon.userData.baseScale;
+      let scale;
+      if (progress < 0.2) {
+        // 最初は急速に膨らむ
+        scale = base + (progress / 0.2) * base * 1.67;
+      } else {
+        // その後ゆっくり縮む
+        scale = base * 2.67 - ((progress - 0.2) / 0.8) * base;
+      }
+      icon.scale.set(scale, scale, 1);
+
+      // 後半からフェードアウト
+      if (progress > 0.5) {
+        icon.material.opacity = 1 - ((progress - 0.5) / 0.5);
+      }
+    }
+  }
+}
+
+function checkNoteRipples() {
   const currentTime = state.currentTime;
 
   state.noteObjects.forEach((mesh, index) => {
-    const { startTime, originalColor } = mesh.userData;
+    const { startTime, originalColor, trackIndex } = mesh.userData;
     const noteId = index;
 
     // ノートがちょうどタイムラインを通過したとき（開始時）
     if (!state.triggeredNotes.has(noteId) && currentTime >= startTime && currentTime < startTime + 0.05) {
       state.triggeredNotes.add(noteId);
-      // Y=ノートの高さ、Z=ノートのトラック位置（固定値）
-      createRipple(mesh.position.y, mesh.position.z, originalColor);
+
+      // 波紋エフェクト
+      if (settings.rippleEnabled) {
+        createRipple(mesh.position.y, mesh.position.z, originalColor);
+      }
+
+      // 幕から飛び出すアイコン
+      const trackInfo = state.tracks[trackIndex];
+      if (trackInfo) {
+        createPopIcon(mesh.position.y, mesh.position.z, trackInfo.instrumentId);
+      }
+
+      // 上部の楽器アイコンをポップさせる
+      triggerIconPop(trackIndex);
+
+      // ノートのバウンス開始（高さが0より大きい場合のみ）
+      if (settings.bounceScale > 0) {
+        mesh.userData.bounceTime = 0;
+        mesh.userData.isBouncing = true;
+        mesh.userData.baseY = mesh.position.y; // 元のY位置を保存
+      }
     }
 
     // リセット用：ノートが再びタイムライン前に戻ったら
@@ -995,17 +1433,18 @@ function animate() {
   // ノートのハイライト（現在再生中のノート）
   updateNoteHighlights();
 
+  // ノートのバウンス
+  updateNoteBounce(0.016);
+
   // オーケストラアイコンのハイライト（2D）
   updateOrchestraHighlights();
-
-  // 3Dアイコンのハイライト
-  update3DIconHighlights();
 
   // 波紋エフェクト（常に更新）
   if (state.isPlaying) {
     checkNoteRipples();
   }
   updateRipples(0.016); // 約60fps想定
+  updatePopIcons(0.016); // 飛び出すアイコン
 
   // カメラコントロール更新
   if (controls) {
@@ -1033,12 +1472,32 @@ function updateNoteHighlights() {
       // 再生中のノートは明るく＋発光
       mesh.material.emissive = new THREE.Color(0xffffff);
       mesh.material.emissiveIntensity = 0.5;
-      mesh.scale.setScalar(1.2); // 少し拡大
     } else {
       // それ以外は通常
       mesh.material.emissive = new THREE.Color(0x000000);
       mesh.material.emissiveIntensity = 0;
-      mesh.scale.setScalar(1.0);
+    }
+  });
+}
+
+// ノートのバウンスを更新
+function updateNoteBounce(delta) {
+  state.noteObjects.forEach(mesh => {
+    if (mesh.userData.isBouncing) {
+      mesh.userData.bounceTime += delta;
+      const progress = mesh.userData.bounceTime / settings.bounceDuration;
+
+      if (progress >= 1) {
+        // バウンス終了
+        mesh.userData.isBouncing = false;
+        mesh.position.y = mesh.userData.baseY; // 元の位置に戻す
+      } else {
+        // 縦方向バウンスアニメーション
+        // sin波で上に跳ねて戻る
+        const bounce = Math.sin(progress * Math.PI);
+        const bounceHeight = bounce * settings.bounceScale * 3; // 高さ調整
+        mesh.position.y = mesh.userData.baseY + bounceHeight;
+      }
     }
   });
 }
