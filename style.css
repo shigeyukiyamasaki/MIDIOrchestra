@@ -91,11 +91,11 @@ button:disabled {
   background: #d32f2f;
 }
 
-/* 表示設定パネル（左） */
+/* 表示設定パネル（右） */
 #settings-panel {
   position: fixed;
   top: 60px;
-  left: 0;
+  right: 0;
   width: 200px;
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
@@ -202,16 +202,16 @@ button:disabled {
 #canvas-container {
   position: fixed;
   top: 60px;
-  left: 200px;
-  right: 320px;
+  left: 320px;
+  right: 200px;
   bottom: 0;
 }
 
-/* トラックパネル */
+/* トラックパネル（左） */
 #track-panel {
   position: fixed;
   top: 60px;
-  right: 0;
+  left: 0;
   width: 320px;
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
