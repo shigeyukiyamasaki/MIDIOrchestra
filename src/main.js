@@ -33,11 +33,13 @@ let backWallPlane;      // 奥側画像用平面
 let backWallTexture;    // 奥側テクスチャ
 let skyDome;            // スカイドーム（背景球体）
 let skyDomeTexture;     // スカイドームテクスチャ
+let skyDomeVideo;       // スカイドーム動画要素
+let skyDomeIsVideo = false; // スカイドームが動画かどうか
 let floorAspect = 1;    // 床画像のアスペクト比（幅/高さ）
 let leftWallAspect = 1; // 左側面画像のアスペクト比
 let rightWallAspect = 1; // 右側面画像のアスペクト比
 let backWallAspect = 1; // 奥側画像のアスペクト比
-let floorY = -49;       // 床のY位置（共有用）
+let floorY = -50;       // 床のY位置（共有用、グリッドと同じ）
 let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用）
 let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
 let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
@@ -51,6 +53,59 @@ const settings = {
   bounceDuration: 0.2,
   popIconScale: 1,
 };
+
+// カメラプリセット（位置とターゲット）- 前方から後方の順
+const CAMERA_PRESETS = [
+  // 前方（ノートが飛んでくる方向を見る）
+  { pos: { x: 0, y: 200, z: 300 }, target: { x: 0, y: 0, z: 0 }, name: '正面上方' },
+  { pos: { x: 0, y: 50, z: 250 }, target: { x: 0, y: 0, z: 0 }, name: '正面低め' },
+  { pos: { x: -150, y: 150, z: 200 }, target: { x: 0, y: 0, z: 0 }, name: '左斜め前方' },
+  { pos: { x: 150, y: 150, z: 200 }, target: { x: 0, y: 0, z: 0 }, name: '右斜め前方' },
+  // 側面・上方
+  { pos: { x: -200, y: 50, z: 100 }, target: { x: 0, y: 0, z: 0 }, name: '左側面' },
+  { pos: { x: 200, y: 100, z: 100 }, target: { x: 0, y: 0, z: 0 }, name: '右側面' },
+  { pos: { x: 0, y: 300, z: 50 }, target: { x: 0, y: 0, z: 0 }, name: '真上' },
+  // 後方
+  { pos: { x: 150, y: 80, z: -100 }, target: { x: 0, y: 0, z: 0 }, name: '後方右' },
+  { pos: { x: -100, y: 120, z: -150 }, target: { x: 0, y: 0, z: 0 }, name: '後方左' },
+];
+
+// 自動カメラ切り替え用
+let autoCameraEnabled = false;
+let autoCameraInterval = 5000; // ミリ秒
+let autoCameraMode = 'continuous'; // 'continuous'=連続, 'cut'=カット
+let autoCameraMovePercent = 50; // 連続モード: 移動時間の割合（%）
+let autoCameraCrossfade = 1500; // カットモード: クロスフェード時間（ミリ秒）
+// XYZベースのカメラ範囲
+let autoCameraRangeX = { min: -200, max: 200 }; // X軸（左右）の範囲
+let autoCameraRangeY = { min: 50, max: 300 }; // Y軸（高さ）の範囲
+let autoCameraRangeZ = { min: 100, max: 300 }; // Z軸（前後）の範囲
+let autoCameraTimer = null;
+let cameraTransition = null; // 遷移中の情報
+
+// アスペクト比設定
+let aspectRatioMode = '16:9'; // '16:9', '9:16', 'free'
+
+// カメラシェイク設定
+let cameraShakeEnabled = true;
+let cameraShakeIntensity = 3; // シェイクの強さ
+let cameraShakeDuration = 0.15; // シェイクの持続時間（秒）
+let cameraShakeState = {
+  active: false,
+  startTime: 0,
+  originalPos: null,
+};
+
+// ブラーエフェクト設定
+let blurEffectEnabled = true;
+let blurEffectIntensity = 5; // ブラーの強さ（px）
+let blurEffectDuration = 0.12; // ブラーの持続時間（秒）
+let blurEffectState = {
+  active: false,
+  startTime: 0,
+};
+let fadeOverlay = null; // フェード用オーバーレイ
+let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
 let rebuildTimeout = null;
@@ -348,8 +403,7 @@ async function init() {
 
 function setupThreeJS() {
   const container = document.getElementById('canvas-container');
-  const width = container.clientWidth;
-  const height = container.clientHeight;
+  const { width, height } = calculateCanvasSize(container);
 
   // シーン
   scene = new THREE.Scene();
@@ -365,6 +419,22 @@ function setupThreeJS() {
   renderer.setSize(width, height);
   renderer.setPixelRatio(window.devicePixelRatio);
   container.appendChild(renderer.domElement);
+
+  // フェードオーバーレイ（クロスフェード用）
+  fadeOverlay = document.createElement('div');
+  fadeOverlay.style.cssText = `
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: black;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s linear;
+    z-index: 10;
+  `;
+  container.appendChild(fadeOverlay);
 
   // カメラ操作（OrbitControls）
   controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -383,13 +453,18 @@ function setupThreeJS() {
   directionalLight.position.set(50, 100, 50);
   scene.add(directionalLight);
 
-  // スカイドーム（背景球体）- 初期は非表示
-  const skyDomeGeometry = new THREE.SphereGeometry(2000, 64, 32);
+  // スカイドーム（背景半球）- 前方180度のみ、初期は非表示
+  // SphereGeometry(radius, widthSegments, heightSegments, phiStart, phiLength)
+  const skyDomeGeometry = new THREE.SphereGeometry(2000, 64, 32, Math.PI / 2, Math.PI);
   const skyDomeMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     side: THREE.BackSide, // 内側からテクスチャを見る
+    transparent: true,
+    opacity: 1,
+    depthWrite: false, // 他のオブジェクトに影響を与えない
   });
   skyDome = new THREE.Mesh(skyDomeGeometry, skyDomeMaterial);
+  skyDome.renderOrder = -1000; // 最初に描画
   skyDome.visible = false;
   scene.add(skyDome);
 
@@ -409,7 +484,7 @@ function setupThreeJS() {
   });
   floorPlane = new THREE.Mesh(floorGeometry, floorMaterial);
   floorPlane.rotation.x = -Math.PI / 2; // 水平に寝かせる
-  floorPlane.position.y = -49; // グリッドの少し上
+  floorPlane.position.y = -50; // グリッドと同じ高さ
   floorPlane.visible = false; // 画像がロードされるまで非表示
   scene.add(floorPlane);
 
@@ -471,17 +546,52 @@ function setupThreeJS() {
   });
   timelinePlane = new THREE.Mesh(timelineGeometry, timelineMaterial);
   timelinePlane.rotation.y = Math.PI / 2;
-  timelinePlane.position.set(0, 30, 0);
+  // 初期位置：下端を床に揃える（高さ150の半分=75をfloorYに加算）
+  timelinePlane.position.set(0, floorY + 75, 0);
   scene.add(timelinePlane);
 
   // ウィンドウリサイズ対応
   window.addEventListener('resize', onWindowResize);
 }
 
+// アスペクト比に基づいてキャンバスサイズを計算
+function calculateCanvasSize(container) {
+  const containerWidth = container.clientWidth;
+  const containerHeight = container.clientHeight;
+
+  let width, height;
+  let targetAspect;
+
+  if (aspectRatioMode === '9:16') {
+    targetAspect = 9 / 16;
+  } else if (aspectRatioMode === '16:9') {
+    targetAspect = 16 / 9;
+  } else {
+    // フリー: コンテナサイズをそのまま使用
+    container.classList.remove('aspect-locked');
+    return { width: containerWidth, height: containerHeight };
+  }
+
+  const containerAspect = containerWidth / containerHeight;
+
+  if (containerAspect > targetAspect) {
+    // コンテナが横長なので、高さに合わせる
+    height = containerHeight;
+    width = height * targetAspect;
+  } else {
+    // コンテナが縦長なので、幅に合わせる
+    width = containerWidth;
+    height = width / targetAspect;
+  }
+
+  container.classList.add('aspect-locked');
+  return { width, height };
+}
+
 function onWindowResize() {
   const container = document.getElementById('canvas-container');
-  const width = container.clientWidth;
-  const height = container.clientHeight;
+  const { width, height } = calculateCanvasSize(container);
+
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   renderer.setSize(width, height);
@@ -666,11 +776,46 @@ function setupEventListeners() {
     }
   });
 
-  // 背景色
-  const bgColorInput = document.getElementById('bgColor');
-  bgColorInput.addEventListener('input', (e) => {
-    const color = e.target.value;
-    scene.background = new THREE.Color(color);
+  // 背景グラデーション
+  const bgColorTopInput = document.getElementById('bgColorTop');
+  const bgColorBottomInput = document.getElementById('bgColorBottom');
+
+  function updateBackgroundGradient() {
+    const topColor = bgColorTopInput.value;
+    const bottomColor = bgColorBottomInput.value;
+
+    // Canvasでグラデーションを描画
+    const canvas = document.createElement('canvas');
+    canvas.width = 2;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+    gradient.addColorStop(0, topColor);
+    gradient.addColorStop(1, bottomColor);
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 2, 512);
+
+    // テクスチャを作成して背景に設定
+    const texture = new THREE.CanvasTexture(canvas);
+    scene.background = texture;
+  }
+
+  bgColorTopInput.addEventListener('input', updateBackgroundGradient);
+  bgColorBottomInput.addEventListener('input', updateBackgroundGradient);
+
+  // 初期グラデーションを適用
+  updateBackgroundGradient();
+
+  // 背景色上下入替ボタン
+  const bgColorSwapBtn = document.getElementById('bgColorSwap');
+  bgColorSwapBtn.addEventListener('click', () => {
+    const topColor = bgColorTopInput.value;
+    const bottomColor = bgColorBottomInput.value;
+    bgColorTopInput.value = bottomColor;
+    bgColorBottomInput.value = topColor;
+    updateBackgroundGradient();
   });
 
   // 幕の色
@@ -680,6 +825,13 @@ function setupEventListeners() {
     if (timelinePlane) {
       timelinePlane.material.color = new THREE.Color(color);
     }
+  });
+
+  // アスペクト比選択
+  const aspectRatioSelect = document.getElementById('aspectRatioSelect');
+  aspectRatioSelect.addEventListener('change', (e) => {
+    aspectRatioMode = e.target.value;
+    onWindowResize(); // 即座に反映
   });
 
   // 波紋エフェクト
@@ -699,6 +851,126 @@ function setupEventListeners() {
     if (gridHelper) {
       gridHelper.visible = settings.gridEnabled;
     }
+  });
+
+  // デュアルレンジスライダーの初期化
+  initDualRangeSliders();
+
+  // 全体の高さ（カメラと注視点を同時に上下、角度維持）
+  const cameraHeightOffsetInput = document.getElementById('cameraHeightOffset');
+  const cameraHeightOffsetValue = document.getElementById('cameraHeightOffsetValue');
+  let lastHeightOffset = 0;
+  cameraHeightOffsetInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    cameraHeightOffsetValue.textContent = value;
+    if (camera && controls) {
+      const delta = value - lastHeightOffset;
+      camera.position.y += delta;
+      controls.target.y += delta;
+      lastHeightOffset = value;
+      controls.update();
+    }
+  });
+
+  // カメラ注視点の高さ
+  const cameraTargetYInput = document.getElementById('cameraTargetY');
+  const cameraTargetYValue = document.getElementById('cameraTargetYValue');
+  cameraTargetYInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    cameraTargetYValue.textContent = value;
+    if (controls) {
+      controls.target.y = value;
+      controls.update();
+    }
+  });
+
+  // カメラシェイク有効/無効
+  const cameraShakeEnabledInput = document.getElementById('cameraShakeEnabled');
+  cameraShakeEnabledInput.addEventListener('change', (e) => {
+    cameraShakeEnabled = e.target.checked;
+  });
+
+  // カメラシェイク強度
+  const cameraShakeIntensityInput = document.getElementById('cameraShakeIntensity');
+  const cameraShakeIntensityValue = document.getElementById('cameraShakeIntensityValue');
+  cameraShakeIntensityInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    cameraShakeIntensityValue.textContent = value;
+    cameraShakeIntensity = value;
+  });
+
+  // ブラーエフェクト有効/無効
+  const blurEffectEnabledInput = document.getElementById('blurEffectEnabled');
+  blurEffectEnabledInput.addEventListener('change', (e) => {
+    blurEffectEnabled = e.target.checked;
+  });
+
+  // ブラーエフェクト強度
+  const blurEffectIntensityInput = document.getElementById('blurEffectIntensity');
+  const blurEffectIntensityValue = document.getElementById('blurEffectIntensityValue');
+  blurEffectIntensityInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    blurEffectIntensityValue.textContent = value;
+    blurEffectIntensity = value;
+  });
+
+  // 自動カメラ切り替え
+  const autoCameraEnabledInput = document.getElementById('autoCameraEnabled');
+  autoCameraEnabledInput.addEventListener('change', (e) => {
+    autoCameraEnabled = e.target.checked;
+    if (autoCameraEnabled) {
+      startAutoCamera();
+    } else {
+      stopAutoCamera();
+    }
+  });
+
+  // 自動カメラ切り替え間隔
+  const autoCameraIntervalInput = document.getElementById('autoCameraInterval');
+  const autoCameraIntervalValue = document.getElementById('autoCameraIntervalValue');
+  autoCameraIntervalInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    autoCameraIntervalValue.textContent = value;
+    autoCameraInterval = value * 1000; // 秒からミリ秒に変換
+    // タイマーが動いている場合は再起動
+    if (autoCameraEnabled) {
+      stopAutoCamera();
+      startAutoCamera();
+    }
+  });
+
+  // 自動カメラモード切替
+  const autoCameraModeSelect = document.getElementById('autoCameraMode');
+  const continuousModeParams = document.getElementById('continuousModeParams');
+  const cutModeParams = document.getElementById('cutModeParams');
+  autoCameraModeSelect.addEventListener('change', (e) => {
+    autoCameraMode = e.target.value;
+    // パラメータ表示を切り替え
+    if (autoCameraMode === 'continuous') {
+      continuousModeParams.style.display = '';
+      cutModeParams.style.display = 'none';
+    } else {
+      continuousModeParams.style.display = 'none';
+      cutModeParams.style.display = '';
+    }
+  });
+
+  // 連続モード: 移動時間(%)
+  const autoCameraMovePercentInput = document.getElementById('autoCameraMovePercent');
+  const autoCameraMovePercentValue = document.getElementById('autoCameraMovePercentValue');
+  autoCameraMovePercentInput.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    autoCameraMovePercentValue.textContent = value;
+    autoCameraMovePercent = value;
+  });
+
+  // カットモード: クロスフェード時間
+  const autoCameraCrossfadeInput = document.getElementById('autoCameraCrossfade');
+  const autoCameraCrossfadeValue = document.getElementById('autoCameraCrossfadeValue');
+  autoCameraCrossfadeInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    autoCameraCrossfadeValue.textContent = value;
+    autoCameraCrossfade = value * 1000; // 秒→ミリ秒
   });
 
   // バウンスの大きさ
@@ -745,15 +1017,57 @@ function setupEventListeners() {
     }
   });
 
+  // スカイドーム透明度
+  const skyDomeOpacityInput = document.getElementById('skyDomeOpacity');
+  const skyDomeOpacityValue = document.getElementById('skyDomeOpacityValue');
+  skyDomeOpacityInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    skyDomeOpacityValue.textContent = value;
+    if (skyDome) {
+      skyDome.material.opacity = value;
+    }
+  });
+
+  // スカイドーム範囲
+  const skyDomeRangeInput = document.getElementById('skyDomeRange');
+  const skyDomeRangeValue = document.getElementById('skyDomeRangeValue');
+  skyDomeRangeInput.addEventListener('input', (e) => {
+    const degrees = parseFloat(e.target.value);
+    skyDomeRangeValue.textContent = degrees;
+    if (skyDome) {
+      // ジオメトリを再作成（センターを奥側に維持）
+      skyDome.geometry.dispose();
+      const phiLength = (degrees / 180) * Math.PI; // 度からラジアンに変換
+      const phiStart = Math.PI - phiLength / 2; // 奥側センターを維持
+      const radius = parseFloat(document.getElementById('skyDomeRadius').value);
+      skyDome.geometry = new THREE.SphereGeometry(radius, 64, 32, phiStart, phiLength);
+    }
+  });
+
+  // スカイドーム距離（半径）
+  const skyDomeRadiusInput = document.getElementById('skyDomeRadius');
+  const skyDomeRadiusValue = document.getElementById('skyDomeRadiusValue');
+  skyDomeRadiusInput.addEventListener('input', (e) => {
+    const radius = parseFloat(e.target.value);
+    skyDomeRadiusValue.textContent = radius;
+    if (skyDome) {
+      skyDome.geometry.dispose();
+      const degrees = parseFloat(document.getElementById('skyDomeRange').value);
+      const phiLength = (degrees / 180) * Math.PI;
+      const phiStart = Math.PI - phiLength / 2;
+      skyDome.geometry = new THREE.SphereGeometry(radius, 64, 32, phiStart, phiLength);
+    }
+  });
+
   // スカイドーム画像クリア
   const skyDomeImageClearBtn = document.getElementById('skyDomeImageClear');
   skyDomeImageClearBtn.addEventListener('click', () => {
     clearSkyDomeImage();
   });
 
-  // スカイドーム画像ドラッグ&ドロップ
+  // スカイドーム画像/動画ドラッグ&ドロップ
   const skyDomeDropZone = document.getElementById('skyDomeDropZone');
-  setupDropZone(skyDomeDropZone, loadSkyDomeImage);
+  setupDropZone(skyDomeDropZone, loadSkyDomeImage, true); // 動画も許可
 
   // ============================================
   // 床画像のイベントリスナー
@@ -1738,6 +2052,20 @@ function checkNoteRipples() {
       // 上部の楽器アイコンをポップさせる
       triggerIconPop(trackIndex);
 
+      // バスドラム検出でカメラシェイク＆ブラー
+      if (trackInfo) {
+        const instrumentId = trackInfo.instrumentId;
+        if (instrumentId === 'bassdrum' || instrumentId === 'drums' || instrumentId === 'timpani') {
+          const velocity = mesh.userData.velocity || 0.8; // 0-1の範囲
+          if (cameraShakeEnabled) {
+            triggerCameraShake(velocity);
+          }
+          if (blurEffectEnabled) {
+            triggerBlurEffect(velocity);
+          }
+        }
+      }
+
       // ノートのバウンス開始（高さが0より大きい場合のみ）
       if (settings.bounceScale > 0) {
         mesh.userData.bounceTime = 0;
@@ -1751,6 +2079,83 @@ function checkNoteRipples() {
       state.triggeredNotes.delete(noteId);
     }
   });
+}
+
+// ============================================
+// カメラシェイク
+// ============================================
+
+function triggerCameraShake(velocity = 1) {
+  if (!camera || cameraTransition) return; // 遷移中はシェイクしない
+
+  cameraShakeState.active = true;
+  cameraShakeState.startTime = performance.now();
+  cameraShakeState.originalPos = camera.position.clone();
+  cameraShakeState.velocity = velocity; // ベロシティを保存
+}
+
+function updateCameraShake() {
+  if (!cameraShakeState.active || !camera) return;
+
+  const elapsed = (performance.now() - cameraShakeState.startTime) / 1000;
+
+  if (elapsed >= cameraShakeDuration) {
+    // シェイク終了、元の位置に戻す
+    if (cameraShakeState.originalPos) {
+      camera.position.copy(cameraShakeState.originalPos);
+    }
+    cameraShakeState.active = false;
+    return;
+  }
+
+  // 減衰するランダムシェイク（ベロシティで強さを調整）
+  const decay = 1 - (elapsed / cameraShakeDuration);
+  const velocityScale = cameraShakeState.velocity || 1;
+  const intensity = cameraShakeIntensity * decay * velocityScale;
+
+  const offsetX = (Math.random() - 0.5) * 2 * intensity;
+  const offsetY = (Math.random() - 0.5) * 2 * intensity;
+
+  if (cameraShakeState.originalPos) {
+    camera.position.x = cameraShakeState.originalPos.x + offsetX;
+    camera.position.y = cameraShakeState.originalPos.y + offsetY;
+  }
+}
+
+// ============================================
+// ブラーエフェクト
+// ============================================
+
+function triggerBlurEffect(velocity = 1) {
+  blurEffectState.active = true;
+  blurEffectState.startTime = performance.now();
+  blurEffectState.velocity = velocity; // ベロシティを保存
+}
+
+function updateBlurEffect() {
+  if (!renderer) return;
+
+  const canvas = renderer.domElement;
+
+  if (!blurEffectState.active) {
+    canvas.style.filter = '';
+    return;
+  }
+
+  const elapsed = (performance.now() - blurEffectState.startTime) / 1000;
+
+  if (elapsed >= blurEffectDuration) {
+    // ブラー終了
+    canvas.style.filter = '';
+    blurEffectState.active = false;
+    return;
+  }
+
+  // 減衰するブラー（ベロシティで強さを調整）
+  const decay = 1 - (elapsed / blurEffectDuration);
+  const velocityScale = blurEffectState.velocity || 1;
+  const blurPx = blurEffectIntensity * decay * velocityScale;
+  canvas.style.filter = `blur(${blurPx}px)`;
 }
 
 // ============================================
@@ -1784,7 +2189,7 @@ function clearRipples() {
 // ドラッグ&ドロップ共通関数
 // ============================================
 
-function setupDropZone(dropZone, loadCallback) {
+function setupDropZone(dropZone, loadCallback, allowVideo = false) {
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1805,11 +2210,13 @@ function setupDropZone(dropZone, loadCallback) {
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       const file = files[0];
-      // 画像ファイルかチェック
-      if (file.type.startsWith('image/')) {
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+
+      if (isImage || (allowVideo && isVideo)) {
         loadCallback(file);
       } else {
-        console.warn('画像ファイルをドロップしてください');
+        console.warn(allowVideo ? '画像または動画ファイルをドロップしてください' : '画像ファイルをドロップしてください');
       }
     }
   });
@@ -1819,17 +2226,28 @@ function setupDropZone(dropZone, loadCallback) {
 // スカイドーム（背景）関連関数
 // ============================================
 
-// スカイドーム画像を読み込み
+// スカイドームにファイルを読み込み（画像または動画）
 function loadSkyDomeImage(file) {
+  // 既存のテクスチャ・動画を破棄
+  clearSkyDomeMedia();
+
+  const isVideo = file.type.startsWith('video/');
+
+  if (isVideo) {
+    // 動画ファイルの場合
+    loadSkyDomeVideo(file);
+  } else {
+    // 画像ファイルの場合
+    loadSkyDomeImageFile(file);
+  }
+}
+
+// スカイドーム画像を読み込み
+function loadSkyDomeImageFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     const img = new Image();
     img.onload = () => {
-      // 既存のテクスチャを破棄
-      if (skyDomeTexture) {
-        skyDomeTexture.dispose();
-      }
-
       // 新しいテクスチャを作成
       skyDomeTexture = new THREE.Texture(img);
       skyDomeTexture.needsUpdate = true;
@@ -1838,15 +2256,18 @@ function loadSkyDomeImage(file) {
       skyDome.material.map = skyDomeTexture;
       skyDome.material.needsUpdate = true;
       skyDome.visible = true;
+      skyDomeIsVideo = false;
 
       // 背景色を黒に（スカイドームの隙間対策）
       scene.background = new THREE.Color(0x000000);
 
       // ドロップゾーンにプレビューを表示
-      const preview = document.getElementById('skyDomeImagePreview');
+      const imagePreview = document.getElementById('skyDomeImagePreview');
+      const videoPreview = document.getElementById('skyDomeVideoPreview');
       const text = document.getElementById('skyDomeDropZoneText');
-      preview.src = e.target.result;
-      preview.style.display = 'block';
+      imagePreview.src = e.target.result;
+      imagePreview.style.display = 'block';
+      videoPreview.style.display = 'none';
       text.style.display = 'none';
 
       console.log('Sky dome image loaded:', file.name);
@@ -1856,32 +2277,103 @@ function loadSkyDomeImage(file) {
   reader.readAsDataURL(file);
 }
 
-// スカイドーム画像をクリア
-function clearSkyDomeImage() {
+// スカイドーム動画を読み込み
+function loadSkyDomeVideo(file) {
+  const url = URL.createObjectURL(file);
+
+  // video要素を作成
+  skyDomeVideo = document.createElement('video');
+  skyDomeVideo.src = url;
+  skyDomeVideo.loop = true;
+  skyDomeVideo.muted = true;
+  skyDomeVideo.playsInline = true;
+
+  skyDomeVideo.onloadeddata = () => {
+    // VideoTextureを作成
+    skyDomeTexture = new THREE.VideoTexture(skyDomeVideo);
+    skyDomeTexture.minFilter = THREE.LinearFilter;
+    skyDomeTexture.magFilter = THREE.LinearFilter;
+
+    // マテリアルにテクスチャを適用
+    skyDome.material.map = skyDomeTexture;
+    skyDome.material.needsUpdate = true;
+    skyDome.visible = true;
+    skyDomeIsVideo = true;
+
+    // 動画を再生
+    skyDomeVideo.play();
+
+    // 背景色を黒に
+    scene.background = new THREE.Color(0x000000);
+
+    // ドロップゾーンにプレビューを表示
+    const imagePreview = document.getElementById('skyDomeImagePreview');
+    const videoPreview = document.getElementById('skyDomeVideoPreview');
+    const text = document.getElementById('skyDomeDropZoneText');
+    videoPreview.src = url;
+    videoPreview.play();
+    imagePreview.style.display = 'none';
+    videoPreview.style.display = 'block';
+    text.style.display = 'none';
+
+    console.log('Sky dome video loaded:', file.name);
+  };
+
+  skyDomeVideo.load();
+}
+
+// スカイドームのメディアを破棄
+function clearSkyDomeMedia() {
   if (skyDomeTexture) {
     skyDomeTexture.dispose();
     skyDomeTexture = null;
   }
+  if (skyDomeVideo) {
+    skyDomeVideo.pause();
+    skyDomeVideo.src = '';
+    skyDomeVideo = null;
+  }
+  skyDomeIsVideo = false;
+}
+
+// スカイドーム画像をクリア
+function clearSkyDomeImage() {
+  // メディアを破棄
+  clearSkyDomeMedia();
 
   skyDome.material.map = null;
   skyDome.material.needsUpdate = true;
   skyDome.visible = false;
 
-  // 背景色を元に戻す
-  const bgColorInput = document.getElementById('bgColor');
-  scene.background = new THREE.Color(bgColorInput.value);
+  // 背景グラデーションを元に戻す
+  const topColor = document.getElementById('bgColorTop').value;
+  const bottomColor = document.getElementById('bgColorBottom').value;
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+  gradient.addColorStop(0, topColor);
+  gradient.addColorStop(1, bottomColor);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 2, 512);
+  scene.background = new THREE.CanvasTexture(canvas);
 
   // UIをリセット
   document.getElementById('skyDomeImageInput').value = '';
 
   // プレビューを非表示
-  const preview = document.getElementById('skyDomeImagePreview');
+  const imagePreview = document.getElementById('skyDomeImagePreview');
+  const videoPreview = document.getElementById('skyDomeVideoPreview');
   const text = document.getElementById('skyDomeDropZoneText');
-  preview.style.display = 'none';
-  preview.src = '';
+  imagePreview.style.display = 'none';
+  imagePreview.src = '';
+  videoPreview.style.display = 'none';
+  videoPreview.pause();
+  videoPreview.src = '';
   text.style.display = 'block';
 
-  console.log('Sky dome image cleared');
+  console.log('Sky dome cleared');
 }
 
 // ============================================
@@ -2269,10 +2761,269 @@ function reset() {
 }
 
 // ============================================
+// 自動カメラ切り替え
+// ============================================
+function startAutoCamera() {
+  if (autoCameraTimer) {
+    clearInterval(autoCameraTimer);
+  }
+  // 最初の切り替えを即座に実行
+  switchToNextPreset();
+  // タイマーを開始
+  autoCameraTimer = setInterval(() => {
+    switchToNextPreset();
+  }, autoCameraInterval);
+}
+
+function stopAutoCamera() {
+  if (autoCameraTimer) {
+    clearInterval(autoCameraTimer);
+    autoCameraTimer = null;
+  }
+  cameraTransition = null;
+}
+
+function generateRandomCameraPosition() {
+  // XYZ範囲内でランダムな位置を生成
+  const x = autoCameraRangeX.min + Math.random() * (autoCameraRangeX.max - autoCameraRangeX.min);
+  const y = autoCameraRangeY.min + Math.random() * (autoCameraRangeY.max - autoCameraRangeY.min);
+  const z = autoCameraRangeZ.min + Math.random() * (autoCameraRangeZ.max - autoCameraRangeZ.min);
+  return { x, y, z };
+}
+
+function switchToNextPreset() {
+  // ランダムなカメラ位置を生成
+  const newPos = generateRandomCameraPosition();
+  const target = { x: 0, y: 0, z: 0 }; // 常に中心を見る
+
+  if (autoCameraMode === 'continuous') {
+    // 連続モード: カメラが物理的に移動する
+    const moveDuration = autoCameraInterval * (autoCameraMovePercent / 100);
+    cameraTransition = {
+      mode: 'continuous',
+      startPos: camera.position.clone(),
+      startTarget: controls.target.clone(),
+      endPos: new THREE.Vector3(newPos.x, newPos.y, newPos.z),
+      endTarget: new THREE.Vector3(target.x, target.y, target.z),
+      startTime: performance.now(),
+      duration: moveDuration,
+    };
+  } else {
+    // カットモード: クロスフェード（フェードアウト→切替→フェードイン）
+    cameraTransition = {
+      mode: 'cut',
+      endPos: new THREE.Vector3(newPos.x, newPos.y, newPos.z),
+      endTarget: new THREE.Vector3(target.x, target.y, target.z),
+      startTime: performance.now(),
+      duration: autoCameraCrossfade,
+      cameraSwitched: false,
+    };
+  }
+}
+
+function updateCameraTransition() {
+  if (!cameraTransition) return;
+
+  const elapsed = performance.now() - cameraTransition.startTime;
+  const progress = Math.min(elapsed / cameraTransition.duration, 1);
+
+  if (cameraTransition.mode === 'continuous') {
+    // 連続モード: カメラが物理的に移動
+    // イージング（ease-in-out）
+    const eased = progress < 0.5
+      ? 2 * progress * progress
+      : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+    // 位置を補間
+    camera.position.lerpVectors(cameraTransition.startPos, cameraTransition.endPos, eased);
+    controls.target.lerpVectors(cameraTransition.startTarget, cameraTransition.endTarget, eased);
+    camera.lookAt(controls.target);
+
+    // 遷移完了
+    if (progress >= 1) {
+      cameraTransition = null;
+    }
+  } else {
+    // カットモード: クロスフェード（ディゾルブ）効果
+    // 前半: フェードアウト（0→1）、後半: フェードイン（1→0）
+    let overlayOpacity;
+    if (progress < 0.5) {
+      overlayOpacity = progress * 2;
+    } else {
+      overlayOpacity = (1 - progress) * 2;
+    }
+
+    // オーバーレイの透明度を更新
+    if (fadeOverlay) {
+      fadeOverlay.style.opacity = overlayOpacity;
+    }
+
+    // 50%地点でカメラを瞬時に切り替え
+    if (progress >= 0.5 && !cameraTransition.cameraSwitched) {
+      camera.position.copy(cameraTransition.endPos);
+      controls.target.copy(cameraTransition.endTarget);
+      camera.lookAt(controls.target);
+      controls.update();
+      cameraTransition.cameraSwitched = true;
+    }
+
+    // 遷移完了
+    if (progress >= 1) {
+      if (fadeOverlay) {
+        fadeOverlay.style.opacity = 0;
+      }
+      cameraTransition = null;
+    }
+  }
+}
+
+// ============================================
 // アニメーションループ
 // ============================================
+// カメラ位置スライダーの更新
+// デュアルレンジスライダーの初期化
+function initDualRangeSliders() {
+  const sliders = document.querySelectorAll('.dual-range');
+
+  sliders.forEach(slider => {
+    const axis = slider.dataset.axis;
+    const min = parseFloat(slider.dataset.min);
+    const max = parseFloat(slider.dataset.max);
+    const range = max - min;
+
+    const track = slider.querySelector('.range-track');
+    const selected = slider.querySelector('.range-selected');
+    const minHandle = slider.querySelector('.min-handle');
+    const maxHandle = slider.querySelector('.max-handle');
+    const currentMarker = slider.querySelector('.current-marker');
+
+    // 初期値を設定
+    let rangeMin, rangeMax;
+    if (axis === 'X') {
+      rangeMin = autoCameraRangeX.min;
+      rangeMax = autoCameraRangeX.max;
+    } else if (axis === 'Y') {
+      rangeMin = autoCameraRangeY.min;
+      rangeMax = autoCameraRangeY.max;
+    } else {
+      rangeMin = autoCameraRangeZ.min;
+      rangeMax = autoCameraRangeZ.max;
+    }
+
+    // 位置を更新する関数
+    function updatePositions() {
+      const minPercent = ((rangeMin - min) / range) * 100;
+      const maxPercent = ((rangeMax - min) / range) * 100;
+
+      minHandle.style.left = minPercent + '%';
+      maxHandle.style.left = maxPercent + '%';
+      selected.style.left = minPercent + '%';
+      selected.style.width = (maxPercent - minPercent) + '%';
+
+      // 値表示を更新
+      document.getElementById(`cameraRange${axis}MinVal`).textContent = Math.round(rangeMin);
+      document.getElementById(`cameraRange${axis}MaxVal`).textContent = Math.round(rangeMax);
+
+      // グローバル変数を更新
+      if (axis === 'X') {
+        autoCameraRangeX.min = rangeMin;
+        autoCameraRangeX.max = rangeMax;
+      } else if (axis === 'Y') {
+        autoCameraRangeY.min = rangeMin;
+        autoCameraRangeY.max = rangeMax;
+      } else {
+        autoCameraRangeZ.min = rangeMin;
+        autoCameraRangeZ.max = rangeMax;
+      }
+    }
+
+    // 初期表示
+    updatePositions();
+
+    // ドラッグ処理
+    let activeHandle = null;
+
+    function onMouseDown(e, handle, isMin) {
+      e.preventDefault();
+      activeHandle = { handle, isMin };
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }
+
+    function onMouseMove(e) {
+      if (!activeHandle) return;
+
+      const rect = slider.getBoundingClientRect();
+      let percent = (e.clientX - rect.left) / rect.width;
+      percent = Math.max(0, Math.min(1, percent));
+      const value = min + percent * range;
+
+      if (activeHandle.isMin) {
+        rangeMin = Math.min(value, rangeMax - 10);
+      } else {
+        rangeMax = Math.max(value, rangeMin + 10);
+      }
+
+      updatePositions();
+    }
+
+    function onMouseUp() {
+      activeHandle = null;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    }
+
+    minHandle.addEventListener('mousedown', (e) => onMouseDown(e, minHandle, true));
+    maxHandle.addEventListener('mousedown', (e) => onMouseDown(e, maxHandle, false));
+
+    // スライダーにデータを保存
+    slider._updateCurrentMarker = function(value) {
+      const percent = ((value - min) / range) * 100;
+      currentMarker.style.left = Math.max(0, Math.min(100, percent)) + '%';
+    };
+    slider._axis = axis;
+  });
+}
+
+// カメラ位置の表示を更新
+function updateCameraPositionSliders() {
+  if (!camera) return;
+
+  const xValue = document.getElementById('cameraPosXValue');
+  const yValue = document.getElementById('cameraPosYValue');
+  const zValue = document.getElementById('cameraPosZValue');
+
+  if (xValue) xValue.textContent = Math.round(camera.position.x);
+  if (yValue) yValue.textContent = Math.round(camera.position.y);
+  if (zValue) zValue.textContent = Math.round(camera.position.z);
+
+  // 現在位置マーカーを更新
+  const sliders = document.querySelectorAll('.dual-range');
+  sliders.forEach(slider => {
+    if (slider._updateCurrentMarker) {
+      let value;
+      if (slider._axis === 'X') value = camera.position.x;
+      else if (slider._axis === 'Y') value = camera.position.y;
+      else value = camera.position.z;
+      slider._updateCurrentMarker(value);
+    }
+  });
+}
+
 function animate() {
   requestAnimationFrame(animate);
+
+  // 自動カメラ遷移の更新
+  updateCameraTransition();
+
+  // カメラシェイクの更新
+  updateCameraShake();
+
+  // ブラーエフェクトの更新
+  updateBlurEffect();
+
+  // カメラ位置スライダーの更新（スライダー操作中でない場合）
+  updateCameraPositionSliders();
 
   // 再生中なら時間を進める
   if (state.isPlaying && state.midi) {
@@ -2318,8 +3069,8 @@ function animate() {
   updateRipples(0.016); // 約60fps想定
   updatePopIcons(0.016); // 飛び出すアイコン
 
-  // カメラコントロール更新
-  if (controls) {
+  // カメラコントロール更新（遷移中はスキップ）
+  if (controls && !cameraTransition) {
     controls.update();
   }
 

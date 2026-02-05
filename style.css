@@ -37,6 +37,16 @@ body {
   color: #aaa;
 }
 
+.control-group select {
+  padding: 6px 10px;
+  background: #2d2d44;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #eee;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 .control-group input[type="file"] {
   display: none;
 }
@@ -102,12 +112,12 @@ button:disabled {
   background: #d32f2f;
 }
 
-/* 設定パネルコンテナ（2列） */
+/* 設定パネルコンテナ（4列） */
 #settings-container {
   position: fixed;
   top: 60px;
   right: 0;
-  width: 430px;
+  width: 760px;
   bottom: 0;
   display: flex;
   z-index: 50;
@@ -342,8 +352,17 @@ button:disabled {
   position: fixed;
   top: 60px;
   left: 320px;
-  right: 430px;
+  right: 760px;
   bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+#canvas-container.aspect-locked canvas {
+  max-width: 100%;
+  max-height: 100%;
 }
 
 /* トラックパネル（左） */
@@ -571,6 +590,143 @@ button:disabled {
   width: 16px;
   height: 16px;
   cursor: pointer;
+}
+
+.setting-item select {
+  width: 100%;
+  padding: 6px 8px;
+  background: #2d2d44;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.setting-item select:hover {
+  border-color: #666;
+}
+
+.setting-item select:focus {
+  outline: none;
+  border-color: #4fc3f7;
+}
+
+.setting-item input[type="number"] {
+  padding: 4px 6px;
+  background: #2d2d44;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.setting-item input[type="number"]:focus {
+  outline: none;
+  border-color: #4fc3f7;
+}
+
+.setting-item.range-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.setting-item.range-row label {
+  min-width: 30px;
+}
+
+.setting-item.range-row span {
+  color: #888;
+}
+
+/* デュアルレンジスライダー */
+.pos-value {
+  float: right;
+  color: #4fc3f7;
+  font-weight: normal;
+}
+
+.dual-range-container {
+  padding: 8px 0;
+}
+
+.dual-range {
+  position: relative;
+  width: 100%;
+  height: 24px;
+  user-select: none;
+}
+
+.range-track {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+}
+
+.range-selected {
+  position: absolute;
+  top: 10px;
+  height: 4px;
+  background: rgba(79, 195, 247, 0.4);
+  border-radius: 2px;
+}
+
+.range-handle {
+  position: absolute;
+  top: 4px;
+  width: 16px;
+  height: 16px;
+  background: #4fc3f7;
+  border-radius: 50%;
+  cursor: ew-resize;
+  transform: translateX(-50%);
+  z-index: 2;
+  transition: transform 0.1s;
+}
+
+.range-handle:hover {
+  transform: translateX(-50%) scale(1.2);
+}
+
+.range-handle.min-handle {
+  background: #ff9800;
+}
+
+.range-handle.max-handle {
+  background: #4caf50;
+}
+
+.current-marker {
+  position: absolute;
+  top: 6px;
+  width: 4px;
+  height: 12px;
+  background: #fff;
+  transform: translateX(-50%);
+  z-index: 1;
+  pointer-events: none;
+  box-shadow: 0 0 4px rgba(255,255,255,0.5);
+}
+
+.range-values {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.range-values span:first-child {
+  color: #ff9800;
+}
+
+.range-values span:last-child {
+  color: #4caf50;
 }
 
 .setting-item span {

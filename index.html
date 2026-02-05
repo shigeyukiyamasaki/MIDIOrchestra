@@ -22,6 +22,14 @@
     <div class="control-group">
       <label>再生位置: <span id="currentTime">0:00</span></label>
     </div>
+    <div class="control-group">
+      <label>画面比率</label>
+      <select id="aspectRatioSelect">
+        <option value="16:9">16:9</option>
+        <option value="9:16">9:16</option>
+        <option value="free">フリー</option>
+      </select>
+    </div>
   </div>
 
   <!-- 設定パネルコンテナ（2列） -->
@@ -52,7 +60,7 @@
         <div class="setting-category">レイアウト</div>
         <div class="setting-item">
           <label>トラック間隔</label>
-          <input type="range" id="trackSpacing" min="1" max="10" step="0.5" value="6">
+          <input type="range" id="trackSpacing" min="1" max="30" step="0.5" value="6">
           <span id="trackSpacingValue">6</span>
         </div>
         <div class="setting-item">
@@ -62,7 +70,7 @@
         </div>
         <div class="setting-item">
           <label>Y軸スケール</label>
-          <input type="range" id="pitchScale" min="0.5" max="3" step="0.1" value="1">
+          <input type="range" id="pitchScale" min="0.5" max="10" step="0.1" value="1">
           <span id="pitchScaleValue">1</span>
         </div>
 
@@ -92,7 +100,7 @@
         </div>
         <div class="setting-item">
           <label>アイコンの大きさ (0=OFF)</label>
-          <input type="range" id="popIconScale" min="0" max="3" step="0.1" value="1">
+          <input type="range" id="popIconScale" min="0" max="10" step="0.1" value="1">
           <span id="popIconScaleValue">1</span>
         </div>
         <div class="setting-item">
@@ -105,14 +113,153 @@
         <!-- 表示 -->
         <div class="setting-category">表示</div>
         <div class="setting-item">
-          <label>背景色</label>
-          <input type="color" id="bgColor" value="#1a1a2e">
+          <label>背景色（上）</label>
+          <input type="color" id="bgColorTop" value="#1a1a2e">
+        </div>
+        <div class="setting-item">
+          <label>背景色（下）</label>
+          <input type="color" id="bgColorBottom" value="#0a0a15">
+        </div>
+        <div class="setting-item">
+          <button id="bgColorSwap" style="padding: 4px 8px; font-size: 11px;">↕ 上下入替</button>
         </div>
         <div class="setting-item">
           <label>
             <input type="checkbox" id="gridEnabled" checked>
             グリッド表示
           </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- カメラ設定パネル（中央列） -->
+    <div id="camera-panel" class="settings-column">
+      <h3>カメラ設定</h3>
+      <div id="camera-list">
+        <!-- X軸（左右） -->
+        <div class="setting-category">X (左右) <span id="cameraPosXValue" class="pos-value">-150</span></div>
+        <div class="setting-item dual-range-container">
+          <div class="dual-range" data-axis="X" data-min="-500" data-max="500">
+            <div class="range-track"></div>
+            <div class="range-selected"></div>
+            <div class="range-handle min-handle" title="範囲下限"></div>
+            <div class="range-handle max-handle" title="範囲上限"></div>
+            <div class="current-marker" title="現在位置"></div>
+          </div>
+          <div class="range-values">
+            <span id="cameraRangeXMinVal">-200</span>
+            <span id="cameraRangeXMaxVal">200</span>
+          </div>
+        </div>
+
+        <!-- Y軸（高さ） -->
+        <div class="setting-category">Y (高さ) <span id="cameraPosYValue" class="pos-value">150</span></div>
+        <div class="setting-item dual-range-container">
+          <div class="dual-range" data-axis="Y" data-min="-100" data-max="500">
+            <div class="range-track"></div>
+            <div class="range-selected"></div>
+            <div class="range-handle min-handle" title="範囲下限"></div>
+            <div class="range-handle max-handle" title="範囲上限"></div>
+            <div class="current-marker" title="現在位置"></div>
+          </div>
+          <div class="range-values">
+            <span id="cameraRangeYMinVal">50</span>
+            <span id="cameraRangeYMaxVal">300</span>
+          </div>
+        </div>
+
+        <!-- Z軸（前後） -->
+        <div class="setting-category">Z (前後) <span id="cameraPosZValue" class="pos-value">200</span></div>
+        <div class="setting-item dual-range-container">
+          <div class="dual-range" data-axis="Z" data-min="-500" data-max="500">
+            <div class="range-track"></div>
+            <div class="range-selected"></div>
+            <div class="range-handle min-handle" title="範囲下限"></div>
+            <div class="range-handle max-handle" title="範囲上限"></div>
+            <div class="current-marker" title="現在位置"></div>
+          </div>
+          <div class="range-values">
+            <span id="cameraRangeZMinVal">100</span>
+            <span id="cameraRangeZMaxVal">300</span>
+          </div>
+        </div>
+
+        <!-- 全体調整 -->
+        <div class="setting-category">全体調整</div>
+        <div class="setting-item">
+          <label>全体の高さ</label>
+          <input type="range" id="cameraHeightOffset" min="-200" max="200" step="5" value="0">
+          <span id="cameraHeightOffsetValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>注視点Y</label>
+          <input type="range" id="cameraTargetY" min="-100" max="100" step="5" value="0">
+          <span id="cameraTargetYValue">0</span>
+        </div>
+
+        <!-- 自動切替 -->
+        <div class="setting-category">自動切替</div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="autoCameraEnabled">
+            自動カメラ切替
+          </label>
+        </div>
+        <div class="setting-item">
+          <label>切替間隔(秒)</label>
+          <input type="range" id="autoCameraInterval" min="2" max="20" step="1" value="5">
+          <span id="autoCameraIntervalValue">5</span>
+        </div>
+
+        <!-- トランジション -->
+        <div class="setting-category">トランジション</div>
+        <div class="setting-item">
+          <label>モード</label>
+          <select id="autoCameraMode">
+            <option value="continuous">連続（カメラ移動）</option>
+            <option value="cut">カット（クロスフェード）</option>
+          </select>
+        </div>
+        <div class="setting-item" id="continuousModeParams">
+          <label>移動時間(%)</label>
+          <input type="range" id="autoCameraMovePercent" min="10" max="100" step="5" value="50">
+          <span id="autoCameraMovePercentValue">50</span>
+        </div>
+        <div class="setting-item" id="cutModeParams" style="display: none;">
+          <label>クロスフェード(秒)</label>
+          <input type="range" id="autoCameraCrossfade" min="0.5" max="5" step="0.5" value="1.5">
+          <span id="autoCameraCrossfadeValue">1.5</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- エフェクトパネル -->
+    <div id="effects-panel" class="settings-column">
+      <h3>エフェクト</h3>
+      <div id="effects-list">
+        <!-- バスドラムエフェクト -->
+        <div class="setting-category">バスドラム連動</div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="cameraShakeEnabled" checked>
+            カメラ揺れ
+          </label>
+        </div>
+        <div class="setting-item">
+          <label>揺れの強さ</label>
+          <input type="range" id="cameraShakeIntensity" min="1" max="15" step="1" value="3">
+          <span id="cameraShakeIntensityValue">3</span>
+        </div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="blurEffectEnabled" checked>
+            ブラー
+          </label>
+        </div>
+        <div class="setting-item">
+          <label>ブラーの強さ</label>
+          <input type="range" id="blurEffectIntensity" min="1" max="15" step="1" value="5">
+          <span id="blurEffectIntensityValue">5</span>
         </div>
       </div>
     </div>
@@ -127,11 +274,15 @@
           <div class="image-row">
             <div class="drop-zone" id="skyDomeDropZone">
               <img id="skyDomeImagePreview" class="drop-zone-preview" style="display: none;">
+              <video id="skyDomeVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
               <span class="drop-zone-text" id="skyDomeDropZoneText">ドラッグ&ドロップ<br>または</span>
-              <label class="file-label" id="skyDomeImageLabel">画像を選択</label>
-              <input type="file" id="skyDomeImageInput" accept="image/*">
+              <label class="file-label" id="skyDomeImageLabel">ファイル選択</label>
+              <input type="file" id="skyDomeImageInput" accept="image/*,video/mp4,video/webm">
             </div>
             <div class="image-controls">
+              <div class="control-row"><label>透明度</label><input type="range" id="skyDomeOpacity" min="0.1" max="1" step="0.05" value="1"><span id="skyDomeOpacityValue">1</span></div>
+              <div class="control-row"><label>範囲(度)</label><input type="range" id="skyDomeRange" min="60" max="360" step="10" value="180"><span id="skyDomeRangeValue">180</span></div>
+              <div class="control-row"><label>距離</label><input type="range" id="skyDomeRadius" min="100" max="3000" step="50" value="2000"><span id="skyDomeRadiusValue">2000</span></div>
               <button id="skyDomeImageClear" class="clear-btn-small">クリア</button>
             </div>
           </div>
