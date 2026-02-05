@@ -117,137 +117,97 @@
       </div>
     </div>
 
-    <!-- 画像配置パネル（右列） -->
-    <div id="image-panel" class="settings-column">
+    <!-- 画像配置パネル（右列・幅広） -->
+    <div id="image-panel" class="settings-column-wide">
       <h3>画像配置</h3>
       <div id="image-list">
-        <!-- 床画像 -->
-        <div class="setting-category">床</div>
-        <div class="setting-item">
-          <div class="drop-zone" id="floorDropZone">
-            <img id="floorImagePreview" class="drop-zone-preview" style="display: none;">
-            <span class="drop-zone-text" id="floorDropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="floorImageLabel">画像を選択</label>
-            <input type="file" id="floorImageInput" accept="image/*">
+        <!-- スカイドーム（背景） -->
+        <div class="image-section">
+          <div class="setting-category">背景</div>
+          <div class="image-row">
+            <div class="drop-zone" id="skyDomeDropZone">
+              <img id="skyDomeImagePreview" class="drop-zone-preview" style="display: none;">
+              <span class="drop-zone-text" id="skyDomeDropZoneText">ドラッグ&ドロップ<br>または</span>
+              <label class="file-label" id="skyDomeImageLabel">画像を選択</label>
+              <input type="file" id="skyDomeImageInput" accept="image/*">
+            </div>
+            <div class="image-controls">
+              <button id="skyDomeImageClear" class="clear-btn-small">クリア</button>
+            </div>
           </div>
-          <span id="floorImageName" class="floor-image-name">未選択</span>
         </div>
-        <div class="setting-item">
-          <label>サイズ</label>
-          <input type="range" id="floorImageSize" min="50" max="1000" step="10" value="300">
-          <span id="floorImageSizeValue">300</span>
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="0.8">
-          <span id="floorImageOpacityValue">0.8</span>
-        </div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="floorImageFlip">
-            左右反転
-          </label>
-        </div>
-        <div class="setting-item">
-          <button id="floorImageClear" class="clear-btn">画像をクリア</button>
+
+        <!-- 床画像 -->
+        <div class="image-section">
+          <div class="setting-category">床</div>
+          <div class="image-row">
+            <div class="drop-zone" id="floorDropZone">
+              <img id="floorImagePreview" class="drop-zone-preview" style="display: none;">
+              <span class="drop-zone-text" id="floorDropZoneText">ドラッグ&ドロップ<br>または</span>
+              <label class="file-label" id="floorImageLabel">画像を選択</label>
+              <input type="file" id="floorImageInput" accept="image/*">
+            </div>
+            <div class="image-controls">
+              <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="50" max="1000" step="10" value="300"><span id="floorImageSizeValue">300</span></div>
+              <div class="control-row"><label>透明度</label><input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="floorImageOpacityValue">0.8</span></div>
+              <div class="control-row"><label><input type="checkbox" id="floorImageFlip">反転</label><button id="floorImageClear" class="clear-btn-small">クリア</button></div>
+            </div>
+          </div>
         </div>
 
         <!-- 左側面画像 -->
-        <div class="setting-category">左側面</div>
-        <div class="setting-item">
-          <div class="drop-zone" id="leftWallDropZone">
-            <img id="leftWallImagePreview" class="drop-zone-preview" style="display: none;">
-            <span class="drop-zone-text" id="leftWallDropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="leftWallImageLabel">画像を選択</label>
-            <input type="file" id="leftWallImageInput" accept="image/*">
+        <div class="image-section">
+          <div class="setting-category">左側面</div>
+          <div class="image-row">
+            <div class="drop-zone" id="leftWallDropZone">
+              <img id="leftWallImagePreview" class="drop-zone-preview" style="display: none;">
+              <span class="drop-zone-text" id="leftWallDropZoneText">ドラッグ&ドロップ<br>または</span>
+              <label class="file-label" id="leftWallImageLabel">画像を選択</label>
+              <input type="file" id="leftWallImageInput" accept="image/*">
+            </div>
+            <div class="image-controls">
+              <div class="control-row"><label>サイズ</label><input type="range" id="leftWallImageSize" min="50" max="1000" step="10" value="300"><span id="leftWallImageSizeValue">300</span></div>
+              <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="leftWallImageOpacityValue">0.8</span></div>
+              <div class="control-row"><label><input type="checkbox" id="leftWallImageFlip">反転</label><button id="leftWallImageClear" class="clear-btn-small">クリア</button></div>
+            </div>
           </div>
-          <span id="leftWallImageName" class="floor-image-name">未選択</span>
-        </div>
-        <div class="setting-item">
-          <label>サイズ</label>
-          <input type="range" id="leftWallImageSize" min="50" max="1000" step="10" value="300">
-          <span id="leftWallImageSizeValue">300</span>
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8">
-          <span id="leftWallImageOpacityValue">0.8</span>
-        </div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="leftWallImageFlip">
-            左右反転
-          </label>
-        </div>
-        <div class="setting-item">
-          <button id="leftWallImageClear" class="clear-btn">画像をクリア</button>
         </div>
 
         <!-- 右側面画像 -->
-        <div class="setting-category">右側面</div>
-        <div class="setting-item">
-          <div class="drop-zone" id="rightWallDropZone">
-            <img id="rightWallImagePreview" class="drop-zone-preview" style="display: none;">
-            <span class="drop-zone-text" id="rightWallDropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="rightWallImageLabel">画像を選択</label>
-            <input type="file" id="rightWallImageInput" accept="image/*">
+        <div class="image-section">
+          <div class="setting-category">右側面</div>
+          <div class="image-row">
+            <div class="drop-zone" id="rightWallDropZone">
+              <img id="rightWallImagePreview" class="drop-zone-preview" style="display: none;">
+              <span class="drop-zone-text" id="rightWallDropZoneText">ドラッグ&ドロップ<br>または</span>
+              <label class="file-label" id="rightWallImageLabel">画像を選択</label>
+              <input type="file" id="rightWallImageInput" accept="image/*">
+            </div>
+            <div class="image-controls">
+              <div class="control-row"><label>サイズ</label><input type="range" id="rightWallImageSize" min="50" max="1000" step="10" value="300"><span id="rightWallImageSizeValue">300</span></div>
+              <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="rightWallImageOpacityValue">0.8</span></div>
+              <div class="control-row"><label><input type="checkbox" id="rightWallImageFlip">反転</label><button id="rightWallImageClear" class="clear-btn-small">クリア</button></div>
+            </div>
           </div>
-          <span id="rightWallImageName" class="floor-image-name">未選択</span>
-        </div>
-        <div class="setting-item">
-          <label>サイズ</label>
-          <input type="range" id="rightWallImageSize" min="50" max="1000" step="10" value="300">
-          <span id="rightWallImageSizeValue">300</span>
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8">
-          <span id="rightWallImageOpacityValue">0.8</span>
-        </div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="rightWallImageFlip">
-            左右反転
-          </label>
-        </div>
-        <div class="setting-item">
-          <button id="rightWallImageClear" class="clear-btn">画像をクリア</button>
         </div>
 
         <!-- 奥側画像 -->
-        <div class="setting-category">奥側</div>
-        <div class="setting-item">
-          <div class="drop-zone" id="backWallDropZone">
-            <img id="backWallImagePreview" class="drop-zone-preview" style="display: none;">
-            <span class="drop-zone-text" id="backWallDropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="backWallImageLabel">画像を選択</label>
-            <input type="file" id="backWallImageInput" accept="image/*">
+        <div class="image-section">
+          <div class="setting-category">奥側</div>
+          <div class="image-row">
+            <div class="drop-zone" id="backWallDropZone">
+              <img id="backWallImagePreview" class="drop-zone-preview" style="display: none;">
+              <span class="drop-zone-text" id="backWallDropZoneText">ドラッグ&ドロップ<br>または</span>
+              <label class="file-label" id="backWallImageLabel">画像を選択</label>
+              <input type="file" id="backWallImageInput" accept="image/*">
+            </div>
+            <div class="image-controls">
+              <div class="control-row"><label>サイズ</label><input type="range" id="backWallImageSize" min="50" max="1000" step="10" value="300"><span id="backWallImageSizeValue">300</span></div>
+              <div class="control-row"><label>X位置</label><input type="range" id="backWallImageX" min="0" max="500" step="10" value="250"><span id="backWallImageXValue">250</span></div>
+              <div class="control-row"><label>透明度</label><input type="range" id="backWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="backWallImageOpacityValue">0.8</span></div>
+              <div class="control-row"><label><input type="checkbox" id="backWallImageFlip">反転</label><button id="backWallImageClear" class="clear-btn-small">クリア</button></div>
+            </div>
           </div>
-          <span id="backWallImageName" class="floor-image-name">未選択</span>
-        </div>
-        <div class="setting-item">
-          <label>サイズ</label>
-          <input type="range" id="backWallImageSize" min="50" max="1000" step="10" value="300">
-          <span id="backWallImageSizeValue">300</span>
-        </div>
-        <div class="setting-item">
-          <label>X位置</label>
-          <input type="range" id="backWallImageX" min="0" max="500" step="10" value="250">
-          <span id="backWallImageXValue">250</span>
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="backWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8">
-          <span id="backWallImageOpacityValue">0.8</span>
-        </div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="backWallImageFlip">
-            左右反転
-          </label>
-        </div>
-        <div class="setting-item">
-          <button id="backWallImageClear" class="clear-btn">画像をクリア</button>
         </div>
       </div>
     </div>
