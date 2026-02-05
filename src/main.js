@@ -27,9 +27,15 @@ let floorPlane;         // 床画像用平面
 let floorTexture;       // 床テクスチャ
 let leftWallPlane;      // 左側面画像用平面
 let leftWallTexture;    // 左側面テクスチャ
+let rightWallPlane;     // 右側面画像用平面
+let rightWallTexture;   // 右側面テクスチャ
+let backWallPlane;      // 奥側画像用平面
+let backWallTexture;    // 奥側テクスチャ
 let floorY = -49;       // 床のY位置（共有用）
 let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用）
 let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
+let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
+let backWallX = 500;    // 奥側画像のX位置（共有用）
 
 // 表示設定
 const settings = {
@@ -408,6 +414,35 @@ function setupThreeJS() {
   leftWallPlane.visible = false;
   scene.add(leftWallPlane);
 
+  // 右側面画像用平面（初期は非表示）- 幕に垂直な壁（奥側）
+  const rightWallGeometry = new THREE.PlaneGeometry(300, 300);
+  const rightWallMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  rightWallPlane = new THREE.Mesh(rightWallGeometry, rightWallMaterial);
+  rightWallPlane.position.set(0, floorY + initialWallSize / 2, 150); // 奥側に配置
+  rightWallPlane.visible = false;
+  scene.add(rightWallPlane);
+
+  // 奥側画像用平面（初期は非表示）- タイムライン幕と平行（YZ平面）
+  const backWallGeometry = new THREE.PlaneGeometry(300, 300);
+  const backWallMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  backWallPlane = new THREE.Mesh(backWallGeometry, backWallMaterial);
+  backWallPlane.rotation.y = Math.PI / 2; // 幕と同じ向きに回転
+  backWallPlane.position.set(250, floorY + initialWallSize / 2, 0); // グリッドの端に配置
+  backWallPlane.visible = false;
+  scene.add(backWallPlane);
+
   // タイムライン平面（現在位置を示す「幕」）
   // PlaneGeometry(奥行き, 高さ) - MIDI読み込み後にサイズ更新
   const timelineGeometry = new THREE.PlaneGeometry(300, 150);
@@ -462,12 +497,17 @@ function setupEventListeners() {
 
   // キーボードショートカット
   document.addEventListener('keydown', (e) => {
-    // 入力フォーカス中は無視
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-
+    // スペースキーは常に再生/一時停止（テキスト入力以外）
     if (e.code === 'Space') {
-      e.preventDefault();
-      togglePlay();
+      // テキスト入力中のみスキップ
+      const isTextInput = e.target.tagName === 'INPUT' &&
+        (e.target.type === 'text' || e.target.type === 'search' || e.target.type === 'email' || e.target.type === 'password');
+      const isTextArea = e.target.tagName === 'TEXTAREA';
+
+      if (!isTextInput && !isTextArea) {
+        e.preventDefault();
+        togglePlay();
+      }
     }
   });
 
@@ -779,6 +819,128 @@ function setupEventListeners() {
   leftWallImageFlipInput.addEventListener('change', (e) => {
     if (leftWallPlane) {
       leftWallPlane.scale.x = e.target.checked ? -1 : 1;
+    }
+  });
+
+  // ============================================
+  // 右側面画像のイベントリスナー
+  // ============================================
+
+  // 画像ラベルクリックでファイル選択を開く
+  const rightWallImageLabel = document.getElementById('rightWallImageLabel');
+  const rightWallImageInput = document.getElementById('rightWallImageInput');
+  rightWallImageLabel.addEventListener('click', () => rightWallImageInput.click());
+
+  // 画像ファイル選択
+  rightWallImageInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      loadRightWallImage(file);
+    }
+  });
+
+  // 右側面画像サイズ
+  const rightWallImageSizeInput = document.getElementById('rightWallImageSize');
+  const rightWallImageSizeValue = document.getElementById('rightWallImageSizeValue');
+  rightWallImageSizeInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    rightWallImageSizeValue.textContent = value;
+    updateRightWallImageSize(value);
+  });
+
+  // 右側面画像透明度
+  const rightWallImageOpacityInput = document.getElementById('rightWallImageOpacity');
+  const rightWallImageOpacityValue = document.getElementById('rightWallImageOpacityValue');
+  rightWallImageOpacityInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    rightWallImageOpacityValue.textContent = value;
+    if (rightWallPlane) {
+      rightWallPlane.material.opacity = value;
+    }
+  });
+
+  // 右側面画像クリア
+  const rightWallImageClearBtn = document.getElementById('rightWallImageClear');
+  rightWallImageClearBtn.addEventListener('click', () => {
+    clearRightWallImage();
+  });
+
+  // 右側面画像ドラッグ&ドロップ
+  const rightWallDropZone = document.getElementById('rightWallDropZone');
+  setupDropZone(rightWallDropZone, loadRightWallImage);
+
+  // 右側面画像左右反転
+  const rightWallImageFlipInput = document.getElementById('rightWallImageFlip');
+  rightWallImageFlipInput.addEventListener('change', (e) => {
+    if (rightWallPlane) {
+      rightWallPlane.scale.x = e.target.checked ? -1 : 1;
+    }
+  });
+
+  // ============================================
+  // 奥側画像のイベントリスナー
+  // ============================================
+
+  // 画像ラベルクリックでファイル選択を開く
+  const backWallImageLabel = document.getElementById('backWallImageLabel');
+  const backWallImageInput = document.getElementById('backWallImageInput');
+  backWallImageLabel.addEventListener('click', () => backWallImageInput.click());
+
+  // 画像ファイル選択
+  backWallImageInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      loadBackWallImage(file);
+    }
+  });
+
+  // 奥側画像サイズ
+  const backWallImageSizeInput = document.getElementById('backWallImageSize');
+  const backWallImageSizeValue = document.getElementById('backWallImageSizeValue');
+  backWallImageSizeInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    backWallImageSizeValue.textContent = value;
+    updateBackWallImageSize(value);
+  });
+
+  // 奥側画像X位置
+  const backWallImageXInput = document.getElementById('backWallImageX');
+  const backWallImageXValue = document.getElementById('backWallImageXValue');
+  backWallImageXInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    backWallImageXValue.textContent = value;
+    backWallX = value;
+    if (backWallPlane) {
+      backWallPlane.position.x = value;
+    }
+  });
+
+  // 奥側画像透明度
+  const backWallImageOpacityInput = document.getElementById('backWallImageOpacity');
+  const backWallImageOpacityValue = document.getElementById('backWallImageOpacityValue');
+  backWallImageOpacityInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    backWallImageOpacityValue.textContent = value;
+    if (backWallPlane) {
+      backWallPlane.material.opacity = value;
+    }
+  });
+
+  // 奥側画像クリア
+  const backWallImageClearBtn = document.getElementById('backWallImageClear');
+  backWallImageClearBtn.addEventListener('click', () => {
+    clearBackWallImage();
+  });
+
+  // 奥側画像ドラッグ&ドロップ
+  const backWallDropZone = document.getElementById('backWallDropZone');
+  setupDropZone(backWallDropZone, loadBackWallImage);
+
+  // 奥側画像左右反転
+  const backWallImageFlipInput = document.getElementById('backWallImageFlip');
+  backWallImageFlipInput.addEventListener('change', (e) => {
+    if (backWallPlane) {
+      backWallPlane.scale.x = e.target.checked ? -1 : 1;
     }
   });
 }
@@ -1140,7 +1302,9 @@ function createNoteObjects() {
       // ノートの位置とサイズ
       const x = note.time * CONFIG.timeScale;
       const width = note.duration * CONFIG.timeScale;
-      const y = (note.midi - pitchCenter) * CONFIG.pitchScale;
+      // 地面基準で上に展開（最低音が床のすぐ上に来る）
+      const floorOffset = 5; // 床からの余白
+      const y = (note.midi - minPitch) * CONFIG.pitchScale + floorY + floorOffset;
 
       // Box geometry
       const geometry = new THREE.BoxGeometry(
@@ -1176,25 +1340,44 @@ function createNoteObjects() {
     });
   });
 
-  // タイムライン平面のサイズ（固定）
-  const totalDepth = 300; // 固定サイズ
-  const totalHeight = 150; // 固定サイズ
+  // タイムライン平面のサイズ（トラック数に応じて調整）
+  const totalDepth = totalUniqueNames * CONFIG.trackSpacing + 20;
+  const floorOffset = 5; // 床からの余白（ノートと同じ値）
+  const noteRangeHeight = (maxPitch - minPitch) * CONFIG.pitchScale;
+  const totalHeight = noteRangeHeight + 30;
   timelineTotalDepth = totalDepth; // グローバルに保存
 
-  // 幕のサイズは固定のまま（変更しない）
-  timelinePlane.position.y = 0; // 中央に配置
+  // 幕のジオメトリを再作成
+  timelinePlane.geometry.dispose();
+  timelinePlane.geometry = new THREE.PlaneGeometry(totalDepth, totalHeight);
+  // 幕のY位置：地面基準でノートの範囲をカバーするように配置
+  timelinePlane.position.y = floorY + floorOffset + noteRangeHeight / 2;
 
   // グリッドと床の位置は固定（MIDI読み込み時に変更しない）
   // 初期値: gridHelper.position.y = -50, floorPlane.position.y = -49
 
-  // 幕のZ軸負方向の端を保存
+  // 幕のZ軸の端を保存
   noteEdgeZ = -totalDepth / 2;
+  noteEdgeZPositive = totalDepth / 2;
 
   // 左側面画像の位置を調整（幕に垂直、手前側に配置、床基準、幕に隣接）
   if (leftWallPlane) {
     const currentSize = leftWallPlane.geometry.parameters.height;
     // 画像（平面）を幕の端に直接配置
     leftWallPlane.position.set(0, floorY + currentSize / 2, noteEdgeZ);
+  }
+
+  // 右側面画像の位置を調整（幕に垂直、奥側に配置、床基準、幕に隣接）
+  if (rightWallPlane) {
+    const currentSize = rightWallPlane.geometry.parameters.height;
+    // 画像（平面）を幕の奥側端に直接配置
+    rightWallPlane.position.set(0, floorY + currentSize / 2, noteEdgeZPositive);
+  }
+
+  // 奥側画像の位置を調整（スライダーの値を維持）
+  if (backWallPlane) {
+    const currentSize = backWallPlane.geometry.parameters.height;
+    backWallPlane.position.set(backWallX, floorY + currentSize / 2, 0);
   }
 
   // カメラ位置はMIDI読み込み時に変更しない（setupThreeJSで設定した位置を維持）
@@ -1743,6 +1926,165 @@ function clearLeftWallImage() {
   text.style.display = 'block';
 
   console.log('Left wall image cleared');
+}
+
+// ============================================
+// 右側面画像関連関数
+// ============================================
+
+// 右側面画像を読み込み
+function loadRightWallImage(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      // 既存のテクスチャを破棄
+      if (rightWallTexture) {
+        rightWallTexture.dispose();
+      }
+
+      // 新しいテクスチャを作成
+      rightWallTexture = new THREE.Texture(img);
+      rightWallTexture.needsUpdate = true;
+
+      // マテリアルにテクスチャを適用
+      rightWallPlane.material.map = rightWallTexture;
+      rightWallPlane.material.needsUpdate = true;
+      rightWallPlane.visible = true;
+
+      // UIを更新
+      document.getElementById('rightWallImageName').textContent = file.name;
+
+      // ドロップゾーンにプレビューを表示
+      const preview = document.getElementById('rightWallImagePreview');
+      const text = document.getElementById('rightWallDropZoneText');
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+      text.style.display = 'none';
+
+      console.log('Right wall image loaded:', file.name);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// 右側面画像サイズを更新（床基準で拡大、幕に隣接）
+function updateRightWallImageSize(size) {
+  if (!rightWallPlane) return;
+
+  // ジオメトリを再作成
+  rightWallPlane.geometry.dispose();
+  rightWallPlane.geometry = new THREE.PlaneGeometry(size, size);
+
+  // Y位置を再計算（床基準：下端が床に接する）
+  rightWallPlane.position.y = floorY + size / 2;
+
+  // Z位置は幕の奥側端に固定
+  rightWallPlane.position.z = noteEdgeZPositive;
+}
+
+// 右側面画像をクリア
+function clearRightWallImage() {
+  if (rightWallTexture) {
+    rightWallTexture.dispose();
+    rightWallTexture = null;
+  }
+
+  rightWallPlane.material.map = null;
+  rightWallPlane.material.needsUpdate = true;
+  rightWallPlane.visible = false;
+
+  // UIをリセット
+  document.getElementById('rightWallImageName').textContent = '未選択';
+  document.getElementById('rightWallImageInput').value = '';
+
+  // プレビューを非表示
+  const preview = document.getElementById('rightWallImagePreview');
+  const text = document.getElementById('rightWallDropZoneText');
+  preview.style.display = 'none';
+  preview.src = '';
+  text.style.display = 'block';
+
+  console.log('Right wall image cleared');
+}
+
+// ============================================
+// 奥側画像関連関数
+// ============================================
+
+// 奥側画像を読み込み
+function loadBackWallImage(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      // 既存のテクスチャを破棄
+      if (backWallTexture) {
+        backWallTexture.dispose();
+      }
+
+      // 新しいテクスチャを作成
+      backWallTexture = new THREE.Texture(img);
+      backWallTexture.needsUpdate = true;
+
+      // マテリアルにテクスチャを適用
+      backWallPlane.material.map = backWallTexture;
+      backWallPlane.material.needsUpdate = true;
+      backWallPlane.visible = true;
+
+      // UIを更新
+      document.getElementById('backWallImageName').textContent = file.name;
+
+      // ドロップゾーンにプレビューを表示
+      const preview = document.getElementById('backWallImagePreview');
+      const text = document.getElementById('backWallDropZoneText');
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+      text.style.display = 'none';
+
+      console.log('Back wall image loaded:', file.name);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// 奥側画像サイズを更新（床基準で拡大）
+function updateBackWallImageSize(size) {
+  if (!backWallPlane) return;
+
+  // ジオメトリを再作成
+  backWallPlane.geometry.dispose();
+  backWallPlane.geometry = new THREE.PlaneGeometry(size, size);
+
+  // Y位置を再計算（床基準：下端が床に接する）
+  backWallPlane.position.y = floorY + size / 2;
+}
+
+// 奥側画像をクリア
+function clearBackWallImage() {
+  if (backWallTexture) {
+    backWallTexture.dispose();
+    backWallTexture = null;
+  }
+
+  backWallPlane.material.map = null;
+  backWallPlane.material.needsUpdate = true;
+  backWallPlane.visible = false;
+
+  // UIをリセット
+  document.getElementById('backWallImageName').textContent = '未選択';
+  document.getElementById('backWallImageInput').value = '';
+
+  // プレビューを非表示
+  const preview = document.getElementById('backWallImagePreview');
+  const text = document.getElementById('backWallDropZoneText');
+  preview.style.display = 'none';
+  preview.src = '';
+  text.style.display = 'block';
+
+  console.log('Back wall image cleared');
 }
 
 // ============================================

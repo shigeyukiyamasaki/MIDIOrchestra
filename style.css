@@ -468,9 +468,11 @@ button:disabled {
   text-align: right;
 }
 
-/* 床画像設定 */
+/* 画像入力を非表示 */
 #floorImageInput,
-#leftWallImageInput {
+#leftWallImageInput,
+#rightWallImageInput,
+#backWallImageInput {
   display: none;
 }
 
