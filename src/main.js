@@ -51,7 +51,7 @@ const settings = {
   gridEnabled: true,
   bounceScale: 1,
   bounceDuration: 0.2,
-  popIconScale: 1,
+  popIconScale: 3,
 };
 
 // カメラプリセット（位置とターゲット）- 前方から後方の順
@@ -88,7 +88,7 @@ let aspectRatioMode = '16:9'; // '16:9', '9:16', 'free'
 
 // カメラシェイク設定
 let cameraShakeEnabled = true;
-let cameraShakeIntensity = 3; // シェイクの強さ
+let cameraShakeIntensity = 5; // シェイクの強さ
 let cameraShakeDuration = 0.15; // シェイクの持続時間（秒）
 let cameraShakeState = {
   active: false,
@@ -103,6 +103,16 @@ let blurEffectDuration = 0.12; // ブラーの持続時間（秒）
 let blurEffectState = {
   active: false,
   startTime: 0,
+};
+
+// フラッシュエフェクト設定
+let flashEffectEnabled = true;
+let flashEffectIntensity = 0.7; // フラッシュの強さ（透明度の増加量）
+let flashEffectDuration = 0.1; // フラッシュの持続時間（秒）
+let flashEffectState = {
+  active: false,
+  startTime: 0,
+  originalOpacity: 0,
 };
 let fadeOverlay = null; // フェード用オーバーレイ
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
@@ -912,6 +922,21 @@ function setupEventListeners() {
     const value = parseFloat(e.target.value);
     blurEffectIntensityValue.textContent = value;
     blurEffectIntensity = value;
+  });
+
+  // フラッシュエフェクト有効/無効
+  const flashEffectEnabledInput = document.getElementById('flashEffectEnabled');
+  flashEffectEnabledInput.addEventListener('change', (e) => {
+    flashEffectEnabled = e.target.checked;
+  });
+
+  // フラッシュエフェクト強度
+  const flashEffectIntensityInput = document.getElementById('flashEffectIntensity');
+  const flashEffectIntensityValue = document.getElementById('flashEffectIntensityValue');
+  flashEffectIntensityInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    flashEffectIntensityValue.textContent = value;
+    flashEffectIntensity = value;
   });
 
   // 自動カメラ切り替え
@@ -1978,8 +2003,8 @@ function createPopIcon(y, z, instrumentId) {
     maxAge: 0.8,       // 0.8秒で消える
     startY: y,
     startZ: z,
-    velocityY: 25,     // 上方向への速度
-    velocityX: -20,    // 前方へ
+    velocityY: 25 * settings.popIconScale,     // 上方向への速度（サイズに比例）
+    velocityX: -20 * settings.popIconScale,    // 前方へ（サイズに比例）
     baseScale: baseScale,
   };
 
@@ -2052,7 +2077,7 @@ function checkNoteRipples() {
       // 上部の楽器アイコンをポップさせる
       triggerIconPop(trackIndex);
 
-      // バスドラム検出でカメラシェイク＆ブラー
+      // バスドラム検出でカメラシェイク＆ブラー＆フラッシュ
       if (trackInfo) {
         const instrumentId = trackInfo.instrumentId;
         if (instrumentId === 'bassdrum' || instrumentId === 'drums' || instrumentId === 'timpani') {
@@ -2062,6 +2087,9 @@ function checkNoteRipples() {
           }
           if (blurEffectEnabled) {
             triggerBlurEffect(velocity);
+          }
+          if (flashEffectEnabled) {
+            triggerFlashEffect(velocity);
           }
         }
       }
@@ -2156,6 +2184,45 @@ function updateBlurEffect() {
   const velocityScale = blurEffectState.velocity || 1;
   const blurPx = blurEffectIntensity * decay * velocityScale;
   canvas.style.filter = `blur(${blurPx}px)`;
+}
+
+// ============================================
+// フラッシュエフェクト
+// ============================================
+
+function triggerFlashEffect(velocity = 1) {
+  if (!timelinePlane) return;
+
+  // 設定された幕の透明度を取得（スライダーの値）
+  const opacitySlider = document.getElementById('timelineOpacity');
+  const baseOpacity = opacitySlider ? parseFloat(opacitySlider.value) : 0.25;
+
+  flashEffectState.active = true;
+  flashEffectState.startTime = performance.now();
+  flashEffectState.velocity = velocity;
+  flashEffectState.originalOpacity = baseOpacity;
+}
+
+function updateFlashEffect() {
+  if (!flashEffectState.active || !timelinePlane) return;
+
+  const elapsed = (performance.now() - flashEffectState.startTime) / 1000;
+
+  if (elapsed >= flashEffectDuration) {
+    // フラッシュ終了、元の透明度に戻す
+    timelinePlane.material.opacity = flashEffectState.originalOpacity;
+    flashEffectState.active = false;
+    return;
+  }
+
+  // 減衰するフラッシュ（ベロシティで強さを調整）
+  const decay = 1 - (elapsed / flashEffectDuration);
+  const velocityScale = flashEffectState.velocity || 1;
+  const flashAmount = flashEffectIntensity * decay * velocityScale;
+
+  // 透明度を一時的に上げる（最大1.0まで）
+  const newOpacity = Math.min(1.0, flashEffectState.originalOpacity + flashAmount);
+  timelinePlane.material.opacity = newOpacity;
 }
 
 // ============================================
@@ -3021,6 +3088,9 @@ function animate() {
 
   // ブラーエフェクトの更新
   updateBlurEffect();
+
+  // フラッシュエフェクトの更新
+  updateFlashEffect();
 
   // カメラ位置スライダーの更新（スライダー操作中でない場合）
   updateCameraPositionSliders();

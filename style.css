@@ -112,12 +112,12 @@ button:disabled {
   background: #d32f2f;
 }
 
-/* 設定パネルコンテナ（4列） */
+/* 設定パネルコンテナ（3列） */
 #settings-container {
   position: fixed;
   top: 60px;
   right: 0;
-  width: 760px;
+  width: 540px;
   bottom: 0;
   display: flex;
   z-index: 50;
@@ -133,25 +133,49 @@ button:disabled {
   border-left: 1px solid #333;
 }
 
-/* 画像パネル（幅広） */
-.settings-column-wide {
-  width: 250px;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7);
+/* 画像パネル（メインエリア上部・横並び） */
+#image-panel {
+  position: fixed;
+  top: 60px;
+  left: 320px;
+  right: 540px;
+  height: 220px;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 40;
+  border-bottom: 1px solid #333;
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 15px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  border-left: 1px solid #333;
 }
 
-.settings-column-wide h3 {
-  font-size: 14px;
-  color: #888;
-  margin-bottom: 15px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #333;
-  width: 120px;
-  margin-left: 100px;
+#image-panel #image-list {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: 20px;
+  height: 100%;
+  width: max-content;
+}
+
+#image-panel .image-section {
+  flex: 0 0 auto !important;
+  margin-bottom: 0 !important;
+}
+
+#image-panel .setting-category {
+  width: auto !important;
+  margin-left: 0 !important;
+}
+
+#image-panel .file-label {
+  font-size: 11px;
+  padding: 4px 8px;
+  white-space: nowrap;
+  height: 20px;
+  line-height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .settings-column h3 {
@@ -176,7 +200,8 @@ button:disabled {
 .image-row {
   display: flex;
   gap: 10px;
-  align-items: flex-start;
+  align-items: stretch;
+  height: 150px;
 }
 
 .image-row .drop-zone {
@@ -190,6 +215,11 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  justify-content: space-between;
+}
+
+.image-controls .clear-btn-small {
+  margin-top: auto;
 }
 
 .control-row {
@@ -350,9 +380,9 @@ button:disabled {
 /* キャンバスコンテナ */
 #canvas-container {
   position: fixed;
-  top: 60px;
+  top: 280px;
   left: 320px;
-  right: 760px;
+  right: 540px;
   bottom: 0;
   display: flex;
   align-items: center;
