@@ -55,6 +55,17 @@ body {
   min-width: 150px;
 }
 
+#midiDropZone {
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  padding: 5px 10px;
+}
+
+#midiDropZone.drag-over {
+  background: rgba(79, 195, 247, 0.2);
+  outline: 2px dashed #4fc3f7;
+}
+
 button {
   padding: 10px 20px;
   border: none;
@@ -91,19 +102,36 @@ button:disabled {
   background: #d32f2f;
 }
 
-/* 表示設定パネル（右） */
-#settings-panel {
+/* 設定パネルコンテナ（2列） */
+#settings-container {
   position: fixed;
   top: 60px;
   right: 0;
-  width: 200px;
+  width: 360px;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 15px;
-  overflow-y: auto;
+  display: flex;
   z-index: 50;
 }
 
+/* 設定パネル共通（列） */
+.settings-column {
+  width: 180px;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 15px;
+  overflow-y: auto;
+  border-left: 1px solid #333;
+}
+
+.settings-column h3 {
+  font-size: 14px;
+  color: #888;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #333;
+}
+
+/* 後方互換のため */
 #settings-panel h3 {
   font-size: 14px;
   color: #888;
@@ -203,7 +231,7 @@ button:disabled {
   position: fixed;
   top: 60px;
   left: 320px;
-  right: 200px;
+  right: 360px;
   bottom: 0;
 }
 
@@ -363,7 +391,8 @@ button:disabled {
 }
 
 /* 設定パネル */
-#settings-list {
+#settings-list,
+#image-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -437,4 +466,82 @@ button:disabled {
   font-size: 11px;
   color: #666;
   text-align: right;
+}
+
+/* 床画像設定 */
+#floorImageInput,
+#leftWallImageInput {
+  display: none;
+}
+
+/* ドロップゾーン */
+.drop-zone {
+  border: 2px dashed #555;
+  border-radius: 8px;
+  padding: 15px 10px;
+  text-align: center;
+  transition: all 0.2s ease;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.drop-zone:hover {
+  border-color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.05);
+}
+
+.drop-zone.drag-over {
+  border-color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.15);
+  transform: scale(1.02);
+}
+
+.drop-zone-text {
+  display: block;
+  font-size: 10px;
+  color: #666;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.drop-zone-preview {
+  width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+#floorImageLabel {
+  display: inline-block;
+  padding: 6px 12px;
+  background: #3d3d5c;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.2s;
+}
+
+#floorImageLabel:hover {
+  background: #4d4d6c;
+}
+
+.floor-image-name {
+  display: block;
+  font-size: 10px;
+  color: #888;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clear-btn {
+  width: 100%;
+  padding: 6px 12px;
+  background: #5a3d3d;
+  font-size: 11px;
+}
+
+.clear-btn:hover {
+  background: #6a4d4d;
 }

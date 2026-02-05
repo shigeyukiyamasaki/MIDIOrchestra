@@ -23,6 +23,13 @@ const state = {
 let scene, camera, renderer, controls;
 let timelinePlane;      // 現在位置を示す平面
 let gridHelper;         // グリッド
+let floorPlane;         // 床画像用平面
+let floorTexture;       // 床テクスチャ
+let leftWallPlane;      // 左側面画像用平面
+let leftWallTexture;    // 左側面テクスチャ
+let floorY = -49;       // 床のY位置（共有用）
+let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用）
+let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
 
 // 表示設定
 const settings = {
@@ -102,8 +109,9 @@ const INSTRUMENTS = {
   windchimes:   { name: 'Wind Chimes',   category: 'percussion', color: 0xc0c0c0, icon: '🎐', position: [76, 18] },
   tambourine:   { name: 'Tambourine',    category: 'percussion', color: 0xa1887f, icon: '🥁', position: [78, 15] },
   tamtam:       { name: 'Tam-tam',       category: 'percussion', color: 0x455a64, icon: '🔔', position: [75, 20] },
-  cymbals:      { name: 'Cymbals',       category: 'percussion', color: 0xb0bec5, icon: '🔔', position: [80, 15] },
-  hihat:        { name: 'Hi-Hat',        category: 'percussion', color: 0xcfd8dc, icon: '🔔', position: [82, 18] },
+  cymbals:         { name: 'Cymbals',          category: 'percussion', color: 0xb0bec5, icon: '🔔', position: [80, 15] },
+  suspendedcymbal: { name: 'Suspended Cymbal', category: 'percussion', color: 0xd4af37, icon: '🔔', position: [81, 17] },
+  hihat:           { name: 'Hi-Hat',           category: 'percussion', color: 0xcfd8dc, icon: '🔔', position: [82, 18] },
   percussion:   { name: 'Percussion',    category: 'percussion', color: 0x607d8b, icon: '🥁', position: [85, 20] },
   drums:        { name: 'Drums',         category: 'percussion', color: 0x546e7a, icon: '🥁', position: [88, 30] },
 
@@ -155,8 +163,9 @@ const INSTRUMENT_KEYWORDS = [
   { id: 'triangle',     keywords: ['triangle', 'tri'] },
   { id: 'windchimes',   keywords: ['wind chimes', 'windchimes', 'wind chime', 'mark tree'] },
   { id: 'tambourine',   keywords: ['tambourine', 'tamb'] },
-  { id: 'tamtam',       keywords: ['tam-tam', 'tamtam', 'gong', '銅鑼', 'dora'] },
-  { id: 'cymbals',      keywords: ['cymbal', 'cymbals', 'crash'] },
+  { id: 'tamtam',       keywords: ['tam-tam', 'tamtam', 'tam tam', 'gong', '銅鑼', 'dora'] },
+  { id: 'suspendedcymbal', keywords: ['suspended cymbal', 'sus cymbal', 'sus cym', 'susp cymbal', 'ride'] },
+  { id: 'cymbals',         keywords: ['cymbal', 'cymbals', 'crash'] },
   { id: 'hihat',        keywords: ['hi-hat', 'hihat', 'hi hat', 'hh'] },
   { id: 'drums',        keywords: ['drums', 'drum', 'drum kit'] },
   { id: 'percussion',   keywords: ['percussion', 'perc'] },
@@ -197,9 +206,10 @@ const ORCHESTRAL_ORDER = {
   tambourine: 30,
   tamtam: 31,
   cymbals: 32,
-  hihat: 33,
-  percussion: 34,
-  drums: 35,
+  suspendedcymbal: 33,
+  hihat: 34,
+  percussion: 35,
+  drums: 36,
   // 鍵盤楽器
   piano: 40,
   celesta: 41,
@@ -335,7 +345,7 @@ function setupThreeJS() {
 
   // カメラ（斜め上から見下ろす視点）
   camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 10000);
-  camera.position.set(-50, 80, 100);
+  camera.position.set(-150, 150, 200);
   camera.lookAt(0, 0, 0);
 
   // レンダラー
@@ -363,8 +373,40 @@ function setupThreeJS() {
 
   // グリッド（床 / 地面）
   gridHelper = new THREE.GridHelper(500, 50, 0x444444, 0x333333);
-  gridHelper.position.y = -10; // 地面の位置
+  gridHelper.position.y = -50; // 地面の位置（初期値、MIDI読み込み時に調整）
   scene.add(gridHelper);
+
+  // 床画像用平面（初期は非表示）
+  const floorGeometry = new THREE.PlaneGeometry(300, 300);
+  const floorMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  floorPlane = new THREE.Mesh(floorGeometry, floorMaterial);
+  floorPlane.rotation.x = -Math.PI / 2; // 水平に寝かせる
+  floorPlane.position.y = -49; // グリッドの少し上
+  floorPlane.visible = false; // 画像がロードされるまで非表示
+  scene.add(floorPlane);
+
+  // 左側面画像用平面（初期は非表示）- 幕に垂直な壁
+  const leftWallGeometry = new THREE.PlaneGeometry(300, 300);
+  const leftWallMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  leftWallPlane = new THREE.Mesh(leftWallGeometry, leftWallMaterial);
+  // 回転なし = XY平面に平行 = 幕に垂直
+  // 床基準でY位置を設定（下端が床に接する）
+  const initialWallSize = 300;
+  leftWallPlane.position.set(0, floorY + initialWallSize / 2, -150); // 手前側に配置
+  leftWallPlane.visible = false;
+  scene.add(leftWallPlane);
 
   // タイムライン平面（現在位置を示す「幕」）
   // PlaneGeometry(奥行き, 高さ) - MIDI読み込み後にサイズ更新
@@ -453,6 +495,38 @@ function setupEventListeners() {
     if (files.length > 0) {
       const file = files[0];
       // MIDIファイルかチェック
+      if (file.name.match(/\.(mid|midi)$/i)) {
+        document.getElementById('midiFileName').textContent = file.name;
+        await loadMidi(file);
+      } else {
+        console.warn('MIDIファイル (.mid, .midi) をドロップしてください');
+      }
+    }
+  });
+
+  // MIDIドロップゾーン（上部のMIDI入力エリア）
+  const midiDropZone = document.getElementById('midiDropZone');
+
+  midiDropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    midiDropZone.classList.add('drag-over');
+  });
+
+  midiDropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    midiDropZone.classList.remove('drag-over');
+  });
+
+  midiDropZone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    midiDropZone.classList.remove('drag-over');
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
       if (file.name.match(/\.(mid|midi)$/i)) {
         document.getElementById('midiFileName').textContent = file.name;
         await loadMidi(file);
@@ -597,12 +671,127 @@ function setupEventListeners() {
     popIconScaleValue.textContent = value;
     settings.popIconScale = value;
   });
+
+  // ============================================
+  // 床画像のイベントリスナー
+  // ============================================
+
+  // 画像ラベルクリックでファイル選択を開く
+  const floorImageLabel = document.getElementById('floorImageLabel');
+  const floorImageInput = document.getElementById('floorImageInput');
+  floorImageLabel.addEventListener('click', () => floorImageInput.click());
+
+  // 画像ファイル選択
+  floorImageInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      loadFloorImage(file);
+    }
+  });
+
+  // 床画像サイズ
+  const floorImageSizeInput = document.getElementById('floorImageSize');
+  const floorImageSizeValue = document.getElementById('floorImageSizeValue');
+  floorImageSizeInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    floorImageSizeValue.textContent = value;
+    updateFloorImageSize(value);
+  });
+
+  // 床画像透明度
+  const floorImageOpacityInput = document.getElementById('floorImageOpacity');
+  const floorImageOpacityValue = document.getElementById('floorImageOpacityValue');
+  floorImageOpacityInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    floorImageOpacityValue.textContent = value;
+    if (floorPlane) {
+      floorPlane.material.opacity = value;
+    }
+  });
+
+  // 床画像クリア
+  const floorImageClearBtn = document.getElementById('floorImageClear');
+  floorImageClearBtn.addEventListener('click', () => {
+    clearFloorImage();
+  });
+
+  // 床画像ドラッグ&ドロップ
+  const floorDropZone = document.getElementById('floorDropZone');
+  setupDropZone(floorDropZone, loadFloorImage);
+
+  // 床画像左右反転
+  const floorImageFlipInput = document.getElementById('floorImageFlip');
+  floorImageFlipInput.addEventListener('change', (e) => {
+    if (floorPlane) {
+      floorPlane.scale.x = e.target.checked ? -1 : 1;
+    }
+  });
+
+  // ============================================
+  // 左側面画像のイベントリスナー
+  // ============================================
+
+  // 画像ラベルクリックでファイル選択を開く
+  const leftWallImageLabel = document.getElementById('leftWallImageLabel');
+  const leftWallImageInput = document.getElementById('leftWallImageInput');
+  leftWallImageLabel.addEventListener('click', () => leftWallImageInput.click());
+
+  // 画像ファイル選択
+  leftWallImageInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      loadLeftWallImage(file);
+    }
+  });
+
+  // 左側面画像サイズ
+  const leftWallImageSizeInput = document.getElementById('leftWallImageSize');
+  const leftWallImageSizeValue = document.getElementById('leftWallImageSizeValue');
+  leftWallImageSizeInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    leftWallImageSizeValue.textContent = value;
+    updateLeftWallImageSize(value);
+  });
+
+  // 左側面画像透明度
+  const leftWallImageOpacityInput = document.getElementById('leftWallImageOpacity');
+  const leftWallImageOpacityValue = document.getElementById('leftWallImageOpacityValue');
+  leftWallImageOpacityInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    leftWallImageOpacityValue.textContent = value;
+    if (leftWallPlane) {
+      leftWallPlane.material.opacity = value;
+    }
+  });
+
+  // 左側面画像クリア
+  const leftWallImageClearBtn = document.getElementById('leftWallImageClear');
+  leftWallImageClearBtn.addEventListener('click', () => {
+    clearLeftWallImage();
+  });
+
+  // 左側面画像ドラッグ&ドロップ
+  const leftWallDropZone = document.getElementById('leftWallDropZone');
+  setupDropZone(leftWallDropZone, loadLeftWallImage);
+
+  // 左側面画像左右反転
+  const leftWallImageFlipInput = document.getElementById('leftWallImageFlip');
+  leftWallImageFlipInput.addEventListener('change', (e) => {
+    if (leftWallPlane) {
+      leftWallPlane.scale.x = e.target.checked ? -1 : 1;
+    }
+  });
 }
 
 // ============================================
 // MIDI読み込み
 // ============================================
 async function loadMidi(file) {
+  // カメラの現在状態を保存（ユーザーが調整した位置を維持）
+  const savedPosition = camera.position.clone();
+  const savedTarget = controls.target.clone();
+  const savedZoom = camera.zoom;
+
   const arrayBuffer = await file.arrayBuffer();
   const midi = new Midi(arrayBuffer);
 
@@ -610,7 +799,6 @@ async function loadMidi(file) {
   state.duration = midi.duration;
   state.currentTime = 0;
   state.isPlaying = false;
-  state.cameraInitialized = false; // 新しいMIDI読み込み時はカメラをリセット
 
   console.log('MIDI loaded:', midi.name, 'Tracks:', midi.tracks.length);
 
@@ -667,6 +855,12 @@ async function loadMidi(file) {
 
   // 3D空間にノートを配置
   createNoteObjects();
+
+  // カメラの状態を復元（ユーザーが調整した位置を維持）
+  camera.position.copy(savedPosition);
+  controls.target.copy(savedTarget);
+  camera.zoom = savedZoom;
+  camera.updateProjectionMatrix();
 }
 
 // ============================================
@@ -982,27 +1176,28 @@ function createNoteObjects() {
     });
   });
 
-  // タイムライン平面のサイズをトラック範囲に合わせて更新
-  const totalDepth = totalUniqueNames * CONFIG.trackSpacing + 20; // 余白を追加
-  const totalHeight = (maxPitch - minPitch) * CONFIG.pitchScale + 20;
+  // タイムライン平面のサイズ（固定）
+  const totalDepth = 300; // 固定サイズ
+  const totalHeight = 150; // 固定サイズ
+  timelineTotalDepth = totalDepth; // グローバルに保存
 
-  // 既存のジオメトリを破棄して新しいサイズで作成
-  timelinePlane.geometry.dispose();
-  timelinePlane.geometry = new THREE.PlaneGeometry(totalDepth, totalHeight);
+  // 幕のサイズは固定のまま（変更しない）
   timelinePlane.position.y = 0; // 中央に配置
 
-  // グリッドを最低音の下に配置（地面として）
-  const lowestNoteY = (minPitch - pitchCenter) * CONFIG.pitchScale;
-  if (gridHelper) {
-    gridHelper.position.y = lowestNoteY - 15;
+  // グリッドと床の位置は固定（MIDI読み込み時に変更しない）
+  // 初期値: gridHelper.position.y = -50, floorPlane.position.y = -49
+
+  // 幕のZ軸負方向の端を保存
+  noteEdgeZ = -totalDepth / 2;
+
+  // 左側面画像の位置を調整（幕に垂直、手前側に配置、床基準、幕に隣接）
+  if (leftWallPlane) {
+    const currentSize = leftWallPlane.geometry.parameters.height;
+    // 画像（平面）を幕の端に直接配置
+    leftWallPlane.position.set(0, floorY + currentSize / 2, noteEdgeZ);
   }
 
-  // 初回読み込み時のみカメラ位置を調整（スライダー操作時は維持）
-  if (!state.cameraInitialized) {
-    camera.position.set(-100, 80, 120);
-    camera.lookAt(0, 0, 0);
-    state.cameraInitialized = true;
-  }
+  // カメラ位置はMIDI読み込み時に変更しない（setupThreeJSで設定した位置を維持）
 
   console.log(`Created ${state.noteObjects.length} note objects`);
 }
@@ -1357,6 +1552,197 @@ function clearRipples() {
     ripple.material.dispose();
   });
   state.ripples = [];
+}
+
+// ============================================
+// ドラッグ&ドロップ共通関数
+// ============================================
+
+function setupDropZone(dropZone, loadCallback) {
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.add('drag-over');
+  });
+
+  dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      // 画像ファイルかチェック
+      if (file.type.startsWith('image/')) {
+        loadCallback(file);
+      } else {
+        console.warn('画像ファイルをドロップしてください');
+      }
+    }
+  });
+}
+
+// ============================================
+// 床画像関連関数
+// ============================================
+
+// 床画像を読み込み
+function loadFloorImage(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      // 既存のテクスチャを破棄
+      if (floorTexture) {
+        floorTexture.dispose();
+      }
+
+      // 新しいテクスチャを作成
+      floorTexture = new THREE.Texture(img);
+      floorTexture.needsUpdate = true;
+
+      // マテリアルにテクスチャを適用
+      floorPlane.material.map = floorTexture;
+      floorPlane.material.needsUpdate = true;
+      floorPlane.visible = true;
+
+      // UIを更新
+      document.getElementById('floorImageName').textContent = file.name;
+
+      // ドロップゾーンにプレビューを表示
+      const preview = document.getElementById('floorImagePreview');
+      const text = document.getElementById('floorDropZoneText');
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+      text.style.display = 'none';
+
+      console.log('Floor image loaded:', file.name);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// 床画像サイズを更新
+function updateFloorImageSize(size) {
+  if (!floorPlane) return;
+
+  // ジオメトリを再作成
+  floorPlane.geometry.dispose();
+  floorPlane.geometry = new THREE.PlaneGeometry(size, size);
+}
+
+// 床画像をクリア
+function clearFloorImage() {
+  if (floorTexture) {
+    floorTexture.dispose();
+    floorTexture = null;
+  }
+
+  floorPlane.material.map = null;
+  floorPlane.material.needsUpdate = true;
+  floorPlane.visible = false;
+
+  // UIをリセット
+  document.getElementById('floorImageName').textContent = '未選択';
+  document.getElementById('floorImageInput').value = '';
+
+  // プレビューを非表示
+  const preview = document.getElementById('floorImagePreview');
+  const text = document.getElementById('floorDropZoneText');
+  preview.style.display = 'none';
+  preview.src = '';
+  text.style.display = 'block';
+
+  console.log('Floor image cleared');
+}
+
+// ============================================
+// 左側面画像関連関数
+// ============================================
+
+// 左側面画像を読み込み
+function loadLeftWallImage(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      // 既存のテクスチャを破棄
+      if (leftWallTexture) {
+        leftWallTexture.dispose();
+      }
+
+      // 新しいテクスチャを作成
+      leftWallTexture = new THREE.Texture(img);
+      leftWallTexture.needsUpdate = true;
+
+      // マテリアルにテクスチャを適用
+      leftWallPlane.material.map = leftWallTexture;
+      leftWallPlane.material.needsUpdate = true;
+      leftWallPlane.visible = true;
+
+      // UIを更新
+      document.getElementById('leftWallImageName').textContent = file.name;
+
+      // ドロップゾーンにプレビューを表示
+      const preview = document.getElementById('leftWallImagePreview');
+      const text = document.getElementById('leftWallDropZoneText');
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+      text.style.display = 'none';
+
+      console.log('Left wall image loaded:', file.name);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// 左側面画像サイズを更新（床基準で拡大、幕に隣接）
+function updateLeftWallImageSize(size) {
+  if (!leftWallPlane) return;
+
+  // ジオメトリを再作成
+  leftWallPlane.geometry.dispose();
+  leftWallPlane.geometry = new THREE.PlaneGeometry(size, size);
+
+  // Y位置を再計算（床基準：下端が床に接する）
+  leftWallPlane.position.y = floorY + size / 2;
+
+  // Z位置は幕の端に固定
+  leftWallPlane.position.z = noteEdgeZ;
+}
+
+// 左側面画像をクリア
+function clearLeftWallImage() {
+  if (leftWallTexture) {
+    leftWallTexture.dispose();
+    leftWallTexture = null;
+  }
+
+  leftWallPlane.material.map = null;
+  leftWallPlane.material.needsUpdate = true;
+  leftWallPlane.visible = false;
+
+  // UIをリセット
+  document.getElementById('leftWallImageName').textContent = '未選択';
+  document.getElementById('leftWallImageInput').value = '';
+
+  // プレビューを非表示
+  const preview = document.getElementById('leftWallImagePreview');
+  const text = document.getElementById('leftWallDropZoneText');
+  preview.style.display = 'none';
+  preview.src = '';
+  text.style.display = 'block';
+
+  console.log('Left wall image cleared');
 }
 
 // ============================================

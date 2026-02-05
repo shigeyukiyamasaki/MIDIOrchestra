@@ -9,10 +9,10 @@
 <body>
   <!-- コントロールパネル -->
   <div id="controls">
-    <div class="control-group">
+    <div class="control-group" id="midiDropZone">
       <label>MIDI</label>
       <input type="file" id="midiInput" accept=".mid,.midi">
-      <span id="midiFileName">未選択</span>
+      <span id="midiFileName">未選択（ドロップ可）</span>
     </div>
     <div class="control-group">
       <button id="playBtn" disabled>▶ 再生</button>
@@ -24,93 +24,164 @@
     </div>
   </div>
 
-  <!-- 表示設定パネル（左） -->
-  <div id="settings-panel">
-    <h3>表示設定</h3>
-    <div id="settings-list">
-      <!-- ノート -->
-      <div class="setting-category">ノート</div>
-      <div class="setting-item">
-        <label>太さ</label>
-        <input type="range" id="noteHeight" min="0.3" max="3" step="0.1" value="0.8">
-        <span id="noteHeightValue">0.8</span>
-      </div>
-      <div class="setting-item">
-        <label>奥行き</label>
-        <input type="range" id="noteDepth" min="1" max="10" step="0.5" value="1">
-        <span id="noteDepthValue">1</span>
-      </div>
-      <div class="setting-item">
-        <label>透明度</label>
-        <input type="range" id="noteOpacity" min="0.1" max="1" step="0.05" value="0.85">
-        <span id="noteOpacityValue">0.85</span>
-      </div>
+  <!-- 設定パネルコンテナ（2列） -->
+  <div id="settings-container">
+    <!-- 表示設定パネル（左列） -->
+    <div id="settings-panel" class="settings-column">
+      <h3>表示設定</h3>
+      <div id="settings-list">
+        <!-- ノート -->
+        <div class="setting-category">ノート</div>
+        <div class="setting-item">
+          <label>太さ</label>
+          <input type="range" id="noteHeight" min="0.3" max="3" step="0.1" value="0.8">
+          <span id="noteHeightValue">0.8</span>
+        </div>
+        <div class="setting-item">
+          <label>奥行き</label>
+          <input type="range" id="noteDepth" min="1" max="10" step="0.5" value="1">
+          <span id="noteDepthValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="noteOpacity" min="0.1" max="1" step="0.05" value="0.85">
+          <span id="noteOpacityValue">0.85</span>
+        </div>
 
-      <!-- レイアウト -->
-      <div class="setting-category">レイアウト</div>
-      <div class="setting-item">
-        <label>トラック間隔</label>
-        <input type="range" id="trackSpacing" min="1" max="10" step="0.5" value="6">
-        <span id="trackSpacingValue">6</span>
-      </div>
-      <div class="setting-item">
-        <label>時間スケール</label>
-        <input type="range" id="timeScale" min="10" max="100" step="5" value="50">
-        <span id="timeScaleValue">50</span>
-      </div>
-      <div class="setting-item">
-        <label>Y軸スケール</label>
-        <input type="range" id="pitchScale" min="0.5" max="3" step="0.1" value="1">
-        <span id="pitchScaleValue">1</span>
-      </div>
+        <!-- レイアウト -->
+        <div class="setting-category">レイアウト</div>
+        <div class="setting-item">
+          <label>トラック間隔</label>
+          <input type="range" id="trackSpacing" min="1" max="10" step="0.5" value="6">
+          <span id="trackSpacingValue">6</span>
+        </div>
+        <div class="setting-item">
+          <label>時間スケール</label>
+          <input type="range" id="timeScale" min="10" max="100" step="5" value="50">
+          <span id="timeScaleValue">50</span>
+        </div>
+        <div class="setting-item">
+          <label>Y軸スケール</label>
+          <input type="range" id="pitchScale" min="0.5" max="3" step="0.1" value="1">
+          <span id="pitchScaleValue">1</span>
+        </div>
 
-      <!-- タイムライン -->
-      <div class="setting-category">タイムライン</div>
-      <div class="setting-item">
-        <label>幕の透明度</label>
-        <input type="range" id="timelineOpacity" min="0" max="0.5" step="0.05" value="0.25">
-        <span id="timelineOpacityValue">0.25</span>
-      </div>
-      <div class="setting-item">
-        <label>幕の色</label>
-        <input type="color" id="timelineColor" value="#ff4444">
-      </div>
+        <!-- タイムライン -->
+        <div class="setting-category">タイムライン</div>
+        <div class="setting-item">
+          <label>幕の透明度</label>
+          <input type="range" id="timelineOpacity" min="0" max="0.5" step="0.05" value="0.25">
+          <span id="timelineOpacityValue">0.25</span>
+        </div>
+        <div class="setting-item">
+          <label>幕の色</label>
+          <input type="color" id="timelineColor" value="#ff4444">
+        </div>
 
-      <!-- エフェクト -->
-      <div class="setting-category">エフェクト</div>
-      <div class="setting-item">
-        <label>バウンスの高さ (0=OFF)</label>
-        <input type="range" id="bounceScale" min="0" max="5" step="0.5" value="1">
-        <span id="bounceScaleValue">1</span>
-      </div>
-      <div class="setting-item">
-        <label>バウンスの時間</label>
-        <input type="range" id="bounceDuration" min="0.1" max="0.5" step="0.05" value="0.2">
-        <span id="bounceDurationValue">0.2</span>
-      </div>
-      <div class="setting-item">
-        <label>アイコンの大きさ (0=OFF)</label>
-        <input type="range" id="popIconScale" min="0" max="3" step="0.1" value="1">
-        <span id="popIconScaleValue">1</span>
-      </div>
-      <div class="setting-item">
-        <label>
-          <input type="checkbox" id="rippleEnabled" checked>
-          波紋エフェクト
-        </label>
-      </div>
+        <!-- エフェクト -->
+        <div class="setting-category">エフェクト</div>
+        <div class="setting-item">
+          <label>バウンスの高さ (0=OFF)</label>
+          <input type="range" id="bounceScale" min="0" max="5" step="0.5" value="1">
+          <span id="bounceScaleValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>バウンスの時間</label>
+          <input type="range" id="bounceDuration" min="0.1" max="0.5" step="0.05" value="0.2">
+          <span id="bounceDurationValue">0.2</span>
+        </div>
+        <div class="setting-item">
+          <label>アイコンの大きさ (0=OFF)</label>
+          <input type="range" id="popIconScale" min="0" max="3" step="0.1" value="1">
+          <span id="popIconScaleValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="rippleEnabled" checked>
+            波紋エフェクト
+          </label>
+        </div>
 
-      <!-- 表示 -->
-      <div class="setting-category">表示</div>
-      <div class="setting-item">
-        <label>背景色</label>
-        <input type="color" id="bgColor" value="#1a1a2e">
+        <!-- 表示 -->
+        <div class="setting-category">表示</div>
+        <div class="setting-item">
+          <label>背景色</label>
+          <input type="color" id="bgColor" value="#1a1a2e">
+        </div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="gridEnabled" checked>
+            グリッド表示
+          </label>
+        </div>
       </div>
-      <div class="setting-item">
-        <label>
-          <input type="checkbox" id="gridEnabled" checked>
-          グリッド表示
-        </label>
+    </div>
+
+    <!-- 画像配置パネル（右列） -->
+    <div id="image-panel" class="settings-column">
+      <h3>画像配置</h3>
+      <div id="image-list">
+        <!-- 床画像 -->
+        <div class="setting-category">床</div>
+        <div class="setting-item">
+          <div class="drop-zone" id="floorDropZone">
+            <img id="floorImagePreview" class="drop-zone-preview" style="display: none;">
+            <span class="drop-zone-text" id="floorDropZoneText">ドラッグ&ドロップ<br>または</span>
+            <label class="file-label" id="floorImageLabel">画像を選択</label>
+            <input type="file" id="floorImageInput" accept="image/*">
+          </div>
+          <span id="floorImageName" class="floor-image-name">未選択</span>
+        </div>
+        <div class="setting-item">
+          <label>サイズ</label>
+          <input type="range" id="floorImageSize" min="50" max="1000" step="10" value="300">
+          <span id="floorImageSizeValue">300</span>
+        </div>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="0.8">
+          <span id="floorImageOpacityValue">0.8</span>
+        </div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="floorImageFlip">
+            左右反転
+          </label>
+        </div>
+        <div class="setting-item">
+          <button id="floorImageClear" class="clear-btn">画像をクリア</button>
+        </div>
+
+        <!-- 左側面画像 -->
+        <div class="setting-category">左側面</div>
+        <div class="setting-item">
+          <div class="drop-zone" id="leftWallDropZone">
+            <img id="leftWallImagePreview" class="drop-zone-preview" style="display: none;">
+            <span class="drop-zone-text" id="leftWallDropZoneText">ドラッグ&ドロップ<br>または</span>
+            <label class="file-label" id="leftWallImageLabel">画像を選択</label>
+            <input type="file" id="leftWallImageInput" accept="image/*">
+          </div>
+          <span id="leftWallImageName" class="floor-image-name">未選択</span>
+        </div>
+        <div class="setting-item">
+          <label>サイズ</label>
+          <input type="range" id="leftWallImageSize" min="50" max="1000" step="10" value="300">
+          <span id="leftWallImageSizeValue">300</span>
+        </div>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8">
+          <span id="leftWallImageOpacityValue">0.8</span>
+        </div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="leftWallImageFlip">
+            左右反転
+          </label>
+        </div>
+        <div class="setting-item">
+          <button id="leftWallImageClear" class="clear-btn">画像をクリア</button>
+        </div>
       </div>
     </div>
   </div>
