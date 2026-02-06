@@ -86,9 +86,9 @@ let cameraTransition = null; // 遷移中の情報
 // アスペクト比設定
 let aspectRatioMode = '16:9'; // '16:9', '9:16', 'free'
 
-// カメラシェイク設定
-let cameraShakeEnabled = true;
-let cameraShakeIntensity = 5; // シェイクの強さ
+// カメラシェイク設定（後方互換用）
+let cameraShakeEnabled = false;
+let cameraShakeIntensity = 0;
 let cameraShakeDuration = 0.15; // シェイクの持続時間（秒）
 let cameraShakeState = {
   active: false,
@@ -96,18 +96,18 @@ let cameraShakeState = {
   originalPos: null,
 };
 
-// ブラーエフェクト設定
-let blurEffectEnabled = true;
-let blurEffectIntensity = 5; // ブラーの強さ（px）
+// ブラーエフェクト設定（後方互換用）
+let blurEffectEnabled = false;
+let blurEffectIntensity = 0;
 let blurEffectDuration = 0.12; // ブラーの持続時間（秒）
 let blurEffectState = {
   active: false,
   startTime: 0,
 };
 
-// フラッシュエフェクト設定
-let flashEffectEnabled = true;
-let flashEffectIntensity = 0.7; // フラッシュの強さ（透明度の増加量）
+// フラッシュエフェクト設定（後方互換用）
+let flashEffectEnabled = false;
+let flashEffectIntensity = 0;
 let flashEffectDuration = 0.1; // フラッシュの持続時間（秒）
 let flashEffectState = {
   active: false,
@@ -124,28 +124,42 @@ let tempoInfo = {
   beatsPerBar: 4,
 };
 
-// ビート連動エフェクト設定
+// エフェクト設定（統合版）
+const effects = {
+  // バスドラ専用
+  curtainFlash: { intensity: 0 },  // 幕フラッシュ
+
+  // テンポ専用
+  cameraRotation: { intensity: 0 },    // カメラ回転
+  backgroundPulse: { intensity: 0 },   // 背景パルス
+  colorShift: { intensity: 0 },        // カラーシフト
+  spacePulse: { intensity: 0 },        // 空間パルス
+  strobe: { intensity: 0 },            // ストロボ
+
+  // 選択式（トリガー切替可能）
+  cameraShake: { trigger: 'bass', intensity: 0 },   // カメラ揺れ
+  cameraZoom: { trigger: 'bass', intensity: 0 },    // カメラズーム
+  flash: { trigger: 'bass', intensity: 0 },         // フラッシュ（画面）
+  blur: { trigger: 'bass', intensity: 0 },          // ブラー
+  crack: { trigger: 'bass', intensity: 0 },         // ひび割れ
+  glitch: { trigger: 'bass', intensity: 0 },        // グリッチ
+};
+
+// 後方互換用（旧beatEffectsを参照しているコード向け）
 const beatEffects = {
-  // カメラ系
-  cameraVibration: { enabled: false, intensity: 2 },      // 拍ごとの微振動
-  cameraZoom: { enabled: false, intensity: 0.05 },        // ズームイン/アウト
-  cameraRotation: { enabled: false, intensity: 0.02 },    // 回転・旋回
-
-  // 光・色系
-  beatFlash: { enabled: false, intensity: 0.5 },          // 拍ごとのフラッシュ
-  backgroundPulse: { enabled: false, intensity: 0.3 },    // 背景色のパルス
-  colorShift: { enabled: false, intensity: 30 },          // 色相シフト
-  strobe: { enabled: false, intensity: 1 },               // ストロボ効果
-
-  // 空間系
-  gridPulse: { enabled: false, intensity: 0.2 },          // グリッドの脈動
-  spacePulse: { enabled: false, intensity: 0.05 },        // 空間の拡大/収縮
-
-  // ポストエフェクト系
-  beatBlur: { enabled: false, intensity: 3 },             // ビートでブラー
-  vignette: { enabled: false, intensity: 0.5 },           // 周辺減光
-  crack: { enabled: false, intensity: 0.5 },              // ひび割れ
-  glitch: { enabled: false, intensity: 0.5 },             // グリッチ
+  cameraVibration: { enabled: false, intensity: 0 },
+  cameraZoom: { enabled: false, intensity: 0 },
+  cameraRotation: { enabled: false, intensity: 0 },
+  beatFlash: { enabled: false, intensity: 0 },
+  backgroundPulse: { enabled: false, intensity: 0 },
+  colorShift: { enabled: false, intensity: 0 },
+  strobe: { enabled: false, intensity: 0 },
+  gridPulse: { enabled: false, intensity: 0 },
+  spacePulse: { enabled: false, intensity: 0 },
+  beatBlur: { enabled: false, intensity: 0 },
+  vignette: { enabled: false, intensity: 0 },
+  crack: { enabled: false, intensity: 0 },
+  glitch: { enabled: false, intensity: 0 },
 };
 
 // ビートエフェクト状態
@@ -651,6 +665,59 @@ function onWindowResize() {
 }
 
 // ============================================
+// エフェクト同期ヘルパー
+// ============================================
+function syncSelectableEffect(effectName) {
+  const effect = effects[effectName];
+  const intensity = effect.intensity;
+  const isBass = effect.trigger === 'bass';
+  const isTempo = effect.trigger === 'tempo';
+  const enabled = intensity > 0;
+
+  switch (effectName) {
+    case 'cameraShake':
+      // バスドラ用
+      cameraShakeEnabled = isBass && enabled;
+      cameraShakeIntensity = intensity * 15;
+      // テンポ用
+      beatEffects.cameraVibration.enabled = isTempo && enabled;
+      beatEffects.cameraVibration.intensity = intensity * 5;
+      break;
+    case 'cameraZoom':
+      // テンポ用のみ（バスドラでも同じ処理を使用）
+      beatEffects.cameraZoom.enabled = enabled;
+      beatEffects.cameraZoom.intensity = intensity * 0.1;
+      beatEffects.cameraZoom.trigger = effect.trigger;
+      break;
+    case 'flash':
+      // テンポ用
+      beatEffects.beatFlash.enabled = isTempo && enabled;
+      beatEffects.beatFlash.intensity = intensity * 0.8;
+      // バスドラ用（画面フラッシュ）
+      effects.flash.bassEnabled = isBass && enabled;
+      break;
+    case 'blur':
+      // バスドラ用
+      blurEffectEnabled = isBass && enabled;
+      blurEffectIntensity = intensity * 15;
+      // テンポ用
+      beatEffects.beatBlur.enabled = isTempo && enabled;
+      beatEffects.beatBlur.intensity = intensity * 6;
+      break;
+    case 'crack':
+      beatEffects.crack.enabled = enabled;
+      beatEffects.crack.intensity = intensity;
+      beatEffects.crack.trigger = effect.trigger;
+      break;
+    case 'glitch':
+      beatEffects.glitch.enabled = enabled;
+      beatEffects.glitch.intensity = intensity;
+      beatEffects.glitch.trigger = effect.trigger;
+      break;
+  }
+}
+
+// ============================================
 // イベントリスナー
 // ============================================
 function setupEventListeners() {
@@ -937,131 +1004,147 @@ function setupEventListeners() {
     }
   });
 
-  // カメラシェイク有効/無効
-  const cameraShakeEnabledInput = document.getElementById('cameraShakeEnabled');
-  cameraShakeEnabledInput.addEventListener('change', (e) => {
-    cameraShakeEnabled = e.target.checked;
-  });
+  // === エフェクト設定（統合版）===
 
-  // カメラシェイク強度
-  const cameraShakeIntensityInput = document.getElementById('cameraShakeIntensity');
-  const cameraShakeIntensityValue = document.getElementById('cameraShakeIntensityValue');
-  cameraShakeIntensityInput.addEventListener('input', (e) => {
+  // バスドラ専用: 幕フラッシュ
+  document.getElementById('flashEffectIntensity').addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
-    cameraShakeIntensityValue.textContent = value;
-    cameraShakeIntensity = value;
-  });
-
-  // ブラーエフェクト有効/無効
-  const blurEffectEnabledInput = document.getElementById('blurEffectEnabled');
-  blurEffectEnabledInput.addEventListener('change', (e) => {
-    blurEffectEnabled = e.target.checked;
-  });
-
-  // ブラーエフェクト強度
-  const blurEffectIntensityInput = document.getElementById('blurEffectIntensity');
-  const blurEffectIntensityValue = document.getElementById('blurEffectIntensityValue');
-  blurEffectIntensityInput.addEventListener('input', (e) => {
-    const value = parseFloat(e.target.value);
-    blurEffectIntensityValue.textContent = value;
-    blurEffectIntensity = value;
-  });
-
-  // フラッシュエフェクト有効/無効
-  const flashEffectEnabledInput = document.getElementById('flashEffectEnabled');
-  flashEffectEnabledInput.addEventListener('change', (e) => {
-    flashEffectEnabled = e.target.checked;
-  });
-
-  // フラッシュエフェクト強度
-  const flashEffectIntensityInput = document.getElementById('flashEffectIntensity');
-  const flashEffectIntensityValue = document.getElementById('flashEffectIntensityValue');
-  flashEffectIntensityInput.addEventListener('input', (e) => {
-    const value = parseFloat(e.target.value);
-    flashEffectIntensityValue.textContent = value;
+    document.getElementById('flashEffectIntensityValue').textContent = value;
+    effects.curtainFlash.intensity = value;
+    // 後方互換
+    flashEffectEnabled = value > 0;
     flashEffectIntensity = value;
   });
 
-  // ビート連動エフェクトのイベントリスナー（スライダー）
-
-  // カメラ振動
-  document.getElementById('beatCameraVibration').addEventListener('input', (e) => {
-    const value = parseFloat(e.target.value);
-    document.getElementById('beatCameraVibrationValue').textContent = value;
-    beatEffects.cameraVibration.enabled = value > 0;
-    beatEffects.cameraVibration.intensity = value * 5;
-  });
-
-  // カメラズーム
-  document.getElementById('beatCameraZoom').addEventListener('input', (e) => {
-    const value = parseFloat(e.target.value);
-    document.getElementById('beatCameraZoomValue').textContent = value;
-    beatEffects.cameraZoom.enabled = value > 0;
-    beatEffects.cameraZoom.intensity = value * 0.1;
-  });
-
-  // カメラ回転
+  // テンポ専用: カメラ回転
   document.getElementById('beatCameraRotation').addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('beatCameraRotationValue').textContent = value;
+    effects.cameraRotation.intensity = value;
     beatEffects.cameraRotation.enabled = value > 0;
     beatEffects.cameraRotation.intensity = value * 0.15;
   });
 
-  // ビートフラッシュ
-  document.getElementById('beatFlash').addEventListener('input', (e) => {
-    const value = parseFloat(e.target.value);
-    document.getElementById('beatFlashValue').textContent = value;
-    beatEffects.beatFlash.enabled = value > 0;
-    beatEffects.beatFlash.intensity = value * 0.8;
-  });
-
-  // 背景パルス
+  // テンポ専用: 背景パルス
   document.getElementById('beatBackgroundPulse').addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('beatBackgroundPulseValue').textContent = value;
+    effects.backgroundPulse.intensity = value;
     beatEffects.backgroundPulse.enabled = value > 0;
     beatEffects.backgroundPulse.intensity = value * 0.5;
   });
 
-  // カラーシフト
+  // テンポ専用: カラーシフト
   document.getElementById('beatColorShift').addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('beatColorShiftValue').textContent = value;
+    effects.colorShift.intensity = value;
     beatEffects.colorShift.enabled = value > 0;
     beatEffects.colorShift.intensity = value * 60;
   });
 
-  // ストロボ
-  document.getElementById('beatStrobe').addEventListener('input', (e) => {
-    const value = parseFloat(e.target.value);
-    document.getElementById('beatStrobeValue').textContent = value;
-    beatEffects.strobe.enabled = value > 0;
-    beatEffects.strobe.intensity = value;
-  });
-
-  // 空間パルス
+  // テンポ専用: 空間パルス
   document.getElementById('beatSpacePulse').addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('beatSpacePulseValue').textContent = value;
+    effects.spacePulse.intensity = value;
     beatEffects.spacePulse.enabled = value > 0;
     beatEffects.spacePulse.intensity = value * 0.1;
   });
 
-  // ひび割れ
-  document.getElementById('beatCrack').addEventListener('input', (e) => {
+  // テンポ専用: ストロボ
+  document.getElementById('beatStrobe').addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
-    document.getElementById('beatCrackValue').textContent = value;
-    beatEffects.crack.enabled = value > 0;
-    beatEffects.crack.intensity = value;
+    document.getElementById('beatStrobeValue').textContent = value;
+    effects.strobe.intensity = value;
+    beatEffects.strobe.enabled = value > 0;
+    beatEffects.strobe.intensity = value;
+  });
+
+  // === 選択式エフェクト（ラジオボタン）===
+
+  // カメラ揺れ
+  document.querySelectorAll('input[name="effectCameraShakeTrigger"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      effects.cameraShake.trigger = e.target.value;
+      syncSelectableEffect('cameraShake');
+    });
+  });
+  document.getElementById('effectCameraShake').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('effectCameraShakeValue').textContent = value;
+    effects.cameraShake.intensity = value;
+    syncSelectableEffect('cameraShake');
+  });
+
+  // カメラズーム
+  document.querySelectorAll('input[name="effectCameraZoomTrigger"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      effects.cameraZoom.trigger = e.target.value;
+      syncSelectableEffect('cameraZoom');
+    });
+  });
+  document.getElementById('effectCameraZoom').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('effectCameraZoomValue').textContent = value;
+    effects.cameraZoom.intensity = value;
+    syncSelectableEffect('cameraZoom');
+  });
+
+  // フラッシュ（画面）
+  document.querySelectorAll('input[name="effectFlashTrigger"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      effects.flash.trigger = e.target.value;
+      syncSelectableEffect('flash');
+    });
+  });
+  document.getElementById('effectFlash').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('effectFlashValue').textContent = value;
+    effects.flash.intensity = value;
+    syncSelectableEffect('flash');
+  });
+
+  // ブラー
+  document.querySelectorAll('input[name="effectBlurTrigger"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      effects.blur.trigger = e.target.value;
+      syncSelectableEffect('blur');
+    });
+  });
+  document.getElementById('effectBlur').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('effectBlurValue').textContent = value;
+    effects.blur.intensity = value;
+    syncSelectableEffect('blur');
+  });
+
+  // ひび割れ
+  document.querySelectorAll('input[name="effectCrackTrigger"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      effects.crack.trigger = e.target.value;
+      syncSelectableEffect('crack');
+    });
+  });
+  document.getElementById('effectCrack').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('effectCrackValue').textContent = value;
+    effects.crack.intensity = value;
+    syncSelectableEffect('crack');
   });
 
   // グリッチ
-  document.getElementById('beatGlitch').addEventListener('input', (e) => {
+  document.querySelectorAll('input[name="effectGlitchTrigger"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      effects.glitch.trigger = e.target.value;
+      syncSelectableEffect('glitch');
+    });
+  });
+  document.getElementById('effectGlitch').addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
-    document.getElementById('beatGlitchValue').textContent = value;
-    beatEffects.glitch.enabled = value > 0;
-    beatEffects.glitch.intensity = value;
+    document.getElementById('effectGlitchValue').textContent = value;
+    effects.glitch.intensity = value;
+    syncSelectableEffect('glitch');
   });
 
   // 自動カメラ切り替え
@@ -2213,20 +2296,12 @@ function checkNoteRipples() {
       // 上部の楽器アイコンをポップさせる
       triggerIconPop(trackIndex);
 
-      // バスドラム検出でカメラシェイク＆ブラー＆フラッシュ
+      // バスドラム検出でエフェクト発動
       if (trackInfo) {
         const instrumentId = trackInfo.instrumentId;
         if (instrumentId === 'bassdrum' || instrumentId === 'drums' || instrumentId === 'timpani') {
           const velocity = mesh.userData.velocity || 0.8; // 0-1の範囲
-          if (cameraShakeEnabled) {
-            triggerCameraShake(velocity);
-          }
-          if (blurEffectEnabled) {
-            triggerBlurEffect(velocity);
-          }
-          if (flashEffectEnabled) {
-            triggerFlashEffect(velocity);
-          }
+          triggerBassDrumEffects(velocity);
         }
       }
 
@@ -2243,6 +2318,64 @@ function checkNoteRipples() {
       state.triggeredNotes.delete(noteId);
     }
   });
+}
+
+// ============================================
+// バスドラムエフェクト発動
+// ============================================
+
+function triggerBassDrumEffects(velocity = 1) {
+  // バスドラ専用: 幕フラッシュ
+  if (effects.curtainFlash.intensity > 0) {
+    triggerFlashEffect(velocity);
+  }
+
+  // 選択式エフェクト（バスドラ選択時のみ）
+  if (effects.cameraShake.trigger === 'bass' && effects.cameraShake.intensity > 0) {
+    triggerCameraShake(velocity);
+  }
+  if (effects.cameraZoom.trigger === 'bass' && effects.cameraZoom.intensity > 0) {
+    triggerBassZoom(velocity);
+  }
+  if (effects.flash.trigger === 'bass' && effects.flash.intensity > 0) {
+    triggerBeatFlash(); // 画面フラッシュ
+  }
+  if (effects.blur.trigger === 'bass' && effects.blur.intensity > 0) {
+    triggerBlurEffect(velocity);
+  }
+  if (effects.crack.trigger === 'bass' && effects.crack.intensity > 0) {
+    triggerBassCrack(velocity);
+  }
+  if (effects.glitch.trigger === 'bass' && effects.glitch.intensity > 0) {
+    triggerBassGlitch(velocity);
+  }
+}
+
+// バスドラ用ズームエフェクト
+function triggerBassZoom(velocity = 1) {
+  if (!camera) return;
+  const intensity = effects.cameraZoom.intensity * velocity;
+  const originalFOV = camera.fov;
+  camera.fov = originalFOV * (1 - intensity * 0.1);
+  camera.updateProjectionMatrix();
+  setTimeout(() => {
+    camera.fov = originalFOV;
+    camera.updateProjectionMatrix();
+  }, 100);
+}
+
+// バスドラ用ひび割れエフェクト
+function triggerBassCrack(velocity = 1) {
+  const amount = effects.crack.intensity * velocity;
+  updateCrackEffect(amount);
+  setTimeout(() => updateCrackEffect(0), 200);
+}
+
+// バスドラ用グリッチエフェクト
+function triggerBassGlitch(velocity = 1) {
+  const amount = effects.glitch.intensity * velocity;
+  updateGlitchEffect(amount);
+  setTimeout(() => updateGlitchEffect(0), 150);
 }
 
 // ============================================
@@ -2390,15 +2523,17 @@ function onBeat(beatNumber) {
   // 小節の頭かどうか
   const isBarStart = beatNumber % tempoInfo.beatsPerBar === 0;
 
-  // 各エフェクトのトリガー
-  if (beatEffects.beatFlash.enabled) {
-    triggerBeatFlash();
-  }
-  if (beatEffects.strobe.enabled) {
+  // テンポ専用エフェクト
+  if (effects.strobe.intensity > 0) {
     triggerStrobe();
   }
-  if (isBarStart && beatEffects.colorShift.enabled) {
+  if (isBarStart && effects.colorShift.intensity > 0) {
     triggerColorShift();
+  }
+
+  // 選択式エフェクト（テンポ選択時のみ）
+  if (effects.flash.trigger === 'tempo' && effects.flash.intensity > 0) {
+    triggerBeatFlash();
   }
 }
 
@@ -2408,9 +2543,10 @@ function updateBeatEffects() {
   const phase = beatEffectState.phase;
   const easePhase = 1 - phase; // 減衰用（ビート直後が1、次のビート直前が0）
 
-  // カメラ微振動
-  if (beatEffects.cameraVibration.enabled && camera && !cameraShakeState.active) {
-    const intensity = beatEffects.cameraVibration.intensity * easePhase * easePhase;
+  // カメラ揺れ（テンポ選択時）
+  const cameraShakeTempo = effects.cameraShake.trigger === 'tempo' && effects.cameraShake.intensity > 0;
+  if (cameraShakeTempo && camera && !cameraShakeState.active) {
+    const intensity = effects.cameraShake.intensity * 5 * easePhase * easePhase;
     if (intensity > 0.1) {
       const offsetX = (Math.random() - 0.5) * intensity;
       const offsetY = (Math.random() - 0.5) * intensity;
@@ -2419,74 +2555,63 @@ function updateBeatEffects() {
     }
   }
 
-  // カメラズーム
-  if (beatEffects.cameraZoom.enabled && camera) {
-    const zoomAmount = Math.sin(phase * Math.PI) * beatEffects.cameraZoom.intensity;
+  // カメラズーム（テンポ選択時）
+  const cameraZoomTempo = effects.cameraZoom.trigger === 'tempo' && effects.cameraZoom.intensity > 0;
+  if (cameraZoomTempo && camera) {
+    const zoomAmount = Math.sin(phase * Math.PI) * effects.cameraZoom.intensity * 0.1;
     camera.fov = beatEffectState.originalFOV * (1 - zoomAmount);
     camera.updateProjectionMatrix();
   }
 
-  // カメラ回転（ロール回転）
-  if (beatEffects.cameraRotation.enabled && camera) {
-    const rotAmount = Math.sin(beatEffectState.barPhase * Math.PI * 2) * beatEffects.cameraRotation.intensity;
-    // カメラのZ軸回転（ロール）- OrbitControlsと共存するため、upベクトルを回転
+  // カメラ回転（テンポ専用）
+  if (effects.cameraRotation.intensity > 0 && camera) {
+    const rotAmount = Math.sin(beatEffectState.barPhase * Math.PI * 2) * effects.cameraRotation.intensity * 0.15;
     const angle = rotAmount * Math.PI;
     camera.up.set(Math.sin(angle), Math.cos(angle), 0);
   } else if (camera) {
-    // 無効時はupベクトルをリセット
     camera.up.set(0, 1, 0);
   }
 
-  // 背景パルス
-  if (beatEffects.backgroundPulse.enabled && scene) {
-    const pulseAmount = easePhase * beatEffects.backgroundPulse.intensity;
+  // 背景パルス（テンポ専用）
+  if (effects.backgroundPulse.intensity > 0 && scene) {
+    const pulseAmount = easePhase * effects.backgroundPulse.intensity * 0.5;
     const baseColor = new THREE.Color(0x1a1a2e);
     const pulseColor = baseColor.clone().multiplyScalar(1 + pulseAmount);
     scene.background = pulseColor;
   }
 
-  // グリッドパルス
-  if (beatEffects.gridPulse.enabled && gridHelper) {
-    const scale = 1 + Math.sin(phase * Math.PI) * beatEffects.gridPulse.intensity;
-    gridHelper.scale.set(scale, scale, scale);
-  }
-
-  // 空間パルス
-  if (beatEffects.spacePulse.enabled && camera) {
-    const fovChange = Math.sin(phase * Math.PI * 2) * beatEffects.spacePulse.intensity * 10;
+  // 空間パルス（テンポ専用）
+  if (effects.spacePulse.intensity > 0 && camera) {
+    const fovChange = Math.sin(phase * Math.PI * 2) * effects.spacePulse.intensity * 0.1 * 10;
     camera.fov = beatEffectState.originalFOV + fovChange;
     camera.updateProjectionMatrix();
   }
 
-  // ビートブラー
-  if (beatEffects.beatBlur.enabled && renderer) {
-    const blurAmount = easePhase * easePhase * beatEffects.beatBlur.intensity;
+  // ブラー（テンポ選択時）
+  const blurTempo = effects.blur.trigger === 'tempo' && effects.blur.intensity > 0;
+  if (blurTempo && renderer) {
+    const blurAmount = easePhase * easePhase * effects.blur.intensity * 6;
     if (blurAmount > 0.1) {
       renderer.domElement.style.filter = `blur(${blurAmount}px)`;
     } else {
       renderer.domElement.style.filter = '';
     }
+  } else if (renderer && !blurTempo) {
+    // テンポブラーが無効の場合のみリセット（バスドラブラーと競合しないよう）
   }
 
-  // ビネット
-  if (beatEffects.vignette.enabled) {
-    updateVignette(easePhase);
-  }
-
-  // ひび割れ
-  if (beatEffects.crack.enabled) {
-    const amount = easePhase * beatEffects.crack.intensity;
+  // ひび割れ（テンポ選択時）
+  const crackTempo = effects.crack.trigger === 'tempo' && effects.crack.intensity > 0;
+  if (crackTempo) {
+    const amount = easePhase * effects.crack.intensity;
     updateCrackEffect(amount);
-  } else {
-    updateCrackEffect(0);
   }
 
-  // グリッチ
-  if (beatEffects.glitch.enabled) {
-    const amount = easePhase * beatEffects.glitch.intensity;
+  // グリッチ（テンポ選択時）
+  const glitchTempo = effects.glitch.trigger === 'tempo' && effects.glitch.intensity > 0;
+  if (glitchTempo) {
+    const amount = easePhase * effects.glitch.intensity;
     updateGlitchEffect(amount);
-  } else {
-    updateGlitchEffect(0);
   }
 }
 

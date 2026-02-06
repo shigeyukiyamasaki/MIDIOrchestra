@@ -765,6 +765,44 @@ button:disabled {
   text-align: right;
 }
 
+/* 選択式エフェクト（effect-header使用） */
+.effect-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.effect-header > label:first-child {
+  flex: 1;
+}
+
+.effect-header .trigger-radio {
+  display: flex;
+  gap: 6px;
+}
+
+.effect-header .trigger-radio label {
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  color: #888;
+}
+
+.effect-header .trigger-radio input[type="radio"] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* 選択式エフェクトの値（スライダー下、右寄せ） */
+.setting-item > .effect-header + input[type="range"] + span {
+  align-self: flex-end;
+}
+
+
 /* 画像入力を非表示 */
 #floorImageInput,
 #leftWallImageInput,

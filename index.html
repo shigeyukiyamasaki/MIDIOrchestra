@@ -237,67 +237,20 @@
           </label>
         </div>
 
-        <!-- バスドラム連動 -->
-        <div class="setting-category">バスドラム連動</div>
+        <!-- バスドラ専用 -->
+        <div class="setting-category">バスドラ専用</div>
         <div class="setting-item">
-          <label>
-            <input type="checkbox" id="cameraShakeEnabled" checked>
-            カメラ揺れ
-          </label>
-        </div>
-        <div class="setting-item">
-          <label>揺れの強さ</label>
-          <input type="range" id="cameraShakeIntensity" min="1" max="15" step="1" value="5">
-          <span id="cameraShakeIntensityValue">5</span>
-        </div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="blurEffectEnabled" checked>
-            ブラー
-          </label>
-        </div>
-        <div class="setting-item">
-          <label>ブラーの強さ</label>
-          <input type="range" id="blurEffectIntensity" min="1" max="15" step="1" value="5">
-          <span id="blurEffectIntensityValue">5</span>
-        </div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="flashEffectEnabled" checked>
-            幕フラッシュ
-          </label>
-        </div>
-        <div class="setting-item">
-          <label>フラッシュの強さ</label>
-          <input type="range" id="flashEffectIntensity" min="0.1" max="1" step="0.1" value="0.7">
-          <span id="flashEffectIntensityValue">0.7</span>
+          <label>幕フラッシュ</label>
+          <input type="range" id="flashEffectIntensity" min="0" max="1" step="0.1" value="0">
+          <span id="flashEffectIntensityValue">0</span>
         </div>
 
-        <!-- ビート連動エフェクト -->
-        <div class="setting-category">ビート連動（テンポ同期）</div>
-
-        <!-- カメラ系 -->
-        <div class="setting-item">
-          <label>カメラ振動</label>
-          <input type="range" id="beatCameraVibration" min="0" max="1" step="0.1" value="0">
-          <span id="beatCameraVibrationValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>カメラズーム</label>
-          <input type="range" id="beatCameraZoom" min="0" max="1" step="0.1" value="0">
-          <span id="beatCameraZoomValue">0</span>
-        </div>
+        <!-- テンポ専用 -->
+        <div class="setting-category">テンポ専用</div>
         <div class="setting-item">
           <label>カメラ回転</label>
           <input type="range" id="beatCameraRotation" min="0" max="1" step="0.1" value="0">
           <span id="beatCameraRotationValue">0</span>
-        </div>
-
-        <!-- 光・色系 -->
-        <div class="setting-item">
-          <label>ビートフラッシュ</label>
-          <input type="range" id="beatFlash" min="0" max="1" step="0.1" value="0">
-          <span id="beatFlashValue">0</span>
         </div>
         <div class="setting-item">
           <label>背景パルス</label>
@@ -310,28 +263,83 @@
           <span id="beatColorShiftValue">0</span>
         </div>
         <div class="setting-item">
+          <label>空間パルス</label>
+          <input type="range" id="beatSpacePulse" min="0" max="1" step="0.1" value="0">
+          <span id="beatSpacePulseValue">0</span>
+        </div>
+        <div class="setting-item">
           <label>ストロボ</label>
           <input type="range" id="beatStrobe" min="0" max="1" step="0.1" value="0">
           <span id="beatStrobeValue">0</span>
         </div>
 
-        <!-- 空間系 -->
+        <!-- 選択式エフェクト -->
+        <div class="setting-category">選択式（トリガー切替）</div>
         <div class="setting-item">
-          <label>空間パルス</label>
-          <input type="range" id="beatSpacePulse" min="0" max="1" step="0.1" value="0">
-          <span id="beatSpacePulseValue">0</span>
+          <div class="effect-header">
+            <label>カメラ揺れ</label>
+            <div class="trigger-radio">
+              <label><input type="radio" name="effectCameraShakeTrigger" value="bass" checked>BD</label>
+              <label><input type="radio" name="effectCameraShakeTrigger" value="tempo">T</label>
+            </div>
+          </div>
+          <input type="range" id="effectCameraShake" min="0" max="1" step="0.1" value="0">
+          <span id="effectCameraShakeValue">0</span>
         </div>
-
-        <!-- ポストエフェクト系 -->
         <div class="setting-item">
-          <label>ひび割れ</label>
-          <input type="range" id="beatCrack" min="0" max="1" step="0.1" value="0">
-          <span id="beatCrackValue">0</span>
+          <div class="effect-header">
+            <label>カメラズーム</label>
+            <div class="trigger-radio">
+              <label><input type="radio" name="effectCameraZoomTrigger" value="bass" checked>BD</label>
+              <label><input type="radio" name="effectCameraZoomTrigger" value="tempo">T</label>
+            </div>
+          </div>
+          <input type="range" id="effectCameraZoom" min="0" max="1" step="0.1" value="0">
+          <span id="effectCameraZoomValue">0</span>
         </div>
         <div class="setting-item">
-          <label>グリッチ</label>
-          <input type="range" id="beatGlitch" min="0" max="1" step="0.1" value="0">
-          <span id="beatGlitchValue">0</span>
+          <div class="effect-header">
+            <label>フラッシュ</label>
+            <div class="trigger-radio">
+              <label><input type="radio" name="effectFlashTrigger" value="bass" checked>BD</label>
+              <label><input type="radio" name="effectFlashTrigger" value="tempo">T</label>
+            </div>
+          </div>
+          <input type="range" id="effectFlash" min="0" max="1" step="0.1" value="0">
+          <span id="effectFlashValue">0</span>
+        </div>
+        <div class="setting-item">
+          <div class="effect-header">
+            <label>ブラー</label>
+            <div class="trigger-radio">
+              <label><input type="radio" name="effectBlurTrigger" value="bass" checked>BD</label>
+              <label><input type="radio" name="effectBlurTrigger" value="tempo">T</label>
+            </div>
+          </div>
+          <input type="range" id="effectBlur" min="0" max="1" step="0.1" value="0">
+          <span id="effectBlurValue">0</span>
+        </div>
+        <div class="setting-item">
+          <div class="effect-header">
+            <label>ひび割れ</label>
+            <div class="trigger-radio">
+              <label><input type="radio" name="effectCrackTrigger" value="bass" checked>BD</label>
+              <label><input type="radio" name="effectCrackTrigger" value="tempo">T</label>
+            </div>
+          </div>
+          <input type="range" id="effectCrack" min="0" max="1" step="0.1" value="0">
+          <span id="effectCrackValue">0</span>
+        </div>
+        <div class="setting-item">
+          <div class="effect-header">
+            <label>グリッチ</label>
+            <div class="trigger-radio">
+              <label><input type="radio" name="effectGlitchTrigger" value="bass" checked>BD</label>
+              <label><input type="radio" name="effectGlitchTrigger" value="tempo">T</label>
+            </div>
+          </div>
+          <input type="range" id="effectGlitch" min="0" max="1" step="0.1" value="0">
+          <span id="effectGlitchValue">0</span>
         </div>
       </div>
     </div>
