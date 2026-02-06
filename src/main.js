@@ -44,11 +44,14 @@ let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用�
 let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
 let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
 let backWallX = 500;    // 奥側画像のX位置（共有用）
+let audioElement = null; // 音源再生用オーディオ要素
 
 // 表示設定
 const settings = {
   rippleEnabled: true,
-  gridEnabled: true,
+  gridOpacity: 0.5,
+  gridColor: '#444444',
+  gridSize: 500,
   bounceScale: 1,
   bounceDuration: 0.2,
   popIconScale: 3,
@@ -198,6 +201,7 @@ const CONFIG = {
   // ノートの見た目
   noteHeight: 0.8,      // ノートの高さ（Y方向の厚み）
   noteDepth: 1,         // ノートの奥行き（Z方向）
+  noteOpacity: 0.85,    // ノートの透明度
 
   // カメラ
   cameraDistance: 100,
@@ -536,8 +540,19 @@ function setupThreeJS() {
   scene.add(skyDome);
 
   // グリッド（床 / 地面）
-  gridHelper = new THREE.GridHelper(500, 50, 0x444444, 0x333333);
+  const gridColor = new THREE.Color(settings.gridColor);
+  gridHelper = new THREE.GridHelper(settings.gridSize, 50, gridColor, gridColor);
   gridHelper.position.y = -50; // 地面の位置（初期値、MIDI読み込み時に調整）
+  // グリッドの透明度対応（materialは配列）
+  if (Array.isArray(gridHelper.material)) {
+    gridHelper.material.forEach(mat => {
+      mat.transparent = true;
+      mat.opacity = settings.gridOpacity;
+    });
+  } else {
+    gridHelper.material.transparent = true;
+    gridHelper.material.opacity = settings.gridOpacity;
+  }
   scene.add(gridHelper);
 
   // 床画像用平面（初期は非表示）
@@ -822,6 +837,52 @@ function setupEventListeners() {
     }
   });
 
+  // 音源ファイル選択
+  const audioInput = document.getElementById('audioInput');
+  const audioFileName = document.getElementById('audioFileName');
+
+  audioFileName.addEventListener('click', () => audioInput.click());
+
+  audioInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      audioFileName.textContent = file.name;
+      loadAudio(file);
+    }
+  });
+
+  // 音源ドロップゾーン
+  const audioDropZone = document.getElementById('audioDropZone');
+
+  audioDropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    audioDropZone.classList.add('drag-over');
+  });
+
+  audioDropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    audioDropZone.classList.remove('drag-over');
+  });
+
+  audioDropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    audioDropZone.classList.remove('drag-over');
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith('audio/')) {
+        document.getElementById('audioFileName').textContent = file.name;
+        loadAudio(file);
+      } else {
+        console.warn('音声ファイルをドロップしてください');
+      }
+    }
+  });
+
   // ============================================
   // 表示設定のイベントリスナー
   // ============================================
@@ -852,6 +913,7 @@ function setupEventListeners() {
   noteOpacityInput.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     noteOpacityValue.textContent = value;
+    CONFIG.noteOpacity = value;
     updateNoteOpacity(value);
   });
 
@@ -964,12 +1026,49 @@ function setupEventListeners() {
     }
   });
 
-  // グリッド表示
-  const gridEnabledInput = document.getElementById('gridEnabled');
-  gridEnabledInput.addEventListener('change', (e) => {
-    settings.gridEnabled = e.target.checked;
+  // グリッド透明度
+  const gridOpacityInput = document.getElementById('gridOpacity');
+  const gridOpacityValue = document.getElementById('gridOpacityValue');
+  gridOpacityInput.addEventListener('input', (e) => {
+    settings.gridOpacity = parseFloat(e.target.value);
+    gridOpacityValue.textContent = settings.gridOpacity.toFixed(1);
     if (gridHelper) {
-      gridHelper.visible = settings.gridEnabled;
+      const mats = Array.isArray(gridHelper.material) ? gridHelper.material : [gridHelper.material];
+      mats.forEach(mat => { mat.opacity = settings.gridOpacity; });
+      gridHelper.visible = settings.gridOpacity > 0;
+    }
+  });
+
+  // グリッド色
+  const gridColorInput = document.getElementById('gridColor');
+  gridColorInput.addEventListener('input', (e) => {
+    settings.gridColor = e.target.value;
+    if (gridHelper) {
+      const color = new THREE.Color(settings.gridColor);
+      const mats = Array.isArray(gridHelper.material) ? gridHelper.material : [gridHelper.material];
+      mats.forEach(mat => { mat.color.set(color); });
+    }
+  });
+
+  // グリッド大きさ
+  const gridSizeInput = document.getElementById('gridSize');
+  const gridSizeValue = document.getElementById('gridSizeValue');
+  gridSizeInput.addEventListener('input', (e) => {
+    settings.gridSize = parseInt(e.target.value);
+    gridSizeValue.textContent = settings.gridSize;
+    if (gridHelper) {
+      const oldY = gridHelper.position.y;
+      scene.remove(gridHelper);
+      const color = new THREE.Color(settings.gridColor);
+      gridHelper = new THREE.GridHelper(settings.gridSize, 50, color, color);
+      gridHelper.position.y = oldY;
+      const mats = Array.isArray(gridHelper.material) ? gridHelper.material : [gridHelper.material];
+      mats.forEach(mat => {
+        mat.transparent = true;
+        mat.opacity = settings.gridOpacity;
+      });
+      gridHelper.visible = settings.gridOpacity > 0;
+      scene.add(gridHelper);
     }
   });
 
@@ -1626,6 +1725,23 @@ async function loadMidi(file) {
   camera.updateProjectionMatrix();
 }
 
+// 音源ファイルの読み込み
+function loadAudio(file) {
+  // 既存のオーディオ要素があれば停止・削除
+  if (audioElement) {
+    audioElement.pause();
+    audioElement.src = '';
+    audioElement = null;
+  }
+
+  // 新しいオーディオ要素を作成
+  audioElement = new Audio();
+  audioElement.src = URL.createObjectURL(file);
+  audioElement.load();
+
+  console.log(`Audio loaded: ${file.name}`);
+}
+
 // ============================================
 // トラックパネルUI
 // ============================================
@@ -1918,7 +2034,7 @@ function createNoteObjects() {
       const material = new THREE.MeshPhongMaterial({
         color: color,
         transparent: true,
-        opacity: 0.85,
+        opacity: CONFIG.noteOpacity,
       });
 
       const mesh = new THREE.Mesh(geometry, material);
@@ -2355,11 +2471,10 @@ function triggerBassDrumEffects(velocity = 1) {
 function triggerBassZoom(velocity = 1) {
   if (!camera) return;
   const intensity = effects.cameraZoom.intensity * velocity;
-  const originalFOV = camera.fov;
-  camera.fov = originalFOV * (1 - intensity * 0.1);
+  camera.fov = beatEffectState.originalFOV * (1 - intensity * 0.1);
   camera.updateProjectionMatrix();
   setTimeout(() => {
-    camera.fov = originalFOV;
+    camera.fov = beatEffectState.originalFOV;
     camera.updateProjectionMatrix();
   }, 100);
 }
@@ -3417,11 +3532,20 @@ function play() {
   state.isPlaying = true;
   state.lastFrameTime = performance.now();
   document.getElementById('playBtn').textContent = '⏸ 一時停止';
+  // 音源を再生
+  if (audioElement) {
+    audioElement.currentTime = state.currentTime;
+    audioElement.play();
+  }
 }
 
 function pause() {
   state.isPlaying = false;
   document.getElementById('playBtn').textContent = '▶ 再生';
+  // 音源を一時停止
+  if (audioElement) {
+    audioElement.pause();
+  }
 }
 
 function stop() {
@@ -3430,12 +3554,21 @@ function stop() {
   state.triggeredNotes.clear();
   document.getElementById('playBtn').textContent = '▶ 再生';
   updateTimeDisplay();
+  // 音源を停止・最初に戻す
+  if (audioElement) {
+    audioElement.pause();
+    audioElement.currentTime = 0;
+  }
 }
 
 function reset() {
   state.currentTime = 0;
   state.triggeredNotes.clear();
   updateTimeDisplay();
+  // 音源を最初に戻す
+  if (audioElement) {
+    audioElement.currentTime = 0;
+  }
 }
 
 // ============================================

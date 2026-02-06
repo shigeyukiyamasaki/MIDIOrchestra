@@ -9,10 +9,17 @@
 <body>
   <!-- コントロールパネル -->
   <div id="controls">
-    <div class="control-group" id="midiDropZone">
-      <label>MIDI</label>
-      <input type="file" id="midiInput" accept=".mid,.midi">
-      <span id="midiFileName">未選択（ドロップ可）</span>
+    <div class="control-group file-inputs">
+      <div id="midiDropZone" class="file-row">
+        <label>MIDI</label>
+        <input type="file" id="midiInput" accept=".mid,.midi">
+        <span id="midiFileName">未選択（ドロップ可）</span>
+      </div>
+      <div id="audioDropZone" class="file-row">
+        <label>音源</label>
+        <input type="file" id="audioInput" accept="audio/*">
+        <span id="audioFileName">未選択（ドロップ可）</span>
+      </div>
     </div>
     <div class="control-group">
       <button id="playBtn" disabled>▶ 再生</button>
@@ -34,81 +41,7 @@
 
   <!-- 設定パネルコンテナ（2列） -->
   <div id="settings-container">
-    <!-- 表示設定パネル（左列） -->
-    <div id="settings-panel" class="settings-column">
-      <h3>表示設定</h3>
-      <div id="settings-list">
-        <!-- ノート -->
-        <div class="setting-category">ノート</div>
-        <div class="setting-item">
-          <label>太さ</label>
-          <input type="range" id="noteHeight" min="0.3" max="3" step="0.1" value="0.8">
-          <span id="noteHeightValue">0.8</span>
-        </div>
-        <div class="setting-item">
-          <label>奥行き</label>
-          <input type="range" id="noteDepth" min="1" max="10" step="0.5" value="1">
-          <span id="noteDepthValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="noteOpacity" min="0.1" max="1" step="0.05" value="0.85">
-          <span id="noteOpacityValue">0.85</span>
-        </div>
-
-        <!-- レイアウト -->
-        <div class="setting-category">レイアウト</div>
-        <div class="setting-item">
-          <label>トラック間隔</label>
-          <input type="range" id="trackSpacing" min="1" max="30" step="0.5" value="6">
-          <span id="trackSpacingValue">6</span>
-        </div>
-        <div class="setting-item">
-          <label>時間スケール</label>
-          <input type="range" id="timeScale" min="10" max="100" step="5" value="50">
-          <span id="timeScaleValue">50</span>
-        </div>
-        <div class="setting-item">
-          <label>Y軸スケール</label>
-          <input type="range" id="pitchScale" min="0.5" max="10" step="0.1" value="1">
-          <span id="pitchScaleValue">1</span>
-        </div>
-
-        <!-- タイムライン -->
-        <div class="setting-category">タイムライン</div>
-        <div class="setting-item">
-          <label>幕の透明度</label>
-          <input type="range" id="timelineOpacity" min="0" max="0.5" step="0.05" value="0.25">
-          <span id="timelineOpacityValue">0.25</span>
-        </div>
-        <div class="setting-item">
-          <label>幕の色</label>
-          <input type="color" id="timelineColor" value="#ff4444">
-        </div>
-
-        <!-- 表示 -->
-        <div class="setting-category">表示</div>
-        <div class="setting-item">
-          <label>背景色（上）</label>
-          <input type="color" id="bgColorTop" value="#1a1a2e">
-        </div>
-        <div class="setting-item">
-          <label>背景色（下）</label>
-          <input type="color" id="bgColorBottom" value="#0a0a15">
-        </div>
-        <div class="setting-item">
-          <button id="bgColorSwap" style="padding: 4px 8px; font-size: 11px;">↕ 上下入替</button>
-        </div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="gridEnabled" checked>
-            グリッド表示
-          </label>
-        </div>
-      </div>
-    </div>
-
-    <!-- カメラ設定パネル（中央列） -->
+    <!-- カメラ設定パネル（左列） -->
     <div id="camera-panel" class="settings-column">
       <h3>カメラ設定</h3>
       <div id="camera-list">
@@ -347,6 +280,7 @@
 
   <!-- 画像配置パネル（メインエリア上部） -->
   <div id="image-panel">
+    <h3>画像設定</h3>
     <div id="image-list">
       <!-- スカイドーム（背景） -->
       <div class="image-section">
@@ -445,6 +379,92 @@
 
   <!-- Three.js キャンバス -->
   <div id="canvas-container"></div>
+
+  <!-- 表示設定パネル（プレビュー下段・横並び） -->
+  <div id="display-settings-panel">
+    <h3>表示設定</h3>
+    <div class="sections-row">
+    <div class="display-section">
+      <div class="setting-category">ノート</div>
+      <div class="setting-item">
+        <label>太さ</label>
+        <input type="range" id="noteHeight" min="0.3" max="3" step="0.1" value="0.8">
+        <span id="noteHeightValue">0.8</span>
+      </div>
+      <div class="setting-item">
+        <label>奥行き</label>
+        <input type="range" id="noteDepth" min="1" max="10" step="0.5" value="1">
+        <span id="noteDepthValue">1</span>
+      </div>
+      <div class="setting-item">
+        <label>透明度</label>
+        <input type="range" id="noteOpacity" min="0.1" max="1" step="0.05" value="0.85">
+        <span id="noteOpacityValue">0.85</span>
+      </div>
+    </div>
+    <div class="display-section">
+      <div class="setting-category">レイアウト</div>
+      <div class="setting-item">
+        <label>トラック間隔</label>
+        <input type="range" id="trackSpacing" min="1" max="30" step="0.5" value="6">
+        <span id="trackSpacingValue">6</span>
+      </div>
+      <div class="setting-item">
+        <label>時間スケール</label>
+        <input type="range" id="timeScale" min="10" max="300" step="5" value="50">
+        <span id="timeScaleValue">50</span>
+      </div>
+      <div class="setting-item">
+        <label>Y軸スケール</label>
+        <input type="range" id="pitchScale" min="0.5" max="10" step="0.1" value="1">
+        <span id="pitchScaleValue">1</span>
+      </div>
+    </div>
+    <div class="display-section">
+      <div class="setting-category">タイムライン</div>
+      <div class="setting-item">
+        <label>幕の透明度</label>
+        <input type="range" id="timelineOpacity" min="0" max="0.5" step="0.05" value="0.25">
+        <span id="timelineOpacityValue">0.25</span>
+      </div>
+      <div class="setting-item">
+        <label>幕の色</label>
+        <input type="color" id="timelineColor" value="#ff4444">
+      </div>
+    </div>
+    <div class="display-section">
+      <div class="setting-category">表示</div>
+      <div class="setting-item">
+        <label>背景色（上）</label>
+        <input type="color" id="bgColorTop" value="#1a1a2e">
+      </div>
+      <div class="setting-item">
+        <label>背景色（下）</label>
+        <input type="color" id="bgColorBottom" value="#0a0a15">
+      </div>
+      <div class="setting-item">
+        <button id="bgColorSwap" style="padding: 4px 8px; font-size: 11px;">↕ 上下入替</button>
+      </div>
+    </div>
+    <div class="display-section">
+      <div class="setting-category">グリッド</div>
+      <div class="setting-item">
+        <label>透明度</label>
+        <input type="range" id="gridOpacity" min="0" max="1" step="0.1" value="0.5">
+        <span id="gridOpacityValue">0.5</span>
+      </div>
+      <div class="setting-item">
+        <label>大きさ</label>
+        <input type="range" id="gridSize" min="100" max="2000" step="100" value="500">
+        <span id="gridSizeValue">500</span>
+      </div>
+      <div class="setting-item">
+        <label>色</label>
+        <input type="color" id="gridColor" value="#444444">
+      </div>
+    </div>
+    </div>
+  </div>
 
   <!-- トラック情報パネル（右） -->
   <div id="track-panel">

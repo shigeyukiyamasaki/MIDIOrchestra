@@ -17,7 +17,8 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  height: 100px;
+  padding-top: 10px;
   background: rgba(0, 0, 0, 0.8);
   display: flex;
   align-items: center;
@@ -52,26 +53,33 @@ body {
 }
 
 .control-group label:has(+ input[type="file"]),
-#midiFileName {
+#midiFileName,
+#audioFileName {
   padding: 8px 16px;
   background: #2d2d44;
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
-}
-
-#midiFileName {
   color: #888;
   min-width: 150px;
 }
 
-#midiDropZone {
-  transition: all 0.2s ease;
-  border-radius: 4px;
-  padding: 5px 10px;
+.file-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-#midiDropZone.drag-over {
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  padding: 2px 10px;
+}
+
+.file-row.drag-over {
   background: rgba(79, 195, 247, 0.2);
   outline: 2px dashed #4fc3f7;
 }
@@ -115,9 +123,9 @@ button:disabled {
 /* 設定パネルコンテナ（3列） */
 #settings-container {
   position: fixed;
-  top: 60px;
+  top: 100px;
   right: 0;
-  width: 540px;
+  width: 360px;
   bottom: 0;
   display: flex;
   z-index: 50;
@@ -136,16 +144,26 @@ button:disabled {
 /* 画像パネル（メインエリア上部・横並び） */
 #image-panel {
   position: fixed;
-  top: 60px;
+  top: 100px;
   left: 320px;
-  right: 540px;
-  height: 220px;
+  right: 360px;
+  height: 280px;
   background: rgba(0, 0, 0, 0.8);
   z-index: 40;
   border-bottom: 1px solid #333;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   padding: 15px;
+  display: flex;
+  flex-direction: column;
+}
+
+#image-panel h3 {
+  font-size: 14px;
+  color: #888;
+  margin: 0 0 10px 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
 }
 
 #image-panel #image-list {
@@ -153,12 +171,13 @@ button:disabled {
   flex-direction: row !important;
   flex-wrap: nowrap !important;
   gap: 20px;
-  height: 100%;
-  width: max-content;
+  flex: 1;
+  overflow-x: auto;
 }
 
 #image-panel .image-section {
-  flex: 0 0 auto !important;
+  flex: 1;
+  min-width: 140px;
   margin-bottom: 0 !important;
 }
 
@@ -205,8 +224,8 @@ button:disabled {
 }
 
 .image-row .drop-zone {
-  width: 90px;
-  min-width: 90px;
+  flex: 1;
+  min-width: 60px;
   padding: 8px;
 }
 
@@ -235,7 +254,7 @@ button:disabled {
 }
 
 .control-row input[type="range"] {
-  width: 120px;
+  width: 100%;
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
@@ -268,7 +287,7 @@ button:disabled {
 }
 
 .clear-btn-small {
-  width: 120px;
+  width: 100%;
   padding: 4px 8px;
   background: #5a3d3d;
   font-size: 10px;
@@ -294,7 +313,7 @@ button:disabled {
 /* オーケストラ配置エリア */
 #orchestra-area {
   position: fixed;
-  top: 60px;
+  top: 100px;
   left: 200px;
   right: 280px;
   height: 180px;
@@ -380,15 +399,53 @@ button:disabled {
 /* キャンバスコンテナ */
 #canvas-container {
   position: fixed;
-  top: 280px;
+  top: 340px;
   left: 320px;
-  right: 540px;
-  bottom: 0;
+  right: 360px;
+  bottom: 260px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #000;
 }
+
+/* 表示設定パネル（プレビュー下段） */
+#display-settings-panel {
+  position: fixed;
+  bottom: 0;
+  left: 320px;
+  right: 360px;
+  height: 260px;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  z-index: 40;
+}
+
+#display-settings-panel h3 {
+  font-size: 14px;
+  color: #888;
+  margin: 0 0 10px 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #333;
+}
+
+#display-settings-panel .sections-row {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  overflow-x: auto;
+}
+
+#display-settings-panel .display-section {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 
 #canvas-container.aspect-locked canvas {
   max-width: 100%;
@@ -398,7 +455,7 @@ button:disabled {
 /* トラックパネル（左） */
 #track-panel {
   position: fixed;
-  top: 60px;
+  top: 100px;
   left: 0;
   width: 320px;
   bottom: 0;
