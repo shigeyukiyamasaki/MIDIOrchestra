@@ -114,6 +114,49 @@ let flashEffectState = {
   startTime: 0,
   originalOpacity: 0,
 };
+
+// テンポ・ビート連動エフェクト
+let tempoInfo = {
+  bpm: 120,
+  beatDuration: 0.5, // 1拍の長さ（秒）
+  lastBeatTime: 0,
+  currentBeat: 0,
+  beatsPerBar: 4,
+};
+
+// ビート連動エフェクト設定
+const beatEffects = {
+  // カメラ系
+  cameraVibration: { enabled: false, intensity: 2 },      // 拍ごとの微振動
+  cameraZoom: { enabled: false, intensity: 0.05 },        // ズームイン/アウト
+  cameraRotation: { enabled: false, intensity: 0.02 },    // 回転・旋回
+
+  // 光・色系
+  beatFlash: { enabled: false, intensity: 0.5 },          // 拍ごとのフラッシュ
+  backgroundPulse: { enabled: false, intensity: 0.3 },    // 背景色のパルス
+  colorShift: { enabled: false, intensity: 30 },          // 色相シフト
+  strobe: { enabled: false, intensity: 1 },               // ストロボ効果
+
+  // 空間系
+  gridPulse: { enabled: false, intensity: 0.2 },          // グリッドの脈動
+  spacePulse: { enabled: false, intensity: 0.05 },        // 空間の拡大/収縮
+
+  // ポストエフェクト系
+  beatBlur: { enabled: false, intensity: 3 },             // ビートでブラー
+  vignette: { enabled: false, intensity: 0.5 },           // 周辺減光
+  crack: { enabled: false, intensity: 0.5 },              // ひび割れ
+  glitch: { enabled: false, intensity: 0.5 },             // グリッチ
+};
+
+// ビートエフェクト状態
+let beatEffectState = {
+  phase: 0, // 0-1のビート位相
+  barPhase: 0, // 0-1の小節位相
+  originalCameraPos: null,
+  originalFOV: 60,
+  vignetteOverlay: null,
+  chromaticEnabled: false,
+};
 let fadeOverlay = null; // フェード用オーバーレイ
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
@@ -939,6 +982,88 @@ function setupEventListeners() {
     flashEffectIntensity = value;
   });
 
+  // ビート連動エフェクトのイベントリスナー（スライダー）
+
+  // カメラ振動
+  document.getElementById('beatCameraVibration').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatCameraVibrationValue').textContent = value;
+    beatEffects.cameraVibration.enabled = value > 0;
+    beatEffects.cameraVibration.intensity = value * 5;
+  });
+
+  // カメラズーム
+  document.getElementById('beatCameraZoom').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatCameraZoomValue').textContent = value;
+    beatEffects.cameraZoom.enabled = value > 0;
+    beatEffects.cameraZoom.intensity = value * 0.1;
+  });
+
+  // カメラ回転
+  document.getElementById('beatCameraRotation').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatCameraRotationValue').textContent = value;
+    beatEffects.cameraRotation.enabled = value > 0;
+    beatEffects.cameraRotation.intensity = value * 0.15;
+  });
+
+  // ビートフラッシュ
+  document.getElementById('beatFlash').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatFlashValue').textContent = value;
+    beatEffects.beatFlash.enabled = value > 0;
+    beatEffects.beatFlash.intensity = value * 0.8;
+  });
+
+  // 背景パルス
+  document.getElementById('beatBackgroundPulse').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatBackgroundPulseValue').textContent = value;
+    beatEffects.backgroundPulse.enabled = value > 0;
+    beatEffects.backgroundPulse.intensity = value * 0.5;
+  });
+
+  // カラーシフト
+  document.getElementById('beatColorShift').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatColorShiftValue').textContent = value;
+    beatEffects.colorShift.enabled = value > 0;
+    beatEffects.colorShift.intensity = value * 60;
+  });
+
+  // ストロボ
+  document.getElementById('beatStrobe').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatStrobeValue').textContent = value;
+    beatEffects.strobe.enabled = value > 0;
+    beatEffects.strobe.intensity = value;
+  });
+
+  // 空間パルス
+  document.getElementById('beatSpacePulse').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatSpacePulseValue').textContent = value;
+    beatEffects.spacePulse.enabled = value > 0;
+    beatEffects.spacePulse.intensity = value * 0.1;
+  });
+
+  // ひび割れ
+  document.getElementById('beatCrack').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatCrackValue').textContent = value;
+    beatEffects.crack.enabled = value > 0;
+    beatEffects.crack.intensity = value;
+  });
+
+  // グリッチ
+  document.getElementById('beatGlitch').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('beatGlitchValue').textContent = value;
+    beatEffects.glitch.enabled = value > 0;
+    beatEffects.glitch.intensity = value;
+  });
+
   // 自動カメラ切り替え
   const autoCameraEnabledInput = document.getElementById('autoCameraEnabled');
   autoCameraEnabledInput.addEventListener('change', (e) => {
@@ -1344,7 +1469,18 @@ async function loadMidi(file) {
   state.currentTime = 0;
   state.isPlaying = false;
 
-  console.log('MIDI loaded:', midi.name, 'Tracks:', midi.tracks.length);
+  // テンポ情報を取得
+  if (midi.header.tempos && midi.header.tempos.length > 0) {
+    tempoInfo.bpm = midi.header.tempos[0].bpm;
+  } else {
+    tempoInfo.bpm = 120; // デフォルト
+  }
+  tempoInfo.beatDuration = 60 / tempoInfo.bpm;
+  tempoInfo.beatsPerBar = midi.header.timeSignatures?.[0]?.timeSignature?.[0] || 4;
+  tempoInfo.lastBeatTime = 0;
+  tempoInfo.currentBeat = 0;
+
+  console.log('MIDI loaded:', midi.name, 'Tracks:', midi.tracks.length, 'BPM:', tempoInfo.bpm);
 
   // トラック情報を抽出（楽器を自動推定）
   state.tracks = midi.tracks.map((track, index) => {
@@ -2226,6 +2362,356 @@ function updateFlashEffect() {
 }
 
 // ============================================
+// ビート連動エフェクト
+// ============================================
+
+function updateBeatPhase() {
+  if (!state.isPlaying || !state.midi) return;
+
+  const currentTime = state.currentTime;
+  const beatDuration = tempoInfo.beatDuration;
+
+  // ビート位相（0-1）を計算
+  beatEffectState.phase = (currentTime % beatDuration) / beatDuration;
+
+  // 小節位相（0-1）を計算
+  const barDuration = beatDuration * tempoInfo.beatsPerBar;
+  beatEffectState.barPhase = (currentTime % barDuration) / barDuration;
+
+  // 新しいビートを検出
+  const newBeat = Math.floor(currentTime / beatDuration);
+  if (newBeat !== tempoInfo.currentBeat) {
+    tempoInfo.currentBeat = newBeat;
+    onBeat(newBeat);
+  }
+}
+
+function onBeat(beatNumber) {
+  // 小節の頭かどうか
+  const isBarStart = beatNumber % tempoInfo.beatsPerBar === 0;
+
+  // 各エフェクトのトリガー
+  if (beatEffects.beatFlash.enabled) {
+    triggerBeatFlash();
+  }
+  if (beatEffects.strobe.enabled) {
+    triggerStrobe();
+  }
+  if (isBarStart && beatEffects.colorShift.enabled) {
+    triggerColorShift();
+  }
+}
+
+function updateBeatEffects() {
+  if (!state.isPlaying) return;
+
+  const phase = beatEffectState.phase;
+  const easePhase = 1 - phase; // 減衰用（ビート直後が1、次のビート直前が0）
+
+  // カメラ微振動
+  if (beatEffects.cameraVibration.enabled && camera && !cameraShakeState.active) {
+    const intensity = beatEffects.cameraVibration.intensity * easePhase * easePhase;
+    if (intensity > 0.1) {
+      const offsetX = (Math.random() - 0.5) * intensity;
+      const offsetY = (Math.random() - 0.5) * intensity;
+      camera.position.x += offsetX;
+      camera.position.y += offsetY;
+    }
+  }
+
+  // カメラズーム
+  if (beatEffects.cameraZoom.enabled && camera) {
+    const zoomAmount = Math.sin(phase * Math.PI) * beatEffects.cameraZoom.intensity;
+    camera.fov = beatEffectState.originalFOV * (1 - zoomAmount);
+    camera.updateProjectionMatrix();
+  }
+
+  // カメラ回転（ロール回転）
+  if (beatEffects.cameraRotation.enabled && camera) {
+    const rotAmount = Math.sin(beatEffectState.barPhase * Math.PI * 2) * beatEffects.cameraRotation.intensity;
+    // カメラのZ軸回転（ロール）- OrbitControlsと共存するため、upベクトルを回転
+    const angle = rotAmount * Math.PI;
+    camera.up.set(Math.sin(angle), Math.cos(angle), 0);
+  } else if (camera) {
+    // 無効時はupベクトルをリセット
+    camera.up.set(0, 1, 0);
+  }
+
+  // 背景パルス
+  if (beatEffects.backgroundPulse.enabled && scene) {
+    const pulseAmount = easePhase * beatEffects.backgroundPulse.intensity;
+    const baseColor = new THREE.Color(0x1a1a2e);
+    const pulseColor = baseColor.clone().multiplyScalar(1 + pulseAmount);
+    scene.background = pulseColor;
+  }
+
+  // グリッドパルス
+  if (beatEffects.gridPulse.enabled && gridHelper) {
+    const scale = 1 + Math.sin(phase * Math.PI) * beatEffects.gridPulse.intensity;
+    gridHelper.scale.set(scale, scale, scale);
+  }
+
+  // 空間パルス
+  if (beatEffects.spacePulse.enabled && camera) {
+    const fovChange = Math.sin(phase * Math.PI * 2) * beatEffects.spacePulse.intensity * 10;
+    camera.fov = beatEffectState.originalFOV + fovChange;
+    camera.updateProjectionMatrix();
+  }
+
+  // ビートブラー
+  if (beatEffects.beatBlur.enabled && renderer) {
+    const blurAmount = easePhase * easePhase * beatEffects.beatBlur.intensity;
+    if (blurAmount > 0.1) {
+      renderer.domElement.style.filter = `blur(${blurAmount}px)`;
+    } else {
+      renderer.domElement.style.filter = '';
+    }
+  }
+
+  // ビネット
+  if (beatEffects.vignette.enabled) {
+    updateVignette(easePhase);
+  }
+
+  // ひび割れ
+  if (beatEffects.crack.enabled) {
+    const amount = easePhase * beatEffects.crack.intensity;
+    updateCrackEffect(amount);
+  } else {
+    updateCrackEffect(0);
+  }
+
+  // グリッチ
+  if (beatEffects.glitch.enabled) {
+    const amount = easePhase * beatEffects.glitch.intensity;
+    updateGlitchEffect(amount);
+  } else {
+    updateGlitchEffect(0);
+  }
+}
+
+// ひび割れエフェクト
+let crackPattern = null; // ひび割れパターンをキャッシュ
+
+function updateCrackEffect(amount) {
+  if (!renderer || !renderer.domElement) return;
+  const canvas = renderer.domElement;
+  const container = canvas.parentElement;
+  if (!container) return;
+
+  let crackCanvas = document.getElementById('crackOverlay');
+
+  if (amount > 0.1) {
+    if (!crackCanvas) {
+      crackCanvas = document.createElement('canvas');
+      crackCanvas.id = 'crackOverlay';
+      crackCanvas.style.cssText = `
+        position: absolute;
+        pointer-events: none;
+      `;
+      container.appendChild(crackCanvas);
+    }
+
+    // キャンバス（アスペクト範囲）の位置とサイズに合わせる
+    const rect = canvas.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    crackCanvas.style.left = (rect.left - containerRect.left) + 'px';
+    crackCanvas.style.top = (rect.top - containerRect.top) + 'px';
+    crackCanvas.style.width = rect.width + 'px';
+    crackCanvas.style.height = rect.height + 'px';
+
+    if (crackCanvas.width !== rect.width || crackCanvas.height !== rect.height) {
+      crackCanvas.width = rect.width;
+      crackCanvas.height = rect.height;
+      crackPattern = null; // サイズ変更時にパターン再生成
+    }
+
+    const ctx = crackCanvas.getContext('2d');
+    ctx.clearRect(0, 0, crackCanvas.width, crackCanvas.height);
+
+    // ビートごとに新しいひび割れパターンを生成
+    if (!crackPattern || Math.random() < 0.3) {
+      crackPattern = generateCrackPattern(crackCanvas.width, crackCanvas.height, amount);
+    }
+
+    // ひび割れを描画
+    ctx.strokeStyle = `rgba(255, 255, 255, ${amount * 0.8})`;
+    ctx.lineWidth = 1 + amount * 2;
+    ctx.lineCap = 'round';
+
+    crackPattern.forEach(crack => {
+      ctx.beginPath();
+      ctx.moveTo(crack.startX, crack.startY);
+      crack.points.forEach(point => {
+        ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+    });
+
+    crackCanvas.style.opacity = '1';
+  } else {
+    if (crackCanvas) {
+      crackCanvas.style.opacity = '0';
+    }
+    crackPattern = null;
+  }
+}
+
+function generateCrackPattern(width, height, intensity) {
+  const cracks = [];
+  const crackCount = Math.floor(3 + intensity * 8);
+
+  for (let i = 0; i < crackCount; i++) {
+    // ランダムな開始点（画面の中央寄り）
+    const startX = width * (0.2 + Math.random() * 0.6);
+    const startY = height * (0.2 + Math.random() * 0.6);
+
+    const crack = {
+      startX,
+      startY,
+      points: []
+    };
+
+    // ひび割れの長さと方向
+    let x = startX;
+    let y = startY;
+    let angle = Math.random() * Math.PI * 2;
+    const segmentCount = 5 + Math.floor(intensity * 15);
+
+    for (let j = 0; j < segmentCount; j++) {
+      // 少しずつ方向を変えながら進む
+      angle += (Math.random() - 0.5) * 0.8;
+      const length = 10 + Math.random() * 30 * intensity;
+
+      x += Math.cos(angle) * length;
+      y += Math.sin(angle) * length;
+
+      crack.points.push({ x, y });
+
+      // 分岐
+      if (Math.random() < 0.3 * intensity && j > 2) {
+        const branchAngle = angle + (Math.random() - 0.5) * 1.5;
+        const branchLength = 5 + Math.random() * 20;
+        crack.points.push({
+          x: x + Math.cos(branchAngle) * branchLength,
+          y: y + Math.sin(branchAngle) * branchLength
+        });
+        crack.points.push({ x, y }); // 元に戻る
+      }
+    }
+
+    cracks.push(crack);
+  }
+
+  return cracks;
+}
+
+// グリッチエフェクト（映像乱れ）
+function updateGlitchEffect(amount) {
+  if (!renderer || !renderer.domElement) return;
+  const canvas = renderer.domElement;
+
+  if (amount > 0.2) {
+    // ランダムなスライス効果
+    const sliceCount = Math.floor(amount * 10);
+    let clipPath = '';
+
+    for (let i = 0; i < sliceCount; i++) {
+      const y1 = Math.random() * 100;
+      const y2 = y1 + Math.random() * 5;
+      const offsetX = (Math.random() - 0.5) * amount * 30;
+
+      if (i > 0) clipPath += ', ';
+      clipPath += `inset(${y1}% ${offsetX < 0 ? -offsetX : 0}px ${100 - y2}% ${offsetX > 0 ? offsetX : 0}px)`;
+    }
+
+    // RGBずれ + スキャンライン
+    const rgbShift = amount * 8;
+    canvas.style.textShadow = `${rgbShift}px 0 rgba(255,0,0,0.5), -${rgbShift}px 0 rgba(0,255,255,0.5)`;
+    canvas.style.filter = `contrast(${1 + amount * 0.3}) saturate(${1 + amount * 0.5})`;
+
+    // 一瞬の位置ずれ
+    if (Math.random() < amount * 0.3) {
+      canvas.style.transform = `translateX(${(Math.random() - 0.5) * amount * 20}px)`;
+    }
+  } else {
+    canvas.style.textShadow = '';
+    canvas.style.filter = '';
+    canvas.style.transform = '';
+  }
+}
+
+function triggerBeatFlash() {
+  // キャンバス（アスペクト範囲）内のフラッシュ
+  if (!renderer || !renderer.domElement) return;
+  const canvas = renderer.domElement;
+
+  let flashOverlay = document.getElementById('beatFlashOverlay');
+  if (!flashOverlay) {
+    flashOverlay = document.createElement('div');
+    flashOverlay.id = 'beatFlashOverlay';
+    flashOverlay.style.cssText = `
+      position: absolute;
+      background: white;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.1s ease-out;
+    `;
+    canvas.parentElement.appendChild(flashOverlay);
+  }
+
+  // キャンバスの位置とサイズに合わせる
+  const rect = canvas.getBoundingClientRect();
+  const containerRect = canvas.parentElement.getBoundingClientRect();
+  flashOverlay.style.left = (rect.left - containerRect.left) + 'px';
+  flashOverlay.style.top = (rect.top - containerRect.top) + 'px';
+  flashOverlay.style.width = rect.width + 'px';
+  flashOverlay.style.height = rect.height + 'px';
+
+  // フラッシュの強さに応じた透明度
+  const intensity = beatEffects.beatFlash.intensity;
+  flashOverlay.style.opacity = intensity;
+
+  // フェードアウト
+  setTimeout(() => {
+    flashOverlay.style.opacity = '0';
+  }, 50);
+}
+
+function triggerStrobe() {
+  if (!scene) return;
+  scene.background = new THREE.Color(0xffffff);
+  setTimeout(() => {
+    scene.background = new THREE.Color(0x1a1a2e);
+  }, 50);
+}
+
+function triggerColorShift() {
+  if (!scene) return;
+  const hue = (tempoInfo.currentBeat * beatEffects.colorShift.intensity) % 360;
+  const color = new THREE.Color().setHSL(hue / 360, 0.3, 0.1);
+  scene.background = color;
+}
+
+function updateVignette(intensity) {
+  if (!beatEffectState.vignetteOverlay) {
+    beatEffectState.vignetteOverlay = document.createElement('div');
+    beatEffectState.vignetteOverlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1000;
+    `;
+    document.body.appendChild(beatEffectState.vignetteOverlay);
+  }
+  const amount = intensity * beatEffects.vignette.intensity * 100;
+  beatEffectState.vignetteOverlay.style.boxShadow = `inset 0 0 ${amount}px rgba(0,0,0,0.8)`;
+}
+
+// ============================================
 // 設定適用ヘルパー関数
 // ============================================
 
@@ -3091,6 +3577,12 @@ function animate() {
 
   // フラッシュエフェクトの更新
   updateFlashEffect();
+
+  // ビート連動エフェクトの更新
+  if (state.isPlaying) {
+    updateBeatPhase();
+    updateBeatEffects();
+  }
 
   // カメラ位置スライダーの更新（スライダー操作中でない場合）
   updateCameraPositionSliders();
