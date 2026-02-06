@@ -46,6 +46,14 @@ let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
 let backWallX = 500;    // 奥側画像のX位置（共有用）
 let audioElement = null; // 音源再生用オーディオ要素
 
+// タイミング同期設定
+let syncConfig = { midiDelay: 0, audioDelay: 0 };
+let audioDelayTimer = null;
+let lastSyncCheck = 0; // 前回のドリフトチェック時刻
+
+// ユーザー設定の背景テクスチャ（エフェクト終了後の復元用）
+let userBackgroundTexture = null;
+
 // 表示設定
 const settings = {
   rippleEnabled: true,
@@ -96,7 +104,8 @@ let cameraShakeDuration = 0.15; // シェイクの持続時間（秒）
 let cameraShakeState = {
   active: false,
   startTime: 0,
-  originalPos: null,
+  offsetX: 0,
+  offsetY: 0,
 };
 
 // ブラーエフェクト設定（後方互換用）
@@ -733,6 +742,40 @@ function syncSelectableEffect(effectName) {
 }
 
 // ============================================
+// 背景グラデーション生成・復元
+// ============================================
+function createBackgroundGradientTexture(topHex, bottomHex) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+  gradient.addColorStop(0, topHex);
+  gradient.addColorStop(1, bottomHex);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 2, 512);
+  return new THREE.CanvasTexture(canvas);
+}
+
+function updateAndStoreBackground() {
+  const topColor = document.getElementById('bgColorTop').value;
+  const bottomColor = document.getElementById('bgColorBottom').value;
+  userBackgroundTexture = createBackgroundGradientTexture(topColor, bottomColor);
+  scene.background = userBackgroundTexture;
+}
+
+function restoreUserBackground() {
+  // スカイドームが表示中の場合は黒背景を維持
+  if (skyDome && skyDome.visible) {
+    scene.background = new THREE.Color(0x000000);
+    return;
+  }
+  if (userBackgroundTexture) {
+    scene.background = userBackgroundTexture;
+  }
+}
+
+// ============================================
 // イベントリスナー
 // ============================================
 function setupEventListeners() {
@@ -962,33 +1005,11 @@ function setupEventListeners() {
   const bgColorTopInput = document.getElementById('bgColorTop');
   const bgColorBottomInput = document.getElementById('bgColorBottom');
 
-  function updateBackgroundGradient() {
-    const topColor = bgColorTopInput.value;
-    const bottomColor = bgColorBottomInput.value;
-
-    // Canvasでグラデーションを描画
-    const canvas = document.createElement('canvas');
-    canvas.width = 2;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d');
-
-    const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-    gradient.addColorStop(0, topColor);
-    gradient.addColorStop(1, bottomColor);
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 2, 512);
-
-    // テクスチャを作成して背景に設定
-    const texture = new THREE.CanvasTexture(canvas);
-    scene.background = texture;
-  }
-
-  bgColorTopInput.addEventListener('input', updateBackgroundGradient);
-  bgColorBottomInput.addEventListener('input', updateBackgroundGradient);
+  bgColorTopInput.addEventListener('input', updateAndStoreBackground);
+  bgColorBottomInput.addEventListener('input', updateAndStoreBackground);
 
   // 初期グラデーションを適用
-  updateBackgroundGradient();
+  updateAndStoreBackground();
 
   // 背景色上下入替ボタン
   const bgColorSwapBtn = document.getElementById('bgColorSwap');
@@ -997,7 +1018,7 @@ function setupEventListeners() {
     const bottomColor = bgColorBottomInput.value;
     bgColorTopInput.value = bottomColor;
     bgColorBottomInput.value = topColor;
-    updateBackgroundGradient();
+    updateAndStoreBackground();
   });
 
   // 幕の色
@@ -1131,6 +1152,7 @@ function setupEventListeners() {
     effects.backgroundPulse.intensity = value;
     beatEffects.backgroundPulse.enabled = value > 0;
     beatEffects.backgroundPulse.intensity = value * 0.5;
+    if (value === 0) restoreUserBackground();
   });
 
   // テンポ専用: カラーシフト
@@ -1140,6 +1162,7 @@ function setupEventListeners() {
     effects.colorShift.intensity = value;
     beatEffects.colorShift.enabled = value > 0;
     beatEffects.colorShift.intensity = value * 60;
+    if (value === 0) restoreUserBackground();
   });
 
   // テンポ専用: 空間パルス
@@ -1158,6 +1181,7 @@ function setupEventListeners() {
     effects.strobe.intensity = value;
     beatEffects.strobe.enabled = value > 0;
     beatEffects.strobe.intensity = value;
+    if (value === 0) restoreUserBackground();
   });
 
   // === 選択式エフェクト（ラジオボタン）===
@@ -1632,6 +1656,22 @@ function setupEventListeners() {
       backWallPlane.scale.x = e.target.checked ? -1 : 1;
     }
   });
+
+  // MIDI遅延スライダー
+  const midiDelayInput = document.getElementById('midiDelay');
+  const midiDelayValue = document.getElementById('midiDelayValue');
+  midiDelayInput.addEventListener('input', (e) => {
+    syncConfig.midiDelay = parseFloat(e.target.value);
+    midiDelayValue.textContent = syncConfig.midiDelay.toFixed(2) + '秒';
+  });
+
+  // 音源遅延スライダー
+  const audioDelayInput = document.getElementById('audioDelay');
+  const audioDelayValue = document.getElementById('audioDelayValue');
+  audioDelayInput.addEventListener('input', (e) => {
+    syncConfig.audioDelay = parseFloat(e.target.value);
+    audioDelayValue.textContent = syncConfig.audioDelay.toFixed(2) + '秒';
+  });
 }
 
 // ============================================
@@ -1921,13 +1961,14 @@ function triggerIconPop(trackIndex) {
 // トラックリストのハイライト更新
 function updateOrchestraHighlights() {
   const currentTime = state.currentTime;
+  const md = syncConfig.midiDelay;
 
   // 各トラックが現在鳴っているかチェック
   const playingTrackNames = new Set();
 
   state.noteObjects.forEach(mesh => {
     const { trackIndex, startTime, endTime } = mesh.userData;
-    if (currentTime >= startTime && currentTime <= endTime) {
+    if (currentTime >= startTime + md && currentTime <= endTime + md) {
       const trackInfo = state.tracks[trackIndex];
       if (trackInfo) {
         playingTrackNames.add(trackInfo.name);
@@ -2197,13 +2238,14 @@ function create3DInstrumentIcons() {
 // 3Dアイコンのハイライト更新
 function update3DIconHighlights() {
   const currentTime = state.currentTime;
+  const md = syncConfig.midiDelay;
 
   // 各トラックが現在鳴っているかチェック
   const playingTracks = new Set();
 
   state.noteObjects.forEach(mesh => {
     const { trackIndex, startTime, endTime } = mesh.userData;
-    if (currentTime >= startTime && currentTime <= endTime) {
+    if (currentTime >= startTime + md && currentTime <= endTime + md) {
       playingTracks.add(trackIndex);
     }
   });
@@ -2389,13 +2431,14 @@ function updatePopIcons(delta) {
 
 function checkNoteRipples() {
   const currentTime = state.currentTime;
+  const md = syncConfig.midiDelay;
 
   state.noteObjects.forEach((mesh, index) => {
     const { startTime, originalColor, trackIndex } = mesh.userData;
     const noteId = index;
 
     // ノートがちょうどタイムラインを通過したとき（開始時）
-    if (!state.triggeredNotes.has(noteId) && currentTime >= startTime && currentTime < startTime + 0.05) {
+    if (!state.triggeredNotes.has(noteId) && currentTime >= startTime + md && currentTime < startTime + md + 0.05) {
       state.triggeredNotes.add(noteId);
 
       // 波紋エフェクト
@@ -2430,7 +2473,7 @@ function checkNoteRipples() {
     }
 
     // リセット用：ノートが再びタイムライン前に戻ったら
-    if (currentTime < startTime) {
+    if (currentTime < startTime + md) {
       state.triggeredNotes.delete(noteId);
     }
   });
@@ -2502,21 +2545,23 @@ function triggerCameraShake(velocity = 1) {
 
   cameraShakeState.active = true;
   cameraShakeState.startTime = performance.now();
-  cameraShakeState.originalPos = camera.position.clone();
   cameraShakeState.velocity = velocity; // ベロシティを保存
 }
 
-function updateCameraShake() {
-  if (!cameraShakeState.active || !camera) return;
+// シェイクオフセットを計算（カメラ位置は変更しない）
+function calculateCameraShakeOffset() {
+  if (!cameraShakeState.active || !camera) {
+    cameraShakeState.offsetX = 0;
+    cameraShakeState.offsetY = 0;
+    return;
+  }
 
   const elapsed = (performance.now() - cameraShakeState.startTime) / 1000;
 
   if (elapsed >= cameraShakeDuration) {
-    // シェイク終了、元の位置に戻す
-    if (cameraShakeState.originalPos) {
-      camera.position.copy(cameraShakeState.originalPos);
-    }
     cameraShakeState.active = false;
+    cameraShakeState.offsetX = 0;
+    cameraShakeState.offsetY = 0;
     return;
   }
 
@@ -2525,12 +2570,23 @@ function updateCameraShake() {
   const velocityScale = cameraShakeState.velocity || 1;
   const intensity = cameraShakeIntensity * decay * velocityScale;
 
-  const offsetX = (Math.random() - 0.5) * 2 * intensity;
-  const offsetY = (Math.random() - 0.5) * 2 * intensity;
+  cameraShakeState.offsetX = (Math.random() - 0.5) * 2 * intensity;
+  cameraShakeState.offsetY = (Math.random() - 0.5) * 2 * intensity;
+}
 
-  if (cameraShakeState.originalPos) {
-    camera.position.x = cameraShakeState.originalPos.x + offsetX;
-    camera.position.y = cameraShakeState.originalPos.y + offsetY;
+// シェイクオフセットをカメラに適用
+function applyCameraShakeOffset() {
+  if (camera && (cameraShakeState.offsetX !== 0 || cameraShakeState.offsetY !== 0)) {
+    camera.position.x += cameraShakeState.offsetX;
+    camera.position.y += cameraShakeState.offsetY;
+  }
+}
+
+// シェイクオフセットをカメラから除去
+function removeCameraShakeOffset() {
+  if (camera && (cameraShakeState.offsetX !== 0 || cameraShakeState.offsetY !== 0)) {
+    camera.position.x -= cameraShakeState.offsetX;
+    camera.position.y -= cameraShakeState.offsetY;
   }
 }
 
@@ -2617,17 +2673,22 @@ function updateBeatPhase() {
   if (!state.isPlaying || !state.midi) return;
 
   const currentTime = state.currentTime;
-  const beatDuration = tempoInfo.beatDuration;
+  const header = state.midi.header;
+  const ppq = header.ppq;
 
-  // ビート位相（0-1）を計算
-  beatEffectState.phase = (currentTime % beatDuration) / beatDuration;
+  // MIDIテンポマップに基づく正確なtick位置を取得
+  const currentTicks = header.secondsToTicks(currentTime);
+
+  // tick基準でビート位相（0-1）を計算（PPQ = 1拍のtick数）
+  const beatTicks = currentTicks % ppq;
+  beatEffectState.phase = beatTicks / ppq;
 
   // 小節位相（0-1）を計算
-  const barDuration = beatDuration * tempoInfo.beatsPerBar;
-  beatEffectState.barPhase = (currentTime % barDuration) / barDuration;
+  const barTicks = ppq * tempoInfo.beatsPerBar;
+  beatEffectState.barPhase = (currentTicks % barTicks) / barTicks;
 
-  // 新しいビートを検出
-  const newBeat = Math.floor(currentTime / beatDuration);
+  // 新しいビートを検出（tick基準）
+  const newBeat = Math.floor(currentTicks / ppq);
   if (newBeat !== tempoInfo.currentBeat) {
     tempoInfo.currentBeat = newBeat;
     onBeat(newBeat);
@@ -2690,9 +2751,18 @@ function updateBeatEffects() {
   // 背景パルス（テンポ専用）
   if (effects.backgroundPulse.intensity > 0 && scene) {
     const pulseAmount = easePhase * effects.backgroundPulse.intensity * 0.5;
-    const baseColor = new THREE.Color(0x1a1a2e);
-    const pulseColor = baseColor.clone().multiplyScalar(1 + pulseAmount);
-    scene.background = pulseColor;
+    const topColor = document.getElementById('bgColorTop').value;
+    const bottomColor = document.getElementById('bgColorBottom').value;
+
+    const baseTop = new THREE.Color(topColor);
+    const baseBottom = new THREE.Color(bottomColor);
+    const pulseTop = baseTop.clone().multiplyScalar(1 + pulseAmount);
+    const pulseBottom = baseBottom.clone().multiplyScalar(1 + pulseAmount);
+
+    scene.background = createBackgroundGradientTexture(
+      '#' + pulseTop.getHexString(),
+      '#' + pulseBottom.getHexString()
+    );
   }
 
   // 空間パルス（テンポ専用）
@@ -2920,17 +2990,25 @@ function triggerBeatFlash() {
 
 function triggerStrobe() {
   if (!scene) return;
-  scene.background = new THREE.Color(0xffffff);
+  const intensity = effects.strobe.intensity;
+  // 強度で白の明るさをスケール（0.1→薄い白、1.0→純白）
+  const brightness = intensity;
+  scene.background = new THREE.Color(brightness, brightness, brightness);
+  // 持続時間も強度に比例（20ms〜80ms）
+  const duration = 20 + intensity * 60;
   setTimeout(() => {
-    scene.background = new THREE.Color(0x1a1a2e);
-  }, 50);
+    restoreUserBackground();
+  }, duration);
 }
 
 function triggerColorShift() {
   if (!scene) return;
   const hue = (tempoInfo.currentBeat * beatEffects.colorShift.intensity) % 360;
-  const color = new THREE.Color().setHSL(hue / 360, 0.3, 0.1);
-  scene.background = color;
+  const topColor = document.getElementById('bgColorTop').value;
+  const baseColor = new THREE.Color(topColor);
+  const shiftColor = new THREE.Color().setHSL(hue / 360, 0.3, 0.1);
+  baseColor.lerp(shiftColor, effects.colorShift.intensity);
+  scene.background = baseColor;
 }
 
 function updateVignette(intensity) {
@@ -3139,18 +3217,7 @@ function clearSkyDomeImage() {
   skyDome.visible = false;
 
   // 背景グラデーションを元に戻す
-  const topColor = document.getElementById('bgColorTop').value;
-  const bottomColor = document.getElementById('bgColorBottom').value;
-  const canvas = document.createElement('canvas');
-  canvas.width = 2;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-  const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-  gradient.addColorStop(0, topColor);
-  gradient.addColorStop(1, bottomColor);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 2, 512);
-  scene.background = new THREE.CanvasTexture(canvas);
+  restoreUserBackground();
 
   // UIをリセット
   document.getElementById('skyDomeImageInput').value = '';
@@ -3531,21 +3598,39 @@ function play() {
   if (!state.midi) return;
   state.isPlaying = true;
   state.lastFrameTime = performance.now();
+  lastSyncCheck = performance.now();
   document.getElementById('playBtn').textContent = '⏸ 一時停止';
-  // 音源を再生
+  // 音源を再生（audioDelay適用）
   if (audioElement) {
-    audioElement.currentTime = state.currentTime;
-    audioElement.play();
+    if (audioDelayTimer) clearTimeout(audioDelayTimer);
+    if (state.currentTime < syncConfig.audioDelay) {
+      // まだ音源開始前 → 遅延分待ってから再生
+      const waitMs = (syncConfig.audioDelay - state.currentTime) * 1000;
+      audioElement.currentTime = 0;
+      audioDelayTimer = setTimeout(() => {
+        if (state.isPlaying && audioElement) {
+          audioElement.play();
+        }
+        audioDelayTimer = null;
+      }, waitMs);
+    } else {
+      // 音源の開始位置を補正して即再生
+      audioElement.currentTime = state.currentTime - syncConfig.audioDelay;
+      audioElement.play();
+    }
   }
 }
 
 function pause() {
   state.isPlaying = false;
   document.getElementById('playBtn').textContent = '▶ 再生';
+  if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
   // 音源を一時停止
   if (audioElement) {
     audioElement.pause();
   }
+  // エフェクトで変更された背景を復元
+  restoreUserBackground();
 }
 
 function stop() {
@@ -3554,17 +3639,21 @@ function stop() {
   state.triggeredNotes.clear();
   document.getElementById('playBtn').textContent = '▶ 再生';
   updateTimeDisplay();
+  if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
   // 音源を停止・最初に戻す
   if (audioElement) {
     audioElement.pause();
     audioElement.currentTime = 0;
   }
+  // エフェクトで変更された背景を復元
+  restoreUserBackground();
 }
 
 function reset() {
   state.currentTime = 0;
   state.triggeredNotes.clear();
   updateTimeDisplay();
+  if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
   // 音源を最初に戻す
   if (audioElement) {
     audioElement.currentTime = 0;
@@ -3824,11 +3913,11 @@ function updateCameraPositionSliders() {
 function animate() {
   requestAnimationFrame(animate);
 
+  // 前フレームのシェイクオフセットを除去（OrbitControlsが正しい位置で動作するため）
+  removeCameraShakeOffset();
+
   // 自動カメラ遷移の更新
   updateCameraTransition();
-
-  // カメラシェイクの更新
-  updateCameraShake();
 
   // ブラーエフェクトの更新
   updateBlurEffect();
@@ -3853,10 +3942,39 @@ function animate() {
 
     state.currentTime += delta;
 
-    // 曲の終わりに達したらループまたは停止
-    if (state.currentTime >= state.duration) {
+    // 継続的ドリフト補正（2秒ごと）
+    if (audioElement && !audioElement.paused && !audioDelayTimer) {
+      const now2 = performance.now();
+      if (now2 - lastSyncCheck > 2000) {
+        lastSyncCheck = now2;
+        const expectedMidiTime = audioElement.currentTime + syncConfig.audioDelay;
+        const drift = Math.abs(state.currentTime - expectedMidiTime);
+        if (drift > 0.05) {
+          state.currentTime = expectedMidiTime;
+        }
+      }
+    }
+
+    // 曲の終わりに達したらループまたは停止（midiDelay分を加算）
+    if (state.currentTime >= state.duration + syncConfig.midiDelay) {
       state.currentTime = 0; // ループ
-      // stop(); // 停止する場合はこちら
+      state.triggeredNotes.clear();
+      // ループ時に音源も最初から（audioDelay考慮）
+      if (audioElement) {
+        if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
+        if (syncConfig.audioDelay > 0) {
+          audioElement.pause();
+          audioElement.currentTime = 0;
+          audioDelayTimer = setTimeout(() => {
+            if (state.isPlaying && audioElement) {
+              audioElement.play();
+            }
+            audioDelayTimer = null;
+          }, syncConfig.audioDelay * 1000);
+        } else {
+          audioElement.currentTime = 0;
+        }
+      }
     }
 
     updateTimeDisplay();
@@ -3867,10 +3985,11 @@ function animate() {
     timelinePlane.position.x = 0;
   }
 
-  // ノートを左に流す
+  // ノートを左に流す（midiDelay適用）
+  const delayOffset = syncConfig.midiDelay * CONFIG.timeScale;
   const timeOffset = state.currentTime * CONFIG.timeScale;
   state.noteObjects.forEach(mesh => {
-    mesh.position.x = mesh.userData.originalX - timeOffset;
+    mesh.position.x = mesh.userData.originalX - timeOffset + delayOffset;
   });
 
   // ノートのハイライト（現在再生中のノート）
@@ -3894,6 +4013,10 @@ function animate() {
     controls.update();
   }
 
+  // シェイクオフセットを計算して適用（controls.update後、render前）
+  calculateCameraShakeOffset();
+  applyCameraShakeOffset();
+
   renderer.render(scene, camera);
 }
 
@@ -3906,10 +4029,11 @@ function updateTimeDisplay() {
 
 function updateNoteHighlights() {
   const currentTime = state.currentTime;
+  const md = syncConfig.midiDelay;
 
   state.noteObjects.forEach(mesh => {
     const { startTime, endTime, originalColor } = mesh.userData;
-    const isPlaying = currentTime >= startTime && currentTime <= endTime;
+    const isPlaying = currentTime >= startTime + md && currentTime <= endTime + md;
 
     if (isPlaying) {
       // 再生中のノートは明るく＋発光

@@ -21,6 +21,18 @@
         <span id="audioFileName">未選択（ドロップ可）</span>
       </div>
     </div>
+    <div class="control-group sync-controls">
+      <div class="sync-row">
+        <label>MIDI遅延</label>
+        <input type="range" id="midiDelay" min="0" max="3" step="0.05" value="0">
+        <span id="midiDelayValue">0.00秒</span>
+      </div>
+      <div class="sync-row">
+        <label>音源遅延</label>
+        <input type="range" id="audioDelay" min="0" max="3" step="0.05" value="0">
+        <span id="audioDelayValue">0.00秒</span>
+      </div>
+    </div>
     <div class="control-group">
       <button id="playBtn" disabled>▶ 再生</button>
       <button id="stopBtn" disabled>■ 停止</button>
