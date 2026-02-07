@@ -265,7 +265,7 @@ button:disabled {
   display: flex;
   gap: 10px;
   align-items: stretch;
-  height: 150px;
+  height: 175px;
 }
 
 .image-row .drop-zone {
@@ -904,6 +904,28 @@ button:disabled {
   align-self: flex-end;
 }
 
+
+/* クロマキー行（各面個別） */
+.chroma-key-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chroma-key-row input[type="color"] {
+  width: 28px;
+  height: 20px;
+  min-width: 28px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+}
+
+.chroma-key-row input[type="range"] {
+  flex: 1;
+}
 
 /* 画像入力を非表示 */
 #floorImageInput,

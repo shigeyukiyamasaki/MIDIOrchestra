@@ -320,14 +320,16 @@
         <div class="image-row">
           <div class="drop-zone" id="floorDropZone">
             <img id="floorImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="floorVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="floorDropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="floorImageLabel">画像を選択</label>
-            <input type="file" id="floorImageInput" accept="image/*">
+            <label class="file-label" id="floorImageLabel">ファイル選択</label>
+            <input type="file" id="floorImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="50" max="1000" step="10" value="300"><span id="floorImageSizeValue">300</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="floorImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="floorImageFlip">反転</label><button id="floorImageClear" class="clear-btn-small">クリア</button></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floorChromaColor" value="#00ff00"><input type="range" id="floorChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floorChromaThresholdValue">0</span></div>
           </div>
         </div>
       </div>
@@ -338,14 +340,16 @@
         <div class="image-row">
           <div class="drop-zone" id="leftWallDropZone">
             <img id="leftWallImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="leftWallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="leftWallDropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="leftWallImageLabel">画像を選択</label>
-            <input type="file" id="leftWallImageInput" accept="image/*">
+            <label class="file-label" id="leftWallImageLabel">ファイル選択</label>
+            <input type="file" id="leftWallImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="leftWallImageSize" min="50" max="1000" step="10" value="300"><span id="leftWallImageSizeValue">300</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="leftWallImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="leftWallImageFlip">反転</label><button id="leftWallImageClear" class="clear-btn-small">クリア</button></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="leftWallChromaColor" value="#00ff00"><input type="range" id="leftWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="leftWallChromaThresholdValue">0</span></div>
           </div>
         </div>
       </div>
@@ -356,14 +360,16 @@
         <div class="image-row">
           <div class="drop-zone" id="rightWallDropZone">
             <img id="rightWallImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="rightWallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="rightWallDropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="rightWallImageLabel">画像を選択</label>
-            <input type="file" id="rightWallImageInput" accept="image/*">
+            <label class="file-label" id="rightWallImageLabel">ファイル選択</label>
+            <input type="file" id="rightWallImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="rightWallImageSize" min="50" max="1000" step="10" value="300"><span id="rightWallImageSizeValue">300</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="rightWallImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="rightWallImageFlip">反転</label><button id="rightWallImageClear" class="clear-btn-small">クリア</button></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="rightWallChromaColor" value="#00ff00"><input type="range" id="rightWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="rightWallChromaThresholdValue">0</span></div>
           </div>
         </div>
       </div>
@@ -374,15 +380,17 @@
         <div class="image-row">
           <div class="drop-zone" id="backWallDropZone">
             <img id="backWallImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="backWallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="backWallDropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="backWallImageLabel">画像を選択</label>
-            <input type="file" id="backWallImageInput" accept="image/*">
+            <label class="file-label" id="backWallImageLabel">ファイル選択</label>
+            <input type="file" id="backWallImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="backWallImageSize" min="50" max="1000" step="10" value="300"><span id="backWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="backWallImageX" min="0" max="500" step="10" value="250"><span id="backWallImageXValue">250</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="backWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="backWallImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="backWallImageFlip">反転</label><button id="backWallImageClear" class="clear-btn-small">クリア</button></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="backWallChromaColor" value="#00ff00"><input type="range" id="backWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="backWallChromaThresholdValue">0</span></div>
           </div>
         </div>
       </div>
