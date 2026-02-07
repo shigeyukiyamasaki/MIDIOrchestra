@@ -46,6 +46,9 @@ let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
 let backWallX = 500;    // 奥側画像のX位置（共有用）
 let audioElement = null; // 音源再生用オーディオ要素
 
+// プリセット用メディア参照
+window.currentMediaRefs = { midi: null, audio: null, skyDome: null, floor: null, leftWall: null, rightWall: null, backWall: null };
+
 // 床・壁面の動画対応
 let floorVideo = null, floorIsVideo = false;
 let leftWallVideo = null, leftWallIsVideo = false;
@@ -283,29 +286,30 @@ const INSTRUMENTS = {
 // トラック名から楽器を自動推定するためのキーワード
 // 注意: 順番が重要！より具体的なキーワードを先に配置
 const INSTRUMENT_KEYWORDS = [
-  // 金管楽器（先にチェック - _CBなどの接尾辞に誤認識されないように）
+  // 木管楽器（english hornをhornより先にチェック）
+  { id: 'englishhorn', keywords: ['english horn', 'englishhorn', 'cor anglais', 'corno inglese', 'eng horn', 'e.h.'] },
+  { id: 'piccolo',     keywords: ['piccolo', 'picc'] },
+  { id: 'flute',       keywords: ['flute', 'flutes', 'flauto'] },
+  { id: 'oboe',        keywords: ['oboe', 'oboes', 'oboi'] },
+  { id: 'bassclarinet', keywords: ['bass clarinet', 'bassclarinet', 'bass cl', 'b.cl', 'bcl', 'clarinetto basso'] },
+  { id: 'clarinet',     keywords: ['clarinet', 'clarinets', 'clarinetto'] },
+  { id: 'bassoon',      keywords: ['bassoon', 'bassoons', 'fagotto'] },
+
+  // 金管楽器
   { id: 'horn',       keywords: ['horn', 'horns', 'french horn', 'cor', 'corno'] },
   { id: 'trumpet',    keywords: ['trumpet', 'trumpets', 'tromba', 'trp'] },
   { id: 'trombone',   keywords: ['trombone', 'trombones', 'trb'] },
   { id: 'tuba',       keywords: ['tuba', 'tubas'] },
   { id: 'flugelhorn', keywords: ['flugelhorn', 'flugel', 'flügelhorn'] },
 
-  // 弦楽器
+  // 弦楽器（violin1/2を先にチェック、その後violinの汎用マッチ）
   { id: 'violin1',    keywords: ['violin 1', 'violin i', 'vln 1', 'vln1', 'vn1', 'vn 1', '1st violin', 'violins 1'] },
   { id: 'violin2',    keywords: ['violin 2', 'violin ii', 'vln 2', 'vln2', 'vn2', 'vn 2', '2nd violin', 'violins 2'] },
+  { id: 'violin1',    keywords: ['violin', 'vln', 'vn'] },
   { id: 'viola',      keywords: ['viola', 'vla', 'violas'] },
   { id: 'cello',      keywords: ['cello', 'vc', 'vlc', 'cellos', 'celli'] },
   { id: 'contrabass', keywords: ['contrabass', 'double bass', 'basses', 'contrabasses'] },
   { id: 'harp',       keywords: ['harp', 'harps'] },
-
-  // 木管楽器
-  { id: 'piccolo',     keywords: ['piccolo', 'picc'] },
-  { id: 'flute',       keywords: ['flute', 'flutes', 'flauto'] },
-  { id: 'englishhorn', keywords: ['english horn', 'englishhorn', 'cor anglais', 'corno inglese', 'eng horn', 'e.h.'] },
-  { id: 'oboe',        keywords: ['oboe', 'oboes', 'oboi'] },
-  { id: 'bassclarinet', keywords: ['bass clarinet', 'bassclarinet', 'bass cl', 'b.cl', 'bcl', 'clarinetto basso'] },
-  { id: 'clarinet',     keywords: ['clarinet', 'clarinets', 'clarinetto'] },
-  { id: 'bassoon',      keywords: ['bassoon', 'bassoons', 'fagotto'] },
 
   // 打楽器（具体的なものを先に）
   { id: 'timpani',      keywords: ['timpani', 'timp', 'kettle'] },
@@ -487,6 +491,88 @@ async function init() {
   setupEventListeners();
   await preloadCustomIcons(); // カスタムアイコンを事前読み込み
   animate();
+
+  // プリセットシステム初期化
+  if (window.presetManager) {
+    await window.presetManager.initPresetSystem();
+  }
+
+  // ビューアーモード: データ自動読み込み
+  if (window.VIEWER_MODE && window.VIEWER_DATA) {
+    await loadViewerData();
+  }
+
+  // ビューアーエクスポートボタン
+  const viewerExportBtn = document.getElementById('viewerExportBtn');
+  if (viewerExportBtn && window.viewerExport) {
+    viewerExportBtn.addEventListener('click', () => {
+      window.viewerExport.exportViewerData();
+    });
+  }
+
+  // 公開ボタン
+  const publishBtn = document.getElementById('publishBtn');
+  const publishModal = document.getElementById('publishModal');
+  if (publishBtn && publishModal) {
+    const songInput = document.getElementById('publishSongName');
+    const statusDiv = document.getElementById('publishStatus');
+    const confirmBtn = document.getElementById('publishConfirm');
+    const cancelBtn = document.getElementById('publishCancel');
+
+    publishBtn.addEventListener('click', () => {
+      statusDiv.style.display = 'none';
+      const presetSelect = document.getElementById('presetSelect');
+      const selected = presetSelect && presetSelect.selectedOptions[0];
+      if (selected && selected.value) {
+        songInput.value = selected.textContent;
+      }
+      publishModal.style.display = 'flex';
+      songInput.focus();
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      publishModal.style.display = 'none';
+    });
+
+    publishModal.addEventListener('click', (e) => {
+      if (e.target === publishModal) publishModal.style.display = 'none';
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+      const song = songInput.value.trim();
+
+      if (!song) {
+        statusDiv.textContent = '曲名を入力してください';
+        statusDiv.style.color = '#ff6b6b';
+        statusDiv.style.display = 'block';
+        return;
+      }
+
+      if (!/^[a-zA-Z0-9_-]{1,50}$/.test(song)) {
+        statusDiv.textContent = '英数字・ハイフン・アンダースコアのみ（50文字以内）';
+        statusDiv.style.color = '#ff6b6b';
+        statusDiv.style.display = 'block';
+        return;
+      }
+
+      confirmBtn.disabled = true;
+      statusDiv.textContent = '公開中...';
+      statusDiv.style.color = '#4fc3f7';
+      statusDiv.style.display = 'block';
+
+      try {
+        const result = await window.viewerExport.publishViewerData(song);
+        statusDiv.innerHTML = '公開完了！<br><a href="' + result.url + '" target="_blank" style="color:#4fc3f7;">' + result.url + '</a>';
+        statusDiv.style.color = '#66bb6a';
+      } catch (e) {
+        statusDiv.textContent = 'エラー: ' + e.message;
+        statusDiv.style.color = '#ff6b6b';
+      } finally {
+        confirmBtn.disabled = false;
+      }
+    });
+  }
+
   console.log('MIDI Orchestra Visualizer initialized');
 }
 
@@ -787,11 +873,6 @@ function updateAndStoreBackground() {
 }
 
 function restoreUserBackground() {
-  // スカイドームが表示中の場合は黒背景を維持
-  if (skyDome && skyDome.visible) {
-    scene.background = new THREE.Color(0x000000);
-    return;
-  }
   if (userBackgroundTexture) {
     scene.background = userBackgroundTexture;
   }
@@ -812,14 +893,58 @@ function setupEventListeners() {
     const file = e.target.files[0];
     if (file) {
       midiFileName.textContent = file.name;
+      document.getElementById('midiClearBtn').style.display = '';
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'midi');
       await loadMidi(file);
     }
+  });
+
+  // MIDIクリアボタン
+  document.getElementById('midiClearBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearMidi();
+    midiInput.value = '';
   });
 
   // 再生コントロール
   document.getElementById('playBtn').addEventListener('click', togglePlay);
   document.getElementById('stopBtn').addEventListener('click', stop);
-  document.getElementById('resetBtn').addEventListener('click', reset);
+  const editorResetBtn = document.getElementById('resetBtn');
+  if (editorResetBtn) editorResetBtn.addEventListener('click', reset);
+  const rewBtn = document.getElementById('rewBtn');
+  const ffBtn = document.getElementById('ffBtn');
+  if (rewBtn) rewBtn.addEventListener('click', () => seekTo(state.currentTime - 10));
+  if (ffBtn) ffBtn.addEventListener('click', () => seekTo(state.currentTime + 10));
+
+  // エディタ用シークバー
+  const editorSeek = document.getElementById('editorSeek');
+  const editorDuration = document.getElementById('editorDuration');
+  let editorIsSeeking = false;
+  if (editorSeek) {
+    editorSeek.addEventListener('mousedown', () => { editorIsSeeking = true; });
+    editorSeek.addEventListener('touchstart', () => { editorIsSeeking = true; });
+    editorSeek.addEventListener('input', () => {
+      if (state.duration > 0) {
+        seekTo((parseFloat(editorSeek.value) / 100) * state.duration);
+      }
+    });
+    editorSeek.addEventListener('mouseup', () => { editorIsSeeking = false; });
+    editorSeek.addEventListener('touchend', () => { editorIsSeeking = false; });
+  }
+
+  // エディタ用シークバー＋Duration更新ループ
+  function updateEditorSeek() {
+    if (editorSeek && !editorIsSeeking && state.duration > 0) {
+      editorSeek.value = (state.currentTime / state.duration) * 100;
+    }
+    if (editorDuration && state.duration > 0) {
+      const dm = Math.floor(state.duration / 60);
+      const ds = Math.floor(state.duration % 60);
+      editorDuration.textContent = `/ ${dm}:${ds.toString().padStart(2, '0')}`;
+    }
+    requestAnimationFrame(updateEditorSeek);
+  }
+  updateEditorSeek();
 
   // キーボードショートカット
   document.addEventListener('keydown', (e) => {
@@ -863,6 +988,8 @@ function setupEventListeners() {
       // MIDIファイルかチェック
       if (file.name.match(/\.(mid|midi)$/i)) {
         document.getElementById('midiFileName').textContent = file.name;
+        document.getElementById('midiClearBtn').style.display = '';
+        if (window.presetManager) window.presetManager.handleFileUpload(file, 'midi');
         await loadMidi(file);
       } else {
         console.warn('MIDIファイル (.mid, .midi) をドロップしてください');
@@ -895,6 +1022,8 @@ function setupEventListeners() {
       const file = files[0];
       if (file.name.match(/\.(mid|midi)$/i)) {
         document.getElementById('midiFileName').textContent = file.name;
+        document.getElementById('midiClearBtn').style.display = '';
+        if (window.presetManager) window.presetManager.handleFileUpload(file, 'midi');
         await loadMidi(file);
       } else {
         console.warn('MIDIファイル (.mid, .midi) をドロップしてください');
@@ -912,8 +1041,17 @@ function setupEventListeners() {
     const file = e.target.files[0];
     if (file) {
       audioFileName.textContent = file.name;
+      document.getElementById('audioClearBtn').style.display = '';
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'audio');
       loadAudio(file);
     }
+  });
+
+  // 音源クリアボタン
+  document.getElementById('audioClearBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearAudio();
+    audioInput.value = '';
   });
 
   // 音源ドロップゾーン
@@ -941,6 +1079,8 @@ function setupEventListeners() {
       const file = files[0];
       if (file.type.startsWith('audio/')) {
         document.getElementById('audioFileName').textContent = file.name;
+        document.getElementById('audioClearBtn').style.display = '';
+        if (window.presetManager) window.presetManager.handleFileUpload(file, 'audio');
         loadAudio(file);
       } else {
         console.warn('音声ファイルをドロップしてください');
@@ -1391,6 +1531,7 @@ function setupEventListeners() {
   skyDomeImageInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'skyDome');
       loadSkyDomeImage(file);
     }
   });
@@ -1445,7 +1586,7 @@ function setupEventListeners() {
 
   // スカイドーム画像/動画ドラッグ&ドロップ
   const skyDomeDropZone = document.getElementById('skyDomeDropZone');
-  setupDropZone(skyDomeDropZone, loadSkyDomeImage, true); // 動画も許可
+  setupDropZone(skyDomeDropZone, loadSkyDomeImage, true, 'skyDome'); // 動画も許可
 
   // ============================================
   // 床画像のイベントリスナー
@@ -1460,6 +1601,7 @@ function setupEventListeners() {
   floorImageInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'floor');
       loadFloorImage(file);
     }
   });
@@ -1492,7 +1634,7 @@ function setupEventListeners() {
 
   // 床画像ドラッグ&ドロップ
   const floorDropZone = document.getElementById('floorDropZone');
-  setupDropZone(floorDropZone, loadFloorImage, true);
+  setupDropZone(floorDropZone, loadFloorImage, true, 'floor');
 
   // 床画像左右反転
   const floorImageFlipInput = document.getElementById('floorImageFlip');
@@ -1515,6 +1657,7 @@ function setupEventListeners() {
   leftWallImageInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'leftWall');
       loadLeftWallImage(file);
     }
   });
@@ -1547,7 +1690,7 @@ function setupEventListeners() {
 
   // 左側面画像ドラッグ&ドロップ
   const leftWallDropZone = document.getElementById('leftWallDropZone');
-  setupDropZone(leftWallDropZone, loadLeftWallImage, true);
+  setupDropZone(leftWallDropZone, loadLeftWallImage, true, 'leftWall');
 
   // 左側面画像左右反転
   const leftWallImageFlipInput = document.getElementById('leftWallImageFlip');
@@ -1570,6 +1713,7 @@ function setupEventListeners() {
   rightWallImageInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'rightWall');
       loadRightWallImage(file);
     }
   });
@@ -1602,7 +1746,7 @@ function setupEventListeners() {
 
   // 右側面画像ドラッグ&ドロップ
   const rightWallDropZone = document.getElementById('rightWallDropZone');
-  setupDropZone(rightWallDropZone, loadRightWallImage, true);
+  setupDropZone(rightWallDropZone, loadRightWallImage, true, 'rightWall');
 
   // 右側面画像左右反転
   const rightWallImageFlipInput = document.getElementById('rightWallImageFlip');
@@ -1625,6 +1769,7 @@ function setupEventListeners() {
   backWallImageInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'backWall');
       loadBackWallImage(file);
     }
   });
@@ -1669,7 +1814,7 @@ function setupEventListeners() {
 
   // 奥側画像ドラッグ&ドロップ
   const backWallDropZone = document.getElementById('backWallDropZone');
-  setupDropZone(backWallDropZone, loadBackWallImage, true);
+  setupDropZone(backWallDropZone, loadBackWallImage, true, 'backWall');
 
   // 奥側画像左右反転
   const backWallImageFlipInput = document.getElementById('backWallImageFlip');
@@ -1810,6 +1955,66 @@ async function loadMidi(file) {
   controls.target.copy(savedTarget);
   camera.zoom = savedZoom;
   camera.updateProjectionMatrix();
+}
+
+// MIDIクリア
+function clearMidi() {
+  // 再生中なら停止
+  if (state.isPlaying) stop();
+
+  // ノートオブジェクトを削除
+  state.noteObjects.forEach(obj => {
+    scene.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  });
+  state.noteObjects = [];
+
+  // アイコンスプライトを削除
+  state.iconSprites.forEach(sprite => scene.remove(sprite));
+  state.iconSprites = [];
+
+  // 波紋を削除
+  clearRipples();
+
+  // 状態をリセット
+  state.midi = null;
+  state.duration = 0;
+  state.currentTime = 0;
+  state.tracks = [];
+  state.groupedTracks = [];
+  state.triggeredNotes.clear();
+
+  // UIをリセット
+  document.getElementById('midiFileName').textContent = '未選択（ドロップ可）';
+  document.getElementById('midiClearBtn').style.display = 'none';
+  document.getElementById('playBtn').disabled = true;
+  document.getElementById('stopBtn').disabled = true;
+  const rb = document.getElementById('resetBtn');
+  if (rb) rb.disabled = true;
+  updateTimeDisplay();
+  updateTrackPanel();
+
+  // メディア参照をクリア
+  if (window.currentMediaRefs) window.currentMediaRefs.midi = null;
+
+  console.log('MIDI cleared');
+}
+
+// 音源クリア
+function clearAudio() {
+  if (audioElement) {
+    audioElement.pause();
+    audioElement.src = '';
+    audioElement = null;
+  }
+  document.getElementById('audioFileName').textContent = '未選択（ドロップ可）';
+  document.getElementById('audioClearBtn').style.display = 'none';
+
+  // メディア参照をクリア
+  if (window.currentMediaRefs) window.currentMediaRefs.audio = null;
+
+  console.log('Audio cleared');
 }
 
 // 音源ファイルの読み込み
@@ -1982,7 +2187,8 @@ function rebuildGroupedTracks() {
 function enableControls() {
   document.getElementById('playBtn').disabled = false;
   document.getElementById('stopBtn').disabled = false;
-  document.getElementById('resetBtn').disabled = false;
+  const rb = document.getElementById('resetBtn');
+  if (rb) rb.disabled = false;
 }
 
 
@@ -3107,7 +3313,7 @@ function clearRipples() {
 // ドラッグ&ドロップ共通関数
 // ============================================
 
-function setupDropZone(dropZone, loadCallback, allowVideo = false) {
+function setupDropZone(dropZone, loadCallback, allowVideo = false, mediaSlotName = null) {
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -3132,6 +3338,7 @@ function setupDropZone(dropZone, loadCallback, allowVideo = false) {
       const isVideo = file.type.startsWith('video/');
 
       if (isImage || (allowVideo && isVideo)) {
+        if (mediaSlotName && window.presetManager) window.presetManager.handleFileUpload(file, mediaSlotName);
         loadCallback(file);
       } else {
         console.warn(allowVideo ? '画像または動画ファイルをドロップしてください' : '画像ファイルをドロップしてください');
@@ -3256,6 +3463,7 @@ function clearSkyDomeMedia() {
 
 // スカイドーム画像をクリア
 function clearSkyDomeImage() {
+  window.currentMediaRefs.skyDome = null;
   // メディアを破棄
   clearSkyDomeMedia();
 
@@ -3406,6 +3614,7 @@ function updateFloorImageSize(size) {
 
 // 床画像をクリア
 function clearFloorImage() {
+  window.currentMediaRefs.floor = null;
   clearFloorMedia();
 
   floorPlane.material.uniforms.map.value = null;
@@ -3553,6 +3762,7 @@ function updateLeftWallImageSize(size) {
 
 // 左側面画像をクリア
 function clearLeftWallImage() {
+  window.currentMediaRefs.leftWall = null;
   clearLeftWallMedia();
 
   leftWallPlane.material.uniforms.map.value = null;
@@ -3697,6 +3907,7 @@ function updateRightWallImageSize(size) {
 
 // 右側面画像をクリア
 function clearRightWallImage() {
+  window.currentMediaRefs.rightWall = null;
   clearRightWallMedia();
 
   rightWallPlane.material.uniforms.map.value = null;
@@ -3838,6 +4049,7 @@ function updateBackWallImageSize(size) {
 
 // 奥側画像をクリア
 function clearBackWallImage() {
+  window.currentMediaRefs.backWall = null;
   clearBackWallMedia();
 
   backWallPlane.material.uniforms.map.value = null;
@@ -3876,7 +4088,9 @@ function play() {
   state.isPlaying = true;
   state.lastFrameTime = performance.now();
   lastSyncCheck = performance.now();
-  document.getElementById('playBtn').textContent = '⏸ 一時停止';
+  document.getElementById('playBtn').textContent = '⏸';
+  const vp = document.getElementById('viewerPlayBtn');
+  if (vp) vp.textContent = '⏸';
   // 音源を再生（audioDelay適用）
   if (audioElement) {
     if (audioDelayTimer) clearTimeout(audioDelayTimer);
@@ -3900,7 +4114,9 @@ function play() {
 
 function pause() {
   state.isPlaying = false;
-  document.getElementById('playBtn').textContent = '▶ 再生';
+  document.getElementById('playBtn').textContent = '▶';
+  const vp = document.getElementById('viewerPlayBtn');
+  if (vp) vp.textContent = '▶';
   if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
   // 音源を一時停止
   if (audioElement) {
@@ -3914,7 +4130,9 @@ function stop() {
   state.isPlaying = false;
   state.currentTime = 0;
   state.triggeredNotes.clear();
-  document.getElementById('playBtn').textContent = '▶ 再生';
+  document.getElementById('playBtn').textContent = '▶';
+  const vp = document.getElementById('viewerPlayBtn');
+  if (vp) vp.textContent = '▶';
   updateTimeDisplay();
   if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
   // 音源を停止・最初に戻す
@@ -3934,6 +4152,30 @@ function reset() {
   // 音源を最初に戻す
   if (audioElement) {
     audioElement.currentTime = 0;
+  }
+}
+
+function seekTo(time) {
+  time = Math.max(0, Math.min(time, state.duration));
+  state.currentTime = time;
+  state.triggeredNotes.clear();
+  updateTimeDisplay();
+  if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
+  if (audioElement) {
+    const audioTime = time - syncConfig.audioDelay;
+    if (audioTime >= 0) {
+      audioElement.currentTime = audioTime;
+      if (state.isPlaying) audioElement.play();
+    } else {
+      audioElement.currentTime = 0;
+      audioElement.pause();
+      if (state.isPlaying) {
+        audioDelayTimer = setTimeout(() => {
+          if (state.isPlaying && audioElement) audioElement.play();
+          audioDelayTimer = null;
+        }, (-audioTime) * 1000);
+      }
+    }
   }
 }
 
@@ -4159,6 +4401,15 @@ function initDualRangeSliders() {
       currentMarker.style.left = Math.max(0, Math.min(100, percent)) + '%';
     };
     slider._axis = axis;
+
+    // プリセット復元用の外部制御メソッド
+    slider._dualRange = {
+      setRange: (newMin, newMax) => {
+        rangeMin = newMin;
+        rangeMax = newMax;
+        updatePositions();
+      }
+    };
   });
 }
 
@@ -4347,6 +4598,130 @@ function updateNoteBounce(delta) {
 }
 
 // ============================================
+// ビューアーモード: データ自動読み込み
+// ============================================
+
+function base64ToBlob(base64, mimeType) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+async function loadViewerData() {
+  const data = window.VIEWER_DATA;
+  if (!data) return;
+
+  // 設定を適用
+  if (data.settings && window.presetManager) {
+    window.presetManager.applySettings(data.settings);
+  }
+
+  // メディアを読み込み
+  const m = data.media || {};
+
+  if (m.midi) {
+    const blob = base64ToBlob(m.midi.data, m.midi.mimeType);
+    const file = new File([blob], m.midi.name, { type: m.midi.mimeType });
+    await loadMidi(file);
+    document.getElementById('midiFileName').textContent = m.midi.name;
+  }
+
+  if (m.audio) {
+    const blob = base64ToBlob(m.audio.data, m.audio.mimeType);
+    const file = new File([blob], m.audio.name, { type: m.audio.mimeType });
+    loadAudio(file);
+    document.getElementById('audioFileName').textContent = m.audio.name;
+  }
+
+  const imageSlots = [
+    { key: 'skyDome', loadFn: loadSkyDomeImage },
+    { key: 'floor', loadFn: loadFloorImage },
+    { key: 'leftWall', loadFn: loadLeftWallImage },
+    { key: 'rightWall', loadFn: loadRightWallImage },
+    { key: 'backWall', loadFn: loadBackWallImage },
+  ];
+
+  for (const { key, loadFn } of imageSlots) {
+    if (m[key]) {
+      const blob = base64ToBlob(m[key].data, m[key].mimeType);
+      const file = new File([blob], m[key].name, { type: m[key].mimeType });
+      loadFn(file);
+    }
+  }
+
+  // ビューアーオーバーレイのイベント登録
+  const playBtn = document.getElementById('viewerPlayBtn');
+  const stopBtn = document.getElementById('viewerStopBtn');
+  const rewBtn = document.getElementById('viewerRewBtn');
+  const ffBtn = document.getElementById('viewerFfBtn');
+  const timeSpan = document.getElementById('viewerTime');
+  const durationSpan = document.getElementById('viewerDuration');
+  const seekBar = document.getElementById('viewerSeek');
+
+  if (playBtn) {
+    playBtn.addEventListener('click', () => {
+      togglePlay();
+    });
+  }
+  if (stopBtn) {
+    stopBtn.addEventListener('click', () => {
+      stop();
+      if (seekBar) seekBar.value = 0;
+    });
+  }
+  if (rewBtn) {
+    rewBtn.addEventListener('click', () => {
+      seekTo(state.currentTime - 10);
+    });
+  }
+  if (ffBtn) {
+    ffBtn.addEventListener('click', () => {
+      seekTo(state.currentTime + 10);
+    });
+  }
+
+  // シークバー
+  let isSeeking = false;
+  if (seekBar) {
+    seekBar.addEventListener('mousedown', () => { isSeeking = true; });
+    seekBar.addEventListener('touchstart', () => { isSeeking = true; });
+    seekBar.addEventListener('input', () => {
+      if (state.duration > 0) {
+        const targetTime = (parseFloat(seekBar.value) / 100) * state.duration;
+        seekTo(targetTime);
+      }
+    });
+    seekBar.addEventListener('mouseup', () => { isSeeking = false; });
+    seekBar.addEventListener('touchend', () => { isSeeking = false; });
+  }
+
+  // 時間・シークバー表示を更新するループ
+  if (durationSpan) {
+    const dm = Math.floor(state.duration / 60);
+    const ds = Math.floor(state.duration % 60);
+    durationSpan.textContent = `/ ${dm}:${ds.toString().padStart(2, '0')}`;
+  }
+
+  function updateViewerTime() {
+    if (timeSpan) {
+      const minutes = Math.floor(state.currentTime / 60);
+      const seconds = Math.floor(state.currentTime % 60);
+      timeSpan.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+    if (seekBar && !isSeeking && state.duration > 0) {
+      seekBar.value = (state.currentTime / state.duration) * 100;
+    }
+    requestAnimationFrame(updateViewerTime);
+  }
+  updateViewerTime();
+
+  console.log('Viewer data loaded successfully');
+}
+
+// ============================================
 // 起動
 // ============================================
 init();
@@ -4354,3 +4729,10 @@ init();
 // デバッグ用にグローバルに露出
 window.state = state;
 window.CONFIG = CONFIG;
+
+// プリセット復元用に関数を公開
+window.appFunctions = {
+  loadMidi, loadAudio, clearMidi, clearAudio,
+  loadSkyDomeImage, loadFloorImage, loadLeftWallImage, loadRightWallImage, loadBackWallImage,
+  clearSkyDomeImage, clearFloorImage, clearLeftWallImage, clearRightWallImage, clearBackWallImage,
+};

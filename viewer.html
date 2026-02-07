@@ -3,11 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MIDI Orchestra Visualizer</title>
-  <link rel="stylesheet" href="style.css">
+  <title>MIDI Orchestra Viewer</title>
+  <link rel="stylesheet" href="style.css?v=20260208b">
+  <style>
+    /* ビューアーモード: 編集パネルを非表示、キャンバスを全画面化 */
+    #controls, #settings-container, #image-panel,
+    #display-settings-panel, #track-panel { display: none !important; }
+    #canvas-container {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+    }
+    #presetModal { display: none !important; }
+  </style>
 </head>
 <body>
-  <!-- コントロールパネル -->
+  <!-- コントロールパネル（非表示だがDOM互換性のため残す） -->
   <div id="controls">
     <div class="control-group file-inputs">
       <div id="midiDropZone" class="file-row">
@@ -36,14 +51,11 @@
       </div>
     </div>
     <div class="control-group">
-      <button id="rewBtn">◀◀</button>
       <button id="playBtn" disabled>▶</button>
       <button id="stopBtn" disabled>■</button>
-      <button id="ffBtn">▶▶</button>
     </div>
-    <div class="control-group seek-group">
-      <label>再生位置: <span id="currentTime">0:00</span> <span id="editorDuration">/ 0:00</span></label>
-      <input type="range" id="editorSeek" min="0" max="100" step="0.1" value="0">
+    <div class="control-group">
+      <label>再生位置: <span id="currentTime">0:00</span></label>
     </div>
     <div class="control-group">
       <label>画面比率</label>
@@ -58,8 +70,19 @@
       <select id="presetSelect"><option value="">プリセット選択...</option></select>
       <button id="presetLoadBtn">📂 読込</button>
       <button id="presetDeleteBtn">🗑️</button>
-      <button id="viewerExportBtn">📤 Export</button>
-      <button id="publishBtn">🌐 公開</button>
+    </div>
+  </div>
+
+  <!-- プリセット保存モーダル（DOM互換性のため残す） -->
+  <div id="presetModal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+      <h3>プリセット保存</h3>
+      <input type="text" id="presetNameInput" placeholder="プリセット名を入力...">
+      <div id="presetOverwriteWarning" style="display:none;">同名のプリセットを上書きします</div>
+      <div class="modal-buttons">
+        <button id="presetSaveConfirm">保存</button>
+        <button id="presetSaveCancel">キャンセル</button>
+      </div>
     </div>
   </div>
 
@@ -69,7 +92,6 @@
     <div id="camera-panel" class="settings-column">
       <h3>カメラ設定</h3>
       <div id="camera-list">
-        <!-- X軸（左右） -->
         <div class="setting-category">X (左右) <span id="cameraPosXValue" class="pos-value">-150</span></div>
         <div class="setting-item dual-range-container">
           <div class="dual-range" data-axis="X" data-min="-500" data-max="500">
@@ -84,8 +106,6 @@
             <span id="cameraRangeXMaxVal">200</span>
           </div>
         </div>
-
-        <!-- Y軸（高さ） -->
         <div class="setting-category">Y (高さ) <span id="cameraPosYValue" class="pos-value">150</span></div>
         <div class="setting-item dual-range-container">
           <div class="dual-range" data-axis="Y" data-min="-100" data-max="500">
@@ -100,8 +120,6 @@
             <span id="cameraRangeYMaxVal">300</span>
           </div>
         </div>
-
-        <!-- Z軸（前後） -->
         <div class="setting-category">Z (前後) <span id="cameraPosZValue" class="pos-value">200</span></div>
         <div class="setting-item dual-range-container">
           <div class="dual-range" data-axis="Z" data-min="-500" data-max="500">
@@ -116,8 +134,6 @@
             <span id="cameraRangeZMaxVal">300</span>
           </div>
         </div>
-
-        <!-- 全体調整 -->
         <div class="setting-category">全体調整</div>
         <div class="setting-item">
           <label>全体の高さ</label>
@@ -129,8 +145,6 @@
           <input type="range" id="cameraTargetY" min="-100" max="100" step="5" value="0">
           <span id="cameraTargetYValue">0</span>
         </div>
-
-        <!-- 自動切替 -->
         <div class="setting-category">自動切替</div>
         <div class="setting-item">
           <label>
@@ -143,8 +157,6 @@
           <input type="range" id="autoCameraInterval" min="2" max="20" step="1" value="5">
           <span id="autoCameraIntervalValue">5</span>
         </div>
-
-        <!-- トランジション -->
         <div class="setting-category">トランジション</div>
         <div class="setting-item">
           <label>モード</label>
@@ -170,7 +182,6 @@
     <div id="effects-panel" class="settings-column">
       <h3>エフェクト</h3>
       <div id="effects-list">
-        <!-- ノート通過時 -->
         <div class="setting-category">ノート通過時</div>
         <div class="setting-item">
           <label>バウンス (0=OFF)</label>
@@ -193,16 +204,12 @@
             波紋
           </label>
         </div>
-
-        <!-- バスドラ専用 -->
         <div class="setting-category">バスドラ専用</div>
         <div class="setting-item">
           <label>幕フラッシュ</label>
           <input type="range" id="flashEffectIntensity" min="0" max="1" step="0.1" value="0">
           <span id="flashEffectIntensityValue">0</span>
         </div>
-
-        <!-- テンポ専用 -->
         <div class="setting-category">テンポ専用</div>
         <div class="setting-item">
           <label>カメラ回転</label>
@@ -229,8 +236,6 @@
           <input type="range" id="beatStrobe" min="0" max="1" step="0.1" value="0">
           <span id="beatStrobeValue">0</span>
         </div>
-
-        <!-- 選択式エフェクト -->
         <div class="setting-category">選択式（トリガー切替）</div>
         <div class="setting-item">
           <div class="effect-header">
@@ -302,11 +307,10 @@
     </div>
   </div>
 
-  <!-- 画像配置パネル（メインエリア上部） -->
+  <!-- 画像配置パネル -->
   <div id="image-panel">
     <h3>画像設定</h3>
     <div id="image-list">
-      <!-- スカイドーム（背景） -->
       <div class="image-section">
         <div class="setting-category">背景</div>
         <div class="image-row">
@@ -325,8 +329,6 @@
           </div>
         </div>
       </div>
-
-      <!-- 床画像 -->
       <div class="image-section">
         <div class="setting-category">床</div>
         <div class="image-row">
@@ -346,8 +348,6 @@
           </div>
         </div>
       </div>
-
-      <!-- 左側面画像 -->
       <div class="image-section">
         <div class="setting-category">左側面</div>
         <div class="image-row">
@@ -367,8 +367,6 @@
           </div>
         </div>
       </div>
-
-      <!-- 右側面画像 -->
       <div class="image-section">
         <div class="setting-category">右側面</div>
         <div class="image-row">
@@ -388,8 +386,6 @@
           </div>
         </div>
       </div>
-
-      <!-- 奥側画像 -->
       <div class="image-section">
         <div class="setting-category">奥側</div>
         <div class="image-row">
@@ -415,7 +411,7 @@
   <!-- Three.js キャンバス -->
   <div id="canvas-container"></div>
 
-  <!-- 表示設定パネル（プレビュー下段・横並び） -->
+  <!-- 表示設定パネル -->
   <div id="display-settings-panel">
     <h3>表示設定</h3>
     <div class="sections-row">
@@ -501,36 +497,21 @@
     </div>
   </div>
 
-  <!-- トラック情報パネル（右） -->
+  <!-- トラック情報パネル -->
   <div id="track-panel">
     <h3>トラック情報</h3>
     <div id="track-list"></div>
   </div>
 
-  <!-- プリセット保存モーダル -->
-  <div id="presetModal" class="modal-overlay" style="display:none;">
-    <div class="modal-content">
-      <h3>プリセット保存</h3>
-      <input type="text" id="presetNameInput" placeholder="プリセット名を入力...">
-      <div id="presetOverwriteWarning" style="display:none;">同名のプリセットを上書きします</div>
-      <div class="modal-buttons">
-        <button id="presetSaveConfirm">保存</button>
-        <button id="presetSaveCancel">キャンセル</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 公開モーダル -->
-  <div id="publishModal" class="modal-overlay" style="display:none;">
-    <div class="modal-content">
-      <h3>ビューアーを公開</h3>
-      <input type="text" id="publishSongName" placeholder="曲名（英数字・ハイフン・アンダースコア）">
-      <div id="publishStatus" style="display:none;"></div>
-      <div class="modal-buttons">
-        <button id="publishConfirm">公開</button>
-        <button id="publishCancel">キャンセル</button>
-      </div>
-    </div>
+  <!-- ビューアー用再生コントロール -->
+  <div class="viewer-overlay">
+    <button id="viewerRewBtn">◀◀</button>
+    <button id="viewerPlayBtn">▶</button>
+    <button id="viewerStopBtn">■</button>
+    <button id="viewerFfBtn">▶▶</button>
+    <span id="viewerTime">0:00</span>
+    <span id="viewerDuration">/ 0:00</span>
+    <input type="range" id="viewerSeek" min="0" max="100" step="0.1" value="0">
   </div>
 
   <!-- ライブラリ読み込み -->
@@ -538,8 +519,18 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
 
-  <script src="src/presetManager.js"></script>
-  <script src="src/viewerExport.js"></script>
-  <script type="module" src="src/main.js"></script>
+  <script>
+    window.VIEWER_MODE = true;
+    // URLパラメータから曲名を取得し、対応するデータファイルを動的読み込み
+    const params = new URLSearchParams(location.search);
+    const song = params.get('song');
+    if (song) {
+      document.write('<script src="data/' + encodeURIComponent(song) + '.js"><\/script>');
+    } else {
+      document.write('<script src="viewer-data.js"><\/script>');
+    }
+  </script>
+  <script src="src/presetManager.js?v=20260208b"></script>
+  <script type="module" src="src/main.js?v=20260208c"></script>
 </body>
 </html>

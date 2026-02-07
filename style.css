@@ -33,6 +33,38 @@ body {
   gap: 10px;
 }
 
+.seek-group label {
+  font-size: 12px;
+  color: #aaa;
+  white-space: nowrap;
+}
+
+#editorSeek {
+  width: 200px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #333;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+#editorSeek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #4fc3f7;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+#editorDuration {
+  color: #666;
+  font-size: 11px;
+}
+
 .sync-controls {
   flex-direction: column;
   gap: 4px;
@@ -97,7 +129,13 @@ body {
   display: none;
 }
 
-.control-group label:has(+ input[type="file"]),
+.file-label {
+  font-size: 13px;
+  color: #888;
+  white-space: nowrap;
+  min-width: 30px;
+}
+
 #midiFileName,
 #audioFileName {
   padding: 8px 16px;
@@ -107,6 +145,27 @@ body {
   font-size: 13px;
   color: #888;
   min-width: 150px;
+  max-width: 250px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clear-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+  background: transparent;
+  color: #888;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.clear-btn:hover {
+  background: #c62828;
+  color: #fff;
+  border-color: #c62828;
 }
 
 .file-inputs {
@@ -192,7 +251,7 @@ button:disabled {
   top: 100px;
   left: 320px;
   right: 360px;
-  height: 280px;
+  height: 320px;
   background: rgba(0, 0, 0, 0.8);
   z-index: 40;
   border-bottom: 1px solid #333;
@@ -234,12 +293,20 @@ button:disabled {
 #image-panel .file-label {
   font-size: 11px;
   padding: 4px 8px;
+  background: #3d3d5c;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
   white-space: nowrap;
   height: 20px;
   line-height: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+#image-panel .file-label:hover {
+  background: #4d4d6c;
 }
 
 .settings-column h3 {
@@ -269,17 +336,19 @@ button:disabled {
 }
 
 .image-row .drop-zone {
-  flex: 1;
+  flex: 3;
   min-width: 60px;
   padding: 8px;
 }
 
 .image-controls {
-  flex: 1;
+  flex: 7;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
   justify-content: space-between;
+  overflow: hidden;
 }
 
 .image-controls .clear-btn-small {
@@ -291,6 +360,7 @@ button:disabled {
   flex-direction: column;
   gap: 2px;
   font-size: 10px;
+  min-width: 0;
 }
 
 .control-row label {
@@ -444,7 +514,7 @@ button:disabled {
 /* キャンバスコンテナ */
 #canvas-container {
   position: fixed;
-  top: 340px;
+  top: 420px;
   left: 320px;
   right: 360px;
   bottom: 260px;
@@ -631,19 +701,7 @@ button:disabled {
   margin-top: 2px;
 }
 
-/* ファイル選択ボタン */
-.file-label {
-  padding: 8px 16px;
-  background: #3d3d5c;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: background 0.2s;
-}
-
-.file-label:hover {
-  background: #4d4d6c;
-}
+/* ファイル選択ボタン（画像パネル用） */
 
 /* 現在時刻表示 */
 #currentTime {
@@ -908,6 +966,7 @@ button:disabled {
 /* クロマキー行（各面個別） */
 .chroma-key-row {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 4px;
 }
@@ -925,6 +984,13 @@ button:disabled {
 
 .chroma-key-row input[type="range"] {
   flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.chroma-key-row span {
+  width: auto;
+  min-width: 20px;
 }
 
 /* 画像入力を非表示 */
@@ -1006,4 +1072,162 @@ button:disabled {
 
 .clear-btn:hover {
   background: #6a4d4d;
+}
+
+/* プリセットコントロール */
+.preset-controls {
+  margin-left: auto;
+  gap: 6px !important;
+}
+
+.preset-controls select {
+  min-width: 160px;
+  padding: 6px 10px;
+  background: #2d2d44;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #eee;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.preset-controls button {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* プリセット保存モーダル */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: #1e1e2e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 24px;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-content h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #eee;
+}
+
+.modal-content input[type="text"] {
+  padding: 8px 12px;
+  background: #2d2d44;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #eee;
+  font-size: 14px;
+  outline: none;
+}
+
+.modal-content input[type="text"]:focus {
+  border-color: #4fc3f7;
+}
+
+#presetOverwriteWarning {
+  color: #ffb74d;
+  font-size: 12px;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.modal-buttons button {
+  padding: 6px 16px;
+  font-size: 13px;
+}
+
+/* ============================================
+   ビューアーオーバーレイ
+   ============================================ */
+.viewer-overlay {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 10px 20px;
+  border-radius: 8px;
+}
+
+.viewer-overlay button {
+  background: #4a4a6a;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.viewer-overlay button:hover {
+  background: #5a5a8a;
+}
+
+#viewerPlayBtn {
+  background: #2e7d32;
+}
+
+#viewerPlayBtn:hover {
+  background: #388e3c;
+}
+
+#viewerStopBtn {
+  background: #c62828;
+}
+
+#viewerStopBtn:hover {
+  background: #d32f2f;
+}
+
+.viewer-overlay span {
+  color: #fff;
+  font-size: 13px;
+  font-family: monospace;
+  min-width: 36px;
+}
+
+#viewerSeek {
+  width: 200px;
+  height: 6px;
+  cursor: pointer;
+  accent-color: #4fc3f7;
+}
+
+#publishStatus {
+  margin-top: 8px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+#publishBtn {
+  background: #2e7d32;
+}
+
+#publishBtn:hover {
+  background: #388e3c;
 }
