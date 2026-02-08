@@ -269,6 +269,11 @@ function collectCurrentSettings() {
   s.midiDelay = getRangeValue('midiDelay');
   s.audioDelay = getRangeValue('audioDelay');
 
+  // 終点ループ
+  s.loopEndEnabled = getCheckbox('loopEndEnabled');
+  s.loopEndTime = window.state ? window.state.loopEndTime : 0;
+  s.fadeOutDuration = getRangeValue('fadeOutDuration');
+
   // スカイドーム
   s.skyDomeOpacity = getRangeValue('skyDomeOpacity');
   s.skyDomeRange = getRangeValue('skyDomeRange');
@@ -420,6 +425,13 @@ function applySettings(s) {
   setRangeValue('midiDelay', s.midiDelay);
   setRangeValue('audioDelay', s.audioDelay);
 
+  // 終点ループ（秒数はMIDI読み込み後にstateへ反映）
+  setCheckbox('loopEndEnabled', s.loopEndEnabled);
+  if (s.loopEndTime !== undefined && window.state) {
+    window.state.loopEndTime = s.loopEndTime;
+  }
+  setRangeValue('fadeOutDuration', s.fadeOutDuration);
+
   // スカイドーム
   setRangeValue('skyDomeOpacity', s.skyDomeOpacity);
   setRangeValue('skyDomeRange', s.skyDomeRange);
@@ -465,7 +477,7 @@ async function restoreMediaSlot(mediaId, loadFn, fileNameSpanId) {
   if (!record) return;
 
   const file = new File([record.blob], record.name, { type: record.mimeType });
-  loadFn(file);
+  await loadFn(file);
 
   if (fileNameSpanId) {
     const span = document.getElementById(fileNameSpanId);
@@ -544,6 +556,22 @@ async function loadPreset(presetId) {
   if (media.midi) {
     await restoreMediaSlot(media.midi, app.loadMidi, 'midiFileName');
   }
+
+  // MIDI読み込み後に終点ループUIを更新（durationが確定した後）
+  if (preset.settings.loopEndTime !== undefined && window.state && window.state.duration > 0) {
+    window.state.loopEndTime = preset.settings.loopEndTime;
+    const loopEndSeek = document.getElementById('loopEndSeek');
+    const loopEndTimeEl = document.getElementById('loopEndTime');
+    if (loopEndSeek) {
+      loopEndSeek.value = (window.state.loopEndTime / window.state.duration) * 1000;
+    }
+    if (loopEndTimeEl && preset.settings.loopEndEnabled) {
+      const m = Math.floor(window.state.loopEndTime / 60);
+      const sec = (window.state.loopEndTime % 60).toFixed(1);
+      loopEndTimeEl.textContent = `${m}:${sec.padStart(4, '0')}`;
+    }
+  }
+
   if (media.audio) {
     await restoreMediaSlot(media.audio, app.loadAudio, 'audioFileName');
   }

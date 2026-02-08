@@ -17,6 +17,8 @@ const state = {
   triggeredNotes: new Set(), // 波紋を発生させたノートのID
   lastFrameTime: 0,     // 前フレームの時刻
   cameraInitialized: false, // カメラ初期化済みフラグ
+  loopEndEnabled: false, // 終点ループ有効
+  loopEndTime: 0,       // 終点時刻（秒）
 };
 
 // Three.js オブジェクト
@@ -45,6 +47,12 @@ let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
 let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
 let backWallX = 500;    // 奥側画像のX位置（共有用）
 let audioElement = null; // 音源再生用オーディオ要素
+let audioSrcUrl = null;  // 音源のBlob URL（オーバーラップ用）
+
+// フェードアウト（終点ループ用）
+let crossfadeStartTime = -1;
+let fadeOutDuration = 0.1; // フェードアウト秒数（0.1〜1.0）
+let overlapAudio = null;  // オーバーラップ用の先行再生Audio
 
 // プリセット用メディア参照
 window.currentMediaRefs = { midi: null, audio: null, skyDome: null, floor: null, leftWall: null, rightWall: null, backWall: null };
@@ -930,6 +938,69 @@ function setupEventListeners() {
     });
     editorSeek.addEventListener('mouseup', () => { editorIsSeeking = false; });
     editorSeek.addEventListener('touchend', () => { editorIsSeeking = false; });
+  }
+
+  // ループ終点
+  const loopEndSeek = document.getElementById('loopEndSeek');
+  const loopEndEnabled = document.getElementById('loopEndEnabled');
+  const loopEndTime = document.getElementById('loopEndTime');
+
+  function updateLoopEndDisplay() {
+    const m = Math.floor(state.loopEndTime / 60);
+    const sec = (state.loopEndTime % 60).toFixed(1);
+    loopEndTime.textContent = `${m}:${sec.padStart(4, '0')}`;
+    if (loopEndSeek && state.duration > 0) {
+      loopEndSeek.value = (state.loopEndTime / state.duration) * 1000;
+    }
+  }
+
+  if (loopEndSeek) {
+    loopEndSeek.addEventListener('input', () => {
+      if (state.duration > 0) {
+        state.loopEndTime = (parseFloat(loopEndSeek.value) / 1000) * state.duration;
+        updateLoopEndDisplay();
+      }
+    });
+  }
+  if (loopEndEnabled) {
+    loopEndEnabled.addEventListener('change', () => {
+      state.loopEndEnabled = loopEndEnabled.checked;
+      if (loopEndEnabled.checked && state.duration > 0) {
+        state.loopEndTime = (parseFloat(loopEndSeek.value) / 1000) * state.duration;
+        updateLoopEndDisplay();
+      } else {
+        loopEndTime.textContent = '-:--.--';
+      }
+    });
+  }
+
+  const loopEndDown = document.getElementById('loopEndDown');
+  const loopEndUp = document.getElementById('loopEndUp');
+  if (loopEndDown) {
+    loopEndDown.addEventListener('click', () => {
+      if (state.duration > 0) {
+        state.loopEndTime = Math.max(0, state.loopEndTime - 0.1);
+        updateLoopEndDisplay();
+      }
+    });
+  }
+  if (loopEndUp) {
+    loopEndUp.addEventListener('click', () => {
+      if (state.duration > 0) {
+        state.loopEndTime = Math.min(state.duration, state.loopEndTime + 0.1);
+        updateLoopEndDisplay();
+      }
+    });
+  }
+
+  // フェードアウト秒数スライダー
+  const fadeOutSlider = document.getElementById('fadeOutDuration');
+  const fadeOutValue = document.getElementById('fadeOutValue');
+  if (fadeOutSlider) {
+    fadeOutSlider.addEventListener('input', () => {
+      fadeOutDuration = parseInt(fadeOutSlider.value) / 10;
+      if (fadeOutValue) fadeOutValue.textContent = fadeOutDuration.toFixed(1) + 's';
+    });
   }
 
   // エディタ用シークバー＋Duration更新ループ
@@ -2003,11 +2074,13 @@ function clearMidi() {
 
 // 音源クリア
 function clearAudio() {
+  cleanupCrossfade();
   if (audioElement) {
     audioElement.pause();
     audioElement.src = '';
     audioElement = null;
   }
+  audioSrcUrl = null;
   document.getElementById('audioFileName').textContent = '未選択（ドロップ可）';
   document.getElementById('audioClearBtn').style.display = 'none';
 
@@ -2028,7 +2101,8 @@ function loadAudio(file) {
 
   // 新しいオーディオ要素を作成
   audioElement = new Audio();
-  audioElement.src = URL.createObjectURL(file);
+  audioSrcUrl = URL.createObjectURL(file);
+  audioElement.src = audioSrcUrl;
   audioElement.load();
 
   console.log(`Audio loaded: ${file.name}`);
@@ -4083,14 +4157,24 @@ function togglePlay() {
   }
 }
 
+function cleanupCrossfade() {
+  crossfadeStartTime = -1;
+  if (audioElement) audioElement.volume = 1;
+  if (overlapAudio) {
+    overlapAudio.pause();
+    overlapAudio.src = '';
+    overlapAudio = null;
+  }
+}
+
 function play() {
   if (!state.midi) return;
   state.isPlaying = true;
   state.lastFrameTime = performance.now();
   lastSyncCheck = performance.now();
-  document.getElementById('playBtn').textContent = '⏸';
+  document.getElementById('playBtn').innerHTML = '<i class="fa-solid fa-pause"></i>';
   const vp = document.getElementById('viewerPlayBtn');
-  if (vp) vp.textContent = '⏸';
+  if (vp) vp.innerHTML = '<i class="fa-solid fa-pause"></i>';
   // 音源を再生（audioDelay適用）
   if (audioElement) {
     if (audioDelayTimer) clearTimeout(audioDelayTimer);
@@ -4114,10 +4198,11 @@ function play() {
 
 function pause() {
   state.isPlaying = false;
-  document.getElementById('playBtn').textContent = '▶';
+  document.getElementById('playBtn').innerHTML = '<i class="fa-solid fa-play"></i>';
   const vp = document.getElementById('viewerPlayBtn');
-  if (vp) vp.textContent = '▶';
+  if (vp) vp.innerHTML = '<i class="fa-solid fa-play"></i>';
   if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
+  cleanupCrossfade();
   // 音源を一時停止
   if (audioElement) {
     audioElement.pause();
@@ -4130,11 +4215,12 @@ function stop() {
   state.isPlaying = false;
   state.currentTime = 0;
   state.triggeredNotes.clear();
-  document.getElementById('playBtn').textContent = '▶';
+  document.getElementById('playBtn').innerHTML = '<i class="fa-solid fa-play"></i>';
   const vp = document.getElementById('viewerPlayBtn');
-  if (vp) vp.textContent = '▶';
+  if (vp) vp.innerHTML = '<i class="fa-solid fa-play"></i>';
   updateTimeDisplay();
   if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
+  cleanupCrossfade();
   // 音源を停止・最初に戻す
   if (audioElement) {
     audioElement.pause();
@@ -4149,6 +4235,7 @@ function reset() {
   state.triggeredNotes.clear();
   updateTimeDisplay();
   if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
+  cleanupCrossfade();
   // 音源を最初に戻す
   if (audioElement) {
     audioElement.currentTime = 0;
@@ -4161,6 +4248,7 @@ function seekTo(time) {
   state.triggeredNotes.clear();
   updateTimeDisplay();
   if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
+  cleanupCrossfade();
   if (audioElement) {
     const audioTime = time - syncConfig.audioDelay;
     if (audioTime >= 0) {
@@ -4483,24 +4571,58 @@ function animate() {
       }
     }
 
-    // 曲の終わりに達したらループまたは停止（midiDelay分を加算）
-    if (state.currentTime >= state.duration + syncConfig.midiDelay) {
+    // 終点ループまたは曲の終わりに達したらループ
+    const loopPoint = (state.loopEndEnabled && state.loopEndTime > 0)
+      ? state.loopEndTime
+      : state.duration + syncConfig.midiDelay;
+
+    // フェードアウト＋オーバーラップ処理（終点ループ＋音源ありの場合）
+    const useFadeOut = state.loopEndEnabled && state.loopEndTime > 0 && audioElement;
+    if (useFadeOut) {
+      const timeToLoop = loopPoint - state.currentTime;
+      // フェードアウト開始
+      if (timeToLoop <= fadeOutDuration && timeToLoop > 0) {
+        if (crossfadeStartTime < 0) crossfadeStartTime = state.currentTime;
+        const elapsed = state.currentTime - crossfadeStartTime;
+        const progress = Math.min(1, elapsed / fadeOutDuration);
+        audioElement.volume = 1 - progress;
+      }
+      // オーバーラップ：終点の0.1秒前に次の音源を先行再生
+      if (timeToLoop <= fadeOutDuration && timeToLoop > 0 && !overlapAudio && audioSrcUrl) {
+        overlapAudio = new Audio(audioSrcUrl);
+        overlapAudio.volume = 1;
+        overlapAudio.currentTime = 0;
+        overlapAudio.play();
+      }
+    }
+
+    if (state.currentTime >= loopPoint) {
       state.currentTime = 0; // ループ
       state.triggeredNotes.clear();
       // ループ時に音源も最初から（audioDelay考慮）
       if (audioElement) {
         if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
-        if (syncConfig.audioDelay > 0) {
+        crossfadeStartTime = -1;
+        if (overlapAudio) {
+          // オーバーラップ音源に切り替え
           audioElement.pause();
-          audioElement.currentTime = 0;
-          audioDelayTimer = setTimeout(() => {
-            if (state.isPlaying && audioElement) {
-              audioElement.play();
-            }
-            audioDelayTimer = null;
-          }, syncConfig.audioDelay * 1000);
+          audioElement.src = '';
+          audioElement = overlapAudio;
+          overlapAudio = null;
         } else {
-          audioElement.currentTime = 0;
+          audioElement.volume = 1;
+          if (syncConfig.audioDelay > 0) {
+            audioElement.pause();
+            audioElement.currentTime = 0;
+            audioDelayTimer = setTimeout(() => {
+              if (state.isPlaying && audioElement) {
+                audioElement.play();
+              }
+              audioDelayTimer = null;
+            }, syncConfig.audioDelay * 1000);
+          } else {
+            audioElement.currentTime = 0;
+          }
         }
       }
     }

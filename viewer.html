@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Orchestra Viewer</title>
   <link rel="stylesheet" href="style.css?v=20260208b">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     /* ビューアーモード: 編集パネルを非表示、キャンバスを全画面化 */
     #controls, #settings-container, #image-panel,
@@ -505,10 +506,10 @@
 
   <!-- ビューアー用再生コントロール -->
   <div class="viewer-overlay">
-    <button id="viewerRewBtn">◀◀</button>
-    <button id="viewerPlayBtn">▶</button>
-    <button id="viewerStopBtn">■</button>
-    <button id="viewerFfBtn">▶▶</button>
+    <button id="viewerRewBtn"><i class="fa-solid fa-backward"></i></button>
+    <button id="viewerPlayBtn"><i class="fa-solid fa-play"></i></button>
+    <button id="viewerStopBtn"><i class="fa-solid fa-stop"></i></button>
+    <button id="viewerFfBtn"><i class="fa-solid fa-forward"></i></button>
     <span id="viewerTime">0:00</span>
     <span id="viewerDuration">/ 0:00</span>
     <input type="range" id="viewerSeek" min="0" max="100" step="0.1" value="0">
