@@ -15,12 +15,14 @@
         <span class="file-label">MIDI</span>
         <input type="file" id="midiInput" accept=".mid,.midi">
         <span id="midiFileName">未選択（ドロップ可）</span>
+        <button class="library-btn" data-slot="midi">ライブラリ</button>
         <button id="midiClearBtn" class="clear-btn" style="display:none;"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div id="audioDropZone" class="file-row">
         <span class="file-label">音源</span>
         <input type="file" id="audioInput" accept="audio/*">
         <span id="audioFileName">未選択（ドロップ可）</span>
+        <button class="library-btn" data-slot="audio">ライブラリ</button>
         <button id="audioClearBtn" class="clear-btn" style="display:none;"><i class="fa-solid fa-xmark"></i></button>
       </div>
     </div>
@@ -330,6 +332,7 @@
             <video id="skyDomeVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="skyDomeDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="skyDomeImageLabel">ファイル選択</label>
+            <button class="library-btn" data-slot="skyDome">ライブラリ</button>
             <input type="file" id="skyDomeImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
@@ -350,6 +353,7 @@
             <video id="floorVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="floorDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="floorImageLabel">ファイル選択</label>
+            <button class="library-btn" data-slot="floor">ライブラリ</button>
             <input type="file" id="floorImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
@@ -371,6 +375,7 @@
             <video id="leftWallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="leftWallDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="leftWallImageLabel">ファイル選択</label>
+            <button class="library-btn" data-slot="leftWall">ライブラリ</button>
             <input type="file" id="leftWallImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
@@ -392,6 +397,7 @@
             <video id="rightWallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="rightWallDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="rightWallImageLabel">ファイル選択</label>
+            <button class="library-btn" data-slot="rightWall">ライブラリ</button>
             <input type="file" id="rightWallImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
@@ -413,6 +419,7 @@
             <video id="backWallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="backWallDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="backWallImageLabel">ファイル選択</label>
+            <button class="library-btn" data-slot="backWall">ライブラリ</button>
             <input type="file" id="backWallImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
@@ -549,6 +556,17 @@
       <div class="modal-buttons">
         <button id="publishConfirm">公開</button>
         <button id="publishCancel">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- メディアライブラリモーダル -->
+  <div id="mediaLibraryModal" class="modal-overlay" style="display:none;">
+    <div class="modal-content media-library-modal">
+      <h3>メディアライブラリ</h3>
+      <div id="mediaLibraryGrid" class="media-grid"></div>
+      <div class="modal-buttons">
+        <button id="mediaLibraryCancel">閉じる</button>
       </div>
     </div>
   </div>

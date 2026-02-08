@@ -70,6 +70,26 @@ async function findExistingMedia(name, size) {
 }
 
 async function saveMediaToLibrary(file, type) {
+  // 同名・同タイプの既存メディアを削除
+  const existing = await new Promise((resolve, reject) => {
+    const tx = db.transaction('mediaLibrary', 'readonly');
+    const store = tx.objectStore('mediaLibrary');
+    const index = store.index('name');
+    const request = index.getAll(file.name);
+    request.onsuccess = () => resolve(request.result.filter(r => r.type === type));
+    request.onerror = () => reject(request.error);
+  });
+
+  if (existing.length > 0) {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('mediaLibrary', 'readwrite');
+      const store = tx.objectStore('mediaLibrary');
+      existing.forEach(r => store.delete(r.id));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   const id = generateId();
   const record = {
     id,
@@ -90,12 +110,33 @@ async function saveMediaToLibrary(file, type) {
   });
 }
 
+async function getAllMediaByType(type) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('mediaLibrary', 'readonly');
+    const store = tx.objectStore('mediaLibrary');
+    const index = store.index('type');
+    const request = index.getAll(type);
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 async function getMediaFromLibrary(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('mediaLibrary', 'readonly');
     const store = tx.objectStore('mediaLibrary');
     const request = store.get(id);
     request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function deleteMediaFromLibrary(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('mediaLibrary', 'readwrite');
+    const store = tx.objectStore('mediaLibrary');
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
 }
@@ -760,4 +801,6 @@ window.presetManager = {
   collectCurrentSettings,
   applySettings,
   getMediaFromLibrary,
+  getAllMediaByType,
+  deleteMediaFromLibrary,
 };

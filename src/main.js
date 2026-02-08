@@ -1936,6 +1936,202 @@ function setupEventListeners() {
   });
 
   // ============================================
+  // メディアライブラリモーダル
+  // ============================================
+  const mediaLibraryModal = document.getElementById('mediaLibraryModal');
+  const mediaLibraryGrid = document.getElementById('mediaLibraryGrid');
+  const mediaLibraryCancel = document.getElementById('mediaLibraryCancel');
+  let mediaLibraryTargetSlot = null;
+  const mediaLibraryObjectURLs = [];
+
+  const slotLoadMap = {
+    midi: loadMidi,
+    audio: loadAudio,
+    skyDome: loadSkyDomeImage,
+    floor: loadFloorImage,
+    leftWall: loadLeftWallImage,
+    rightWall: loadRightWallImage,
+    backWall: loadBackWallImage,
+  };
+
+  const slotMediaTypes = {
+    midi: ['midi'],
+    audio: ['audio'],
+    skyDome: ['image', 'video'],
+    floor: ['image', 'video'],
+    leftWall: ['image', 'video'],
+    rightWall: ['image', 'video'],
+    backWall: ['image', 'video'],
+  };
+
+  function cleanupMediaLibraryURLs() {
+    mediaLibraryObjectURLs.forEach(url => URL.revokeObjectURL(url));
+    mediaLibraryObjectURLs.length = 0;
+  }
+
+  if (mediaLibraryModal) {
+    // ライブラリボタンのクリック
+    document.querySelectorAll('.library-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        mediaLibraryTargetSlot = btn.dataset.slot;
+        if (!window.presetManager || !window.presetManager.getAllMediaByType) return;
+
+        // スロットに応じたメディアタイプを取得
+        const types = slotMediaTypes[mediaLibraryTargetSlot] || ['image', 'video'];
+        const results = await Promise.all(types.map(t => window.presetManager.getAllMediaByType(t)));
+        const allMedia = results.flat().sort((a, b) => b.createdAt - a.createdAt);
+
+        cleanupMediaLibraryURLs();
+        mediaLibraryGrid.innerHTML = '';
+        const isListMode = mediaLibraryTargetSlot === 'midi' || mediaLibraryTargetSlot === 'audio';
+        mediaLibraryGrid.classList.toggle('media-list', isListMode);
+
+        if (allMedia.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'media-grid-empty';
+          empty.textContent = 'メディアがありません';
+          mediaLibraryGrid.appendChild(empty);
+        } else {
+          allMedia.forEach(record => {
+            const item = document.createElement('div');
+            item.className = isListMode ? 'media-list-item' : 'media-grid-item';
+
+            if (isListMode) {
+              const icon = document.createElement('span');
+              icon.className = 'media-list-icon';
+              icon.innerHTML = record.type === 'midi' ? '<i class="fa-solid fa-music"></i>' : '<i class="fa-solid fa-volume-high"></i>';
+              item.appendChild(icon);
+
+              const name = document.createElement('span');
+              name.className = 'media-list-name';
+              name.textContent = record.name;
+              name.title = record.name;
+              item.appendChild(name);
+
+              const d = new Date(record.createdAt);
+              const date = document.createElement('span');
+              date.className = 'media-list-date';
+              date.textContent = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+              item.appendChild(date);
+
+              const deleteBtn = document.createElement('button');
+              deleteBtn.className = 'media-list-delete';
+              deleteBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+              deleteBtn.title = '削除';
+              deleteBtn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                if (!confirm(`「${record.name}」を削除しますか？`)) return;
+                await window.presetManager.deleteMediaFromLibrary(record.id);
+                item.remove();
+                if (mediaLibraryGrid.children.length === 0) {
+                  const empty = document.createElement('div');
+                  empty.className = 'media-grid-empty';
+                  empty.textContent = 'メディアがありません';
+                  mediaLibraryGrid.appendChild(empty);
+                }
+              });
+              item.appendChild(deleteBtn);
+            } else {
+              const isVideo = record.mimeType && record.mimeType.startsWith('video/');
+              const url = URL.createObjectURL(record.blob);
+              mediaLibraryObjectURLs.push(url);
+
+              if (isVideo) {
+                const vid = document.createElement('video');
+                vid.src = url;
+                vid.muted = true;
+                vid.addEventListener('mouseenter', () => vid.play());
+                vid.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0; });
+                item.appendChild(vid);
+              } else {
+                const img = document.createElement('img');
+                img.src = url;
+                item.appendChild(img);
+              }
+
+              const deleteBtn = document.createElement('button');
+              deleteBtn.className = 'media-delete-btn';
+              deleteBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+              deleteBtn.title = '削除';
+              deleteBtn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                if (!confirm(`「${record.name}」を削除しますか？`)) return;
+                await window.presetManager.deleteMediaFromLibrary(record.id);
+                item.remove();
+                if (mediaLibraryGrid.children.length === 0) {
+                  const empty = document.createElement('div');
+                  empty.className = 'media-grid-empty';
+                  empty.textContent = 'メディアがありません';
+                  mediaLibraryGrid.appendChild(empty);
+                }
+              });
+              item.appendChild(deleteBtn);
+
+              const name = document.createElement('div');
+              name.className = 'media-name';
+              name.textContent = record.name;
+              name.title = record.name;
+              item.appendChild(name);
+
+              const d = new Date(record.createdAt);
+              const date = document.createElement('div');
+              date.className = 'media-date';
+              date.textContent = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+              item.appendChild(date);
+            }
+
+            item.addEventListener('click', async () => {
+              const loadFn = slotLoadMap[mediaLibraryTargetSlot];
+              if (!loadFn) return;
+
+              const fullRecord = await window.presetManager.getMediaFromLibrary(record.id);
+              if (!fullRecord) return;
+
+              const file = new File([fullRecord.blob], fullRecord.name, { type: fullRecord.mimeType });
+              await loadFn(file);
+              if (window.currentMediaRefs) window.currentMediaRefs[mediaLibraryTargetSlot] = record.id;
+
+              // MIDI/音声のファイル名表示・クリアボタン更新
+              if (mediaLibraryTargetSlot === 'midi') {
+                document.getElementById('midiFileName').textContent = fullRecord.name;
+                const btn = document.getElementById('midiClearBtn');
+                if (btn) btn.style.display = '';
+              } else if (mediaLibraryTargetSlot === 'audio') {
+                document.getElementById('audioFileName').textContent = fullRecord.name;
+                const btn = document.getElementById('audioClearBtn');
+                if (btn) btn.style.display = '';
+              }
+
+              mediaLibraryModal.style.display = 'none';
+              cleanupMediaLibraryURLs();
+            });
+
+            mediaLibraryGrid.appendChild(item);
+          });
+        }
+
+        mediaLibraryModal.style.display = 'flex';
+      });
+    });
+
+    // 閉じるボタン
+    mediaLibraryCancel.addEventListener('click', () => {
+      mediaLibraryModal.style.display = 'none';
+      cleanupMediaLibraryURLs();
+    });
+
+    // モーダル外クリックで閉じる
+    mediaLibraryModal.addEventListener('click', (e) => {
+      if (e.target === mediaLibraryModal) {
+        mediaLibraryModal.style.display = 'none';
+        cleanupMediaLibraryURLs();
+      }
+    });
+  }
+
+  // ============================================
   // クロマキーのイベントリスナー（各面個別）
   // ============================================
   const chromaKeyFaces = [
