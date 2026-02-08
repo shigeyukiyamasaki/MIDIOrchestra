@@ -36,30 +36,29 @@
         <span id="audioDelayValue">0.00秒</span>
       </div>
     </div>
-    <div class="control-group">
-      <button id="rewBtn"><i class="fa-solid fa-backward"></i></button>
-      <button id="playBtn" disabled><i class="fa-solid fa-play"></i></button>
-      <button id="stopBtn" disabled><i class="fa-solid fa-stop"></i></button>
-      <button id="ffBtn"><i class="fa-solid fa-forward"></i></button>
-    </div>
-    <div class="control-group seek-group">
-      <label>再生位置: <span id="currentTime">0:00</span> <span id="editorDuration">/ 0:00</span></label>
-      <div class="seek-bar-container">
-        <input type="range" id="editorSeek" min="0" max="100" step="0.1" value="0">
-        <input type="range" id="loopEndSeek" min="0" max="1000" step="1" value="1000" class="loop-end-range">
+    <div class="control-group playback-group">
+      <div class="control-group">
+        <button id="rewBtn"><i class="fa-solid fa-backward"></i></button>
+        <button id="playBtn" disabled><i class="fa-solid fa-play"></i></button>
+        <button id="stopBtn" disabled><i class="fa-solid fa-stop"></i></button>
+        <button id="ffBtn"><i class="fa-solid fa-forward"></i></button>
+        <select id="aspectRatioSelect" style="margin-left:auto;">
+          <option value="16:9">16:9</option>
+          <option value="9:16">9:16</option>
+          <option value="free">フリー</option>
+        </select>
       </div>
-      <div class="loop-end-block">
-        <label class="loop-end-label"><input type="checkbox" id="loopEndEnabled"> 終点 <span id="loopEndTime">-:--.--</span> <span class="loop-end-btns"><button id="loopEndUp" class="loop-end-btn">▲</button><button id="loopEndDown" class="loop-end-btn">▼</button></span></label>
-        <label class="loop-end-label">FO <input type="range" id="fadeOutDuration" min="1" max="10" step="1" value="1" style="width:60px;vertical-align:middle;"> <span id="fadeOutValue">0.1s</span></label>
+      <div class="control-group seek-group">
+        <label><span id="currentTime">0:00</span> <span id="editorDuration">/ 0:00</span></label>
+        <div class="seek-bar-container">
+          <input type="range" id="editorSeek" min="0" max="100" step="0.1" value="0">
+          <input type="range" id="loopEndSeek" min="0" max="1000" step="1" value="1000" class="loop-end-range">
+        </div>
+        <div class="loop-end-block">
+          <label class="loop-end-label"><input type="checkbox" id="loopEndEnabled"> 終点 <span id="loopEndTime">-:--.--</span> <span class="loop-end-btns"><button id="loopEndUp" class="loop-end-btn">▲</button><button id="loopEndDown" class="loop-end-btn">▼</button></span></label>
+          <label class="loop-end-label">FO <input type="range" id="fadeOutDuration" min="1" max="10" step="1" value="1" style="width:60px;vertical-align:middle;"> <span id="fadeOutValue">0.1s</span></label>
+        </div>
       </div>
-    </div>
-    <div class="control-group">
-      <label>画面比率</label>
-      <select id="aspectRatioSelect">
-        <option value="16:9">16:9</option>
-        <option value="9:16">9:16</option>
-        <option value="free">フリー</option>
-      </select>
     </div>
     <div class="control-group preset-controls">
       <select id="presetSelect"><option value="">プリセット選択...</option></select>
