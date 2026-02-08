@@ -25,6 +25,7 @@ body {
   padding: 0 20px;
   gap: 30px;
   z-index: 100;
+  border-bottom: 1px solid #333;
 }
 
 .control-group {
@@ -208,7 +209,10 @@ body {
   font-size: 13px;
   color: #888;
   white-space: nowrap;
-  min-width: 30px;
+  display: inline-block;
+  width: 40px;
+  flex-shrink: 0;
+  text-align: left;
 }
 
 #midiFileName,
@@ -219,8 +223,8 @@ body {
   cursor: pointer;
   font-size: 13px;
   color: #888;
-  min-width: 150px;
-  max-width: 250px;
+  width: 200px;
+  flex-shrink: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -256,6 +260,9 @@ body {
   transition: all 0.2s ease;
   border-radius: 4px;
   padding: 2px 10px;
+}
+.file-row input[type="file"] {
+  display: none;
 }
 
 .file-row.drag-over {
@@ -308,6 +315,8 @@ button:disabled {
   bottom: 0;
   display: flex;
   z-index: 50;
+  border-left: 1px solid #333;
+  border-right: 1px solid #333;
 }
 
 /* 設定パネル共通（列） */
@@ -324,11 +333,12 @@ button:disabled {
 #image-panel {
   position: fixed;
   top: 100px;
-  left: 320px;
+  left: 260px;
   right: 360px;
   height: 320px;
   background: rgba(0, 0, 0, 0.8);
   z-index: 40;
+  border-left: 1px solid #333;
   border-bottom: 1px solid #333;
   overflow: hidden;
   padding: 15px;
@@ -590,20 +600,21 @@ button:disabled {
 #canvas-container {
   position: fixed;
   top: 420px;
-  left: 320px;
+  left: 260px;
   right: 360px;
   bottom: 260px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #000;
+  border-left: 1px solid #333;
 }
 
 /* 表示設定パネル（プレビュー下段） */
 #display-settings-panel {
   position: fixed;
   bottom: 0;
-  left: 320px;
+  left: 260px;
   right: 360px;
   height: 260px;
   background: rgba(0, 0, 0, 0.8);
@@ -611,6 +622,8 @@ button:disabled {
   flex-direction: column;
   padding: 10px;
   z-index: 40;
+  border-top: 1px solid #333;
+  border-left: 1px solid #333;
 }
 
 #display-settings-panel h3 {
@@ -647,11 +660,11 @@ button:disabled {
   position: fixed;
   top: 100px;
   left: 0;
-  width: 320px;
+  width: 260px;
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
   padding: 15px;
-  padding-left: 60px;
+  padding-left: 55px;
   overflow-y: auto;
 }
 
@@ -666,17 +679,17 @@ button:disabled {
 #track-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
 }
 
 .track-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 5px 8px;
   background: #2d2d44;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 11px;
   transition: background 0.1s ease;
   position: relative;
 }
@@ -687,12 +700,12 @@ button:disabled {
 
 .track-icon {
   position: absolute;
-  left: -50px;
+  left: -40px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 32px;
-  width: 44px;
-  height: 44px;
+  font-size: 24px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1138,16 +1151,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-.clear-btn {
-  width: 100%;
-  padding: 6px 12px;
-  background: #5a3d3d;
-  font-size: 11px;
-}
-
-.clear-btn:hover {
-  background: #6a4d4d;
-}
 
 /* プリセットコントロール */
 .preset-controls {
@@ -1245,15 +1248,17 @@ button:disabled {
    ============================================ */
 .viewer-overlay {
   position: fixed;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 0;
+  left: 10px;
+  right: 10px;
   z-index: 200;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  justify-content: center;
   background: rgba(0, 0, 0, 0.6);
-  padding: 10px 20px;
+  padding: 10px 15px;
   border-radius: 8px;
 }
 
@@ -1295,10 +1300,64 @@ button:disabled {
 }
 
 #viewerSeek {
-  width: 200px;
+  width: 100%;
   height: 6px;
   cursor: pointer;
   accent-color: #4fc3f7;
+}
+
+.viewer-center-controls {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.viewer-center-controls label {
+  color: #aaa;
+  font-size: 11px;
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+
+.viewer-center-controls div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.viewer-center-controls span {
+  color: #888;
+  font-size: 11px;
+  min-width: 10px;
+  font-family: sans-serif;
+}
+
+.viewer-center-controls input[type="range"] {
+  width: 120px;
+  height: 4px;
+  accent-color: #4fc3f7;
+  cursor: pointer;
+}
+
+#viewerLoading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 300;
+  color: #fff;
+  font-size: 18px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 20px 40px;
+  border-radius: 8px;
 }
 
 #publishStatus {

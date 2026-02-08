@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>MIDI Orchestra Viewer</title>
-  <link rel="stylesheet" href="style.css?v=20260208b">
+  <link rel="stylesheet" href="style.css?v=20260208h">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     /* ビューアーモード: 編集パネルを非表示、キャンバスを全画面化 */
@@ -135,16 +138,21 @@
             <span id="cameraRangeZMaxVal">300</span>
           </div>
         </div>
-        <div class="setting-category">全体調整</div>
+        <div class="setting-category">中心点</div>
         <div class="setting-item">
-          <label>全体の高さ</label>
-          <input type="range" id="cameraHeightOffset" min="-200" max="200" step="5" value="0">
-          <span id="cameraHeightOffsetValue">0</span>
+          <label>X</label>
+          <input type="range" id="cameraTargetX" min="-500" max="500" step="5" value="0">
+          <span id="cameraTargetXValue">0</span>
         </div>
         <div class="setting-item">
-          <label>注視点Y</label>
+          <label>Y</label>
           <input type="range" id="cameraTargetY" min="-100" max="100" step="5" value="0">
           <span id="cameraTargetYValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>Z</label>
+          <input type="range" id="cameraTargetZ" min="-500" max="500" step="5" value="0">
+          <span id="cameraTargetZValue">0</span>
         </div>
         <div class="setting-category">自動切替</div>
         <div class="setting-item">
@@ -460,6 +468,11 @@
         <span id="timelineOpacityValue">0.25</span>
       </div>
       <div class="setting-item">
+        <label>X位置</label>
+        <input type="range" id="timelineX" min="-500" max="500" step="5" value="0">
+        <span id="timelineXValue">0</span>
+      </div>
+      <div class="setting-item">
         <label>幕の色</label>
         <input type="color" id="timelineColor" value="#ff4444">
       </div>
@@ -504,6 +517,9 @@
     <div id="track-list"></div>
   </div>
 
+  <!-- ローディング表示 -->
+  <div id="viewerLoading">読み込み中...</div>
+
   <!-- ビューアー用再生コントロール -->
   <div class="viewer-overlay">
     <button id="viewerRewBtn"><i class="fa-solid fa-backward"></i></button>
@@ -513,6 +529,14 @@
     <span id="viewerTime">0:00</span>
     <span id="viewerDuration">/ 0:00</span>
     <input type="range" id="viewerSeek" min="0" max="100" step="0.1" value="0">
+  </div>
+
+  <!-- 中心点コントロール（左上） -->
+  <div class="viewer-center-controls">
+    <label>中心点</label>
+    <div><span>X</span><input type="range" id="viewerCenterX" min="-500" max="500" step="5" value="0"></div>
+    <div><span>Y</span><input type="range" id="viewerCenterY" min="-500" max="500" step="5" value="0"></div>
+    <div><span>Z</span><input type="range" id="viewerCenterZ" min="-500" max="500" step="5" value="0"></div>
   </div>
 
   <!-- ライブラリ読み込み -->
@@ -531,7 +555,7 @@
       document.write('<script src="viewer-data.js"><\/script>');
     }
   </script>
-  <script src="src/presetManager.js?v=20260208b"></script>
-  <script type="module" src="src/main.js?v=20260208c"></script>
+  <script src="src/presetManager.js?v=20260208d"></script>
+  <script type="module" src="src/main.js?v=20260208g"></script>
 </body>
 </html>

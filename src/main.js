@@ -662,6 +662,12 @@ function setupThreeJS() {
   controls.minDistance = 10;           // 最小ズーム
   controls.maxDistance = 500;          // 最大ズーム
   controls.maxPolarAngle = Math.PI;    // 上下回転の制限
+  // タッチデバイスは感度を下げる
+  if ('ontouchstart' in window) {
+    controls.rotateSpeed = 0.5;
+    controls.zoomSpeed = 0.5;
+    controls.panSpeed = 0.5;
+  }
 
   // 照明
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -1263,6 +1269,16 @@ function setupEventListeners() {
     }
   });
 
+  // 幕のX位置
+  const timelineXInput = document.getElementById('timelineX');
+  const timelineXValue = document.getElementById('timelineXValue');
+  if (timelineXInput) {
+    timelineXInput.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      if (timelineXValue) timelineXValue.textContent = val;
+    });
+  }
+
   // アスペクト比選択
   const aspectRatioSelect = document.getElementById('aspectRatioSelect');
   aspectRatioSelect.addEventListener('change', (e) => {
@@ -1329,33 +1345,57 @@ function setupEventListeners() {
   // デュアルレンジスライダーの初期化
   initDualRangeSliders();
 
-  // 全体の高さ（カメラと注視点を同時に上下、角度維持）
-  const cameraHeightOffsetInput = document.getElementById('cameraHeightOffset');
-  const cameraHeightOffsetValue = document.getElementById('cameraHeightOffsetValue');
-  let lastHeightOffset = 0;
-  cameraHeightOffsetInput.addEventListener('input', (e) => {
+  // 中心点X（カメラと注視点を同時に移動、角度維持）
+  const cameraTargetXInput = document.getElementById('cameraTargetX');
+  const cameraTargetXValue = document.getElementById('cameraTargetXValue');
+  let lastXOffset = 0;
+  if (cameraTargetXInput) {
+    cameraTargetXInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      cameraTargetXValue.textContent = value;
+      if (camera && controls) {
+        const delta = value - lastXOffset;
+        camera.position.x += delta;
+        controls.target.x += delta;
+        lastXOffset = value;
+        controls.update();
+      }
+    });
+  }
+
+  // 中心点Y（既存の注視点Y → 同方式に統一）
+  const cameraTargetYInput = document.getElementById('cameraTargetY');
+  const cameraTargetYValue = document.getElementById('cameraTargetYValue');
+  let lastYOffset = 0;
+  cameraTargetYInput.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
-    cameraHeightOffsetValue.textContent = value;
+    cameraTargetYValue.textContent = value;
     if (camera && controls) {
-      const delta = value - lastHeightOffset;
+      const delta = value - lastYOffset;
       camera.position.y += delta;
       controls.target.y += delta;
-      lastHeightOffset = value;
+      lastYOffset = value;
       controls.update();
     }
   });
 
-  // カメラ注視点の高さ
-  const cameraTargetYInput = document.getElementById('cameraTargetY');
-  const cameraTargetYValue = document.getElementById('cameraTargetYValue');
-  cameraTargetYInput.addEventListener('input', (e) => {
-    const value = parseFloat(e.target.value);
-    cameraTargetYValue.textContent = value;
-    if (controls) {
-      controls.target.y = value;
-      controls.update();
-    }
-  });
+  // 中心点Z（カメラと注視点を同時に移動、角度維持）
+  const cameraTargetZInput = document.getElementById('cameraTargetZ');
+  const cameraTargetZValue = document.getElementById('cameraTargetZValue');
+  let lastZOffset = 0;
+  if (cameraTargetZInput) {
+    cameraTargetZInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      cameraTargetZValue.textContent = value;
+      if (camera && controls) {
+        const delta = value - lastZOffset;
+        camera.position.z += delta;
+        controls.target.z += delta;
+        lastZOffset = value;
+        controls.update();
+      }
+    });
+  }
 
   // === エフェクト設定（統合版）===
 
@@ -2545,7 +2585,9 @@ function create3DInstrumentIcons() {
     });
 
     const sprite = new THREE.Sprite(spriteMaterial);
-    sprite.position.set(0, yPosition, avgZPosition); // X=0（タイムライン上）
+    const tlXSlider = document.getElementById('timelineX');
+    const tlX = tlXSlider ? parseInt(tlXSlider.value) : 0;
+    sprite.position.set(tlX, yPosition, avgZPosition);
     sprite.scale.set(8, 8, 1);
 
     // グループ情報を保持
@@ -2578,9 +2620,12 @@ function update3DIconHighlights() {
   });
 
   // 各アイコンの状態を更新（グループ内のいずれかのトラックが鳴っていれば光る）
+  const iconTlXSlider = document.getElementById('timelineX');
+  const iconTlX = iconTlXSlider ? parseInt(iconTlXSlider.value) : 0;
   state.iconSprites.forEach(sprite => {
     const { trackIndices, baseScale } = sprite.userData;
     const isPlaying = trackIndices.some(idx => playingTracks.has(idx));
+    sprite.position.x = iconTlX;
 
     if (isPlaying) {
       // 拡大＋明るく
@@ -2698,7 +2743,9 @@ function createPopIcon(y, z, instrumentId) {
   });
 
   const sprite = new THREE.Sprite(spriteMaterial);
-  sprite.position.set(0, y, z); // タイムライン上からスタート
+  const tlXSlider2 = document.getElementById('timelineX');
+  const tlX2 = tlXSlider2 ? parseInt(tlXSlider2.value) : 0;
+  sprite.position.set(tlX2, y, z); // タイムライン上からスタート
   const baseScale = 3 * settings.popIconScale;
   sprite.scale.set(baseScale, baseScale, 1);
 
@@ -4630,16 +4677,18 @@ function animate() {
     updateTimeDisplay();
   }
 
-  // タイムライン平面は固定（X=0）
+  // タイムライン平面のX位置（スライダーで調整可能）
+  const timelineXSlider = document.getElementById('timelineX');
+  const tlOffset = timelineXSlider ? parseInt(timelineXSlider.value) : 0;
   if (timelinePlane) {
-    timelinePlane.position.x = 0;
+    timelinePlane.position.x = tlOffset;
   }
 
-  // ノートを左に流す（midiDelay適用）
+  // ノートを左に流す（midiDelay適用 + タイムラインオフセット）
   const delayOffset = syncConfig.midiDelay * CONFIG.timeScale;
   const timeOffset = state.currentTime * CONFIG.timeScale;
   state.noteObjects.forEach(mesh => {
-    mesh.position.x = mesh.userData.originalX - timeOffset + delayOffset;
+    mesh.position.x = mesh.userData.originalX - timeOffset + delayOffset + tlOffset;
   });
 
   // ノートのハイライト（現在再生中のノート）
@@ -4739,6 +4788,16 @@ async function loadViewerData() {
   // 設定を適用
   if (data.settings && window.presetManager) {
     window.presetManager.applySettings(data.settings);
+    // applySettingsはDOM値のみ設定しイベント未発火のため、内部変数を直接同期
+    if (data.settings.loopEndEnabled !== undefined) {
+      state.loopEndEnabled = data.settings.loopEndEnabled;
+    }
+    if (data.settings.loopEndTime !== undefined) {
+      state.loopEndTime = data.settings.loopEndTime;
+    }
+    if (data.settings.fadeOutDuration !== undefined) {
+      fadeOutDuration = parseInt(data.settings.fadeOutDuration) / 10;
+    }
   }
 
   // メディアを読み込み
@@ -4839,6 +4898,25 @@ async function loadViewerData() {
     requestAnimationFrame(updateViewerTime);
   }
   updateViewerTime();
+
+  // ビューアー中心点スライダー → 隠しスライダーに連動
+  const centerAxes = ['X', 'Y', 'Z'];
+  centerAxes.forEach(axis => {
+    const viewerSlider = document.getElementById('viewerCenter' + axis);
+    const hiddenSlider = document.getElementById('cameraTarget' + axis);
+    if (viewerSlider && hiddenSlider) {
+      // 初期値を隠しスライダーから同期
+      viewerSlider.value = hiddenSlider.value;
+      viewerSlider.addEventListener('input', () => {
+        hiddenSlider.value = viewerSlider.value;
+        hiddenSlider.dispatchEvent(new Event('input'));
+      });
+    }
+  });
+
+  // ローディング表示を消す
+  const loadingEl = document.getElementById('viewerLoading');
+  if (loadingEl) loadingEl.style.display = 'none';
 
   console.log('Viewer data loaded successfully');
 }

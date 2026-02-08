@@ -70,10 +70,6 @@ async function findExistingMedia(name, size) {
 }
 
 async function saveMediaToLibrary(file, type) {
-  // 重複チェック
-  const existingId = await findExistingMedia(file.name, file.size);
-  if (existingId) return existingId;
-
   const id = generateId();
   const record = {
     id,
@@ -215,8 +211,9 @@ function collectCurrentSettings() {
   };
 
   // カメラ
-  s.cameraHeightOffset = getRangeValue('cameraHeightOffset');
+  s.cameraTargetX = getRangeValue('cameraTargetX');
   s.cameraTargetY = getRangeValue('cameraTargetY');
+  s.cameraTargetZ = getRangeValue('cameraTargetZ');
   s.autoCameraEnabled = getCheckbox('autoCameraEnabled');
   s.autoCameraInterval = getRangeValue('autoCameraInterval');
   s.autoCameraMode = getSelectValue('autoCameraMode');
@@ -258,6 +255,7 @@ function collectCurrentSettings() {
   s.pitchScale = getRangeValue('pitchScale');
   s.timelineOpacity = getRangeValue('timelineOpacity');
   s.timelineColor = getColorValue('timelineColor');
+  s.timelineX = getRangeValue('timelineX');
   s.bgColorTop = getColorValue('bgColorTop');
   s.bgColorBottom = getColorValue('bgColorBottom');
   s.gridOpacity = getRangeValue('gridOpacity');
@@ -371,8 +369,14 @@ function applySettings(s) {
   });
 
   // カメラ
-  setRangeValue('cameraHeightOffset', s.cameraHeightOffset);
+  setRangeValue('cameraTargetX', s.cameraTargetX);
   setRangeValue('cameraTargetY', s.cameraTargetY);
+  setRangeValue('cameraTargetZ', s.cameraTargetZ);
+  // イベント発火でカメラを実際に移動
+  ['cameraTargetX', 'cameraTargetY', 'cameraTargetZ'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.dispatchEvent(new Event('input'));
+  });
   setCheckbox('autoCameraEnabled', s.autoCameraEnabled);
   setRangeValue('autoCameraInterval', s.autoCameraInterval);
   setSelectValue('autoCameraMode', s.autoCameraMode);
@@ -414,6 +418,7 @@ function applySettings(s) {
   setRangeValue('pitchScale', s.pitchScale);
   setRangeValue('timelineOpacity', s.timelineOpacity);
   setColorValue('timelineColor', s.timelineColor);
+  setRangeValue('timelineX', s.timelineX);
   setColorValue('bgColorTop', s.bgColorTop);
   setColorValue('bgColorBottom', s.bgColorBottom);
   setRangeValue('gridOpacity', s.gridOpacity);
@@ -425,12 +430,18 @@ function applySettings(s) {
   setRangeValue('midiDelay', s.midiDelay);
   setRangeValue('audioDelay', s.audioDelay);
 
-  // 終点ループ（秒数はMIDI読み込み後にstateへ反映）
+  // 終点ループ
   setCheckbox('loopEndEnabled', s.loopEndEnabled);
-  if (s.loopEndTime !== undefined && window.state) {
-    window.state.loopEndTime = s.loopEndTime;
+  if (window.state) {
+    if (s.loopEndEnabled !== undefined) window.state.loopEndEnabled = s.loopEndEnabled;
+    if (s.loopEndTime !== undefined) window.state.loopEndTime = s.loopEndTime;
   }
   setRangeValue('fadeOutDuration', s.fadeOutDuration);
+  // fadeOutDuration変数も直接同期
+  if (s.fadeOutDuration !== undefined) {
+    const foSlider = document.getElementById('fadeOutDuration');
+    if (foSlider) foSlider.dispatchEvent(new Event('input'));
+  }
 
   // スカイドーム
   setRangeValue('skyDomeOpacity', s.skyDomeOpacity);
@@ -664,6 +675,14 @@ async function initPresetSystem() {
     const mediaRefs = window.currentMediaRefs || {};
     await savePreset(name, settings, mediaRefs);
     await updatePresetDropdown();
+
+    // 保存したプリセットを選択状態にする
+    for (let i = 0; i < select.options.length; i++) {
+      if (select.options[i].textContent === name) {
+        select.selectedIndex = i;
+        break;
+      }
+    }
 
     modal.style.display = 'none';
     console.log('Preset saved:', name);
