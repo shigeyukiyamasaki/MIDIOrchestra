@@ -1219,7 +1219,7 @@ function setupEventListeners() {
     debouncedRebuildNotes();
   });
 
-  // Y軸スケール
+  // 縦スケール
   const pitchScaleInput = document.getElementById('pitchScale');
   const pitchScaleValue = document.getElementById('pitchScaleValue');
   pitchScaleInput.addEventListener('input', (e) => {
@@ -4905,7 +4905,6 @@ async function loadViewerData() {
     const viewerSlider = document.getElementById('viewerCenter' + axis);
     const hiddenSlider = document.getElementById('cameraTarget' + axis);
     if (viewerSlider && hiddenSlider) {
-      // 初期値を隠しスライダーから同期
       viewerSlider.value = hiddenSlider.value;
       viewerSlider.addEventListener('input', () => {
         hiddenSlider.value = viewerSlider.value;
@@ -4913,6 +4912,54 @@ async function loadViewerData() {
       });
     }
   });
+
+  // ビューアー ノート・レイアウトスライダー → 隠しスライダーに連動
+  const viewerDisplayMappings = [
+    { viewer: 'viewerNoteHeight', hidden: 'noteHeight' },
+    { viewer: 'viewerNoteDepth', hidden: 'noteDepth' },
+    { viewer: 'viewerNoteOpacity', hidden: 'noteOpacity' },
+    { viewer: 'viewerTrackSpacing', hidden: 'trackSpacing' },
+    { viewer: 'viewerTimeScale', hidden: 'timeScale' },
+    { viewer: 'viewerPitchScale', hidden: 'pitchScale' },
+  ];
+  viewerDisplayMappings.forEach(({ viewer, hidden }) => {
+    const viewerSlider = document.getElementById(viewer);
+    const hiddenSlider = document.getElementById(hidden);
+    if (viewerSlider && hiddenSlider) {
+      viewerSlider.value = hiddenSlider.value;
+      viewerSlider.addEventListener('input', () => {
+        hiddenSlider.value = viewerSlider.value;
+        hiddenSlider.dispatchEvent(new Event('input'));
+      });
+    }
+  });
+
+  // 設定パネルトグル
+  const settingsToggle = document.getElementById('viewerSettingsToggle');
+  const sideControls = document.querySelector('.viewer-side-controls');
+  if (settingsToggle && sideControls) {
+    const updateTogglePos = () => {
+      if (sideControls.classList.contains('open')) {
+        const h = sideControls.offsetHeight;
+        settingsToggle.style.top = (h + 5) + 'px';
+      } else {
+        settingsToggle.style.top = '10px';
+      }
+    };
+    settingsToggle.addEventListener('click', () => {
+      sideControls.classList.toggle('open');
+      updateTogglePos();
+    });
+    // パネル外タップで閉じる
+    document.addEventListener('click', (e) => {
+      if (sideControls.classList.contains('open') &&
+          !sideControls.contains(e.target) &&
+          !settingsToggle.contains(e.target)) {
+        sideControls.classList.remove('open');
+        updateTogglePos();
+      }
+    });
+  }
 
   // ローディング表示を消す
   const loadingEl = document.getElementById('viewerLoading');
