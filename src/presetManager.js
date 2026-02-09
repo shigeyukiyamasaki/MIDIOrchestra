@@ -2,6 +2,29 @@
 // プリセット管理 - IndexedDB メディアライブラリ
 // ============================================
 
+// モーダルをボタン付近に配置するユーティリティ
+function positionModalNearButton(modal, button) {
+  const content = modal.querySelector('.modal-content');
+  if (!content) return;
+  const rect = button.getBoundingClientRect();
+  const top = rect.bottom + 8;
+  content.style.position = 'absolute';
+  content.style.margin = '0';
+  content.style.top = top + 'px';
+  content.style.left = rect.left + 'px';
+  content.style.right = 'auto';
+  requestAnimationFrame(() => {
+    const cRect = content.getBoundingClientRect();
+    if (cRect.right > window.innerWidth - 16) {
+      content.style.left = 'auto';
+      content.style.right = '16px';
+    }
+    if (cRect.bottom > window.innerHeight - 16) {
+      content.style.top = Math.max(16, rect.top - cRect.height - 8) + 'px';
+    }
+  });
+}
+
 const DB_NAME = 'MIDIOrchestraDB';
 const DB_VERSION = 1;
 
@@ -324,6 +347,7 @@ function collectCurrentSettings() {
   s.floorImageFlip = getCheckbox('floorImageFlip');
   s.floorChromaColor = getColorValue('floorChromaColor');
   s.floorChromaThreshold = getRangeValue('floorChromaThreshold');
+  s.floorCurvature = getRangeValue('floorCurvature');
 
   // 左側面
   s.leftWallImageSize = getRangeValue('leftWallImageSize');
@@ -346,6 +370,23 @@ function collectCurrentSettings() {
   s.backWallImageFlip = getCheckbox('backWallImageFlip');
   s.backWallChromaColor = getColorValue('backWallChromaColor');
   s.backWallChromaThreshold = getRangeValue('backWallChromaThreshold');
+
+  // 自動収集: #controls内のid付きinput/selectで未収集のものを自動追加
+  const controls = document.getElementById('controls');
+  if (controls) {
+    controls.querySelectorAll('input[id], select[id]').forEach(el => {
+      if (s[el.id] !== undefined) return; // 既に収集済み
+      if (el.type === 'file') return; // ファイル入力は除外
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        if (el.type === 'radio' && !el.checked) return;
+        s[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+      } else if (el.type === 'color') {
+        s[el.id] = el.value;
+      } else {
+        s[el.id] = parseFloat(el.value) || el.value;
+      }
+    });
+  }
 
   return s;
 }
@@ -495,6 +536,7 @@ function applySettings(s) {
   setCheckbox('floorImageFlip', s.floorImageFlip);
   setColorValue('floorChromaColor', s.floorChromaColor);
   setRangeValue('floorChromaThreshold', s.floorChromaThreshold);
+  setRangeValue('floorCurvature', s.floorCurvature);
 
   // 左側面
   setRangeValue('leftWallImageSize', s.leftWallImageSize);
@@ -517,6 +559,41 @@ function applySettings(s) {
   setCheckbox('backWallImageFlip', s.backWallImageFlip);
   setColorValue('backWallChromaColor', s.backWallChromaColor);
   setRangeValue('backWallChromaThreshold', s.backWallChromaThreshold);
+
+  // 自動復元: 明示的に処理されなかった設定値をDOMに反映
+  const handled = new Set([
+    'cameraTargetX','cameraTargetY','cameraTargetZ',
+    'autoCameraEnabled','autoCameraInterval','autoCameraMode','autoCameraMovePercent','autoCameraCrossfade',
+    'bounceScale','bounceDuration','popIconScale','rippleEnabled','flashEffectIntensity',
+    'beatCameraRotation','beatBackgroundPulse','beatColorShift','beatSpacePulse','beatStrobe',
+    'effectCameraShake','effectCameraShakeTrigger','effectCameraZoom','effectCameraZoomTrigger',
+    'effectFlash','effectFlashTrigger','effectBlur','effectBlurTrigger',
+    'effectCrack','effectCrackTrigger','effectGlitch','effectGlitchTrigger',
+    'noteHeight','noteDepth','noteOpacity','trackSpacing','timeScale','pitchScale',
+    'timelineOpacity','timelineColor','timelineX','bgColorTop','bgColorBottom',
+    'gridOpacity','gridSize','gridColor','aspectRatioSelect',
+    'midiDelay','audioDelay','loopEndEnabled','loopEndTime','fadeOutDuration',
+    'skyDomeOpacity','skyDomeRange','skyDomeRadius',
+    'floorImageSize','floorImageOpacity','floorImageFlip','floorChromaColor','floorChromaThreshold','floorCurvature',
+    'leftWallImageSize','leftWallImageOpacity','leftWallImageFlip','leftWallChromaColor','leftWallChromaThreshold',
+    'rightWallImageSize','rightWallImageOpacity','rightWallImageFlip','rightWallChromaColor','rightWallChromaThreshold',
+    'backWallImageSize','backWallImageX','backWallImageOpacity','backWallImageFlip','backWallChromaColor','backWallChromaThreshold',
+  ]);
+  Object.keys(s).forEach(key => {
+    if (handled.has(key) || key.startsWith('cameraRange')) return;
+    if (s[key] === undefined) return;
+    const el = document.getElementById(key);
+    if (!el) return;
+    if (el.type === 'checkbox') {
+      setCheckbox(key, s[key]);
+    } else if (el.type === 'color') {
+      setColorValue(key, s[key]);
+    } else if (el.tagName === 'SELECT') {
+      setSelectValue(key, s[key]);
+    } else {
+      setRangeValue(key, s[key]);
+    }
+  });
 }
 
 // ============================================
@@ -691,6 +768,7 @@ async function initPresetSystem() {
       nameInput.value = '';
       overwriteWarning.style.display = 'none';
     }
+    positionModalNearButton(modal, saveBtn);
     modal.style.display = 'flex';
     nameInput.focus();
     nameInput.select();

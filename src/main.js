@@ -41,7 +41,8 @@ let floorAspect = 1;    // 床画像のアスペクト比（幅/高さ）
 let leftWallAspect = 1; // 左側面画像のアスペクト比
 let rightWallAspect = 1; // 右側面画像のアスペクト比
 let backWallAspect = 1; // 奥側画像のアスペクト比
-let floorY = -50;       // 床のY位置（共有用、グリッドと同じ）
+let floorY = -50;
+let floorCurvature = 0; // 床の曲率（0=フラット）       // 床のY位置（共有用、グリッドと同じ）
 let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用）
 let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
 let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
@@ -534,6 +535,7 @@ async function init() {
       if (selected && selected.value) {
         songInput.value = selected.textContent;
       }
+      positionModalNearButton(publishModal, publishBtn);
       publishModal.style.display = 'flex';
       songInput.focus();
     });
@@ -708,8 +710,8 @@ function setupThreeJS() {
   }
   scene.add(gridHelper);
 
-  // 床画像用平面（初期は非表示）
-  const floorGeometry = new THREE.PlaneGeometry(300, 300);
+  // 床画像用平面（初期は非表示）- セグメント分割で曲面対応
+  const floorGeometry = new THREE.PlaneGeometry(300, 300, 64, 64);
   const floorMaterial = createChromaKeyMaterial(0.8);
   floorPlane = new THREE.Mesh(floorGeometry, floorMaterial);
   floorPlane.rotation.x = -Math.PI / 2; // 水平に寝かせる
@@ -1746,6 +1748,16 @@ function setupEventListeners() {
   // 床画像ドラッグ&ドロップ
   const floorDropZone = document.getElementById('floorDropZone');
   setupDropZone(floorDropZone, loadFloorImage, true, 'floor');
+
+  // 床曲率
+  const floorCurvatureInput = document.getElementById('floorCurvature');
+  const floorCurvatureValueEl = document.getElementById('floorCurvatureValue');
+  floorCurvatureInput.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    floorCurvatureValueEl.textContent = value;
+    floorCurvature = value;
+    applyFloorCurvature();
+  });
 
   // 床画像左右反転
   const floorImageFlipInput = document.getElementById('floorImageFlip');
@@ -3922,11 +3934,31 @@ function clearFloorMedia() {
 function updateFloorImageSize(size) {
   if (!floorPlane) return;
 
-  // アスペクト比を維持してジオメトリを再作成
+  // アスペクト比を維持してジオメトリを再作成（セグメント分割）
   const width = size * floorAspect;
   const height = size;
   floorPlane.geometry.dispose();
-  floorPlane.geometry = new THREE.PlaneGeometry(width, height);
+  floorPlane.geometry = new THREE.PlaneGeometry(width, height, 64, 64);
+  // 曲率を再適用
+  applyFloorCurvature();
+}
+
+// 床の曲率を適用（頂点変形）
+function applyFloorCurvature() {
+  if (!floorPlane) return;
+  const geom = floorPlane.geometry;
+  const pos = geom.attributes.position;
+  // PlaneGeometryはXY平面。rotation.x=-PI/2でXZ平面になる。
+  // Z成分を変形すると、ワールドのY方向に膨らむ。
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    // 放物面: z = -curvature * (x² + y²)  中心が最も高く、端が下がる
+    const z = -floorCurvature * (x * x + y * y);
+    pos.setZ(i, z);
+  }
+  pos.needsUpdate = true;
+  geom.computeVertexNormals();
 }
 
 // 床画像をクリア

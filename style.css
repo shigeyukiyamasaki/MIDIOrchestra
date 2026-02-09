@@ -1192,6 +1192,11 @@ button:disabled {
   background: rgba(0, 0, 0, 0.6);
   z-index: 1000;
   display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.modal-overlay.modal-centered {
   align-items: center;
   justify-content: center;
 }
@@ -1483,19 +1488,19 @@ button:disabled {
 
 /* メディアライブラリモーダル */
 .media-library-modal {
-  max-width: 600px;
-  width: 90%;
-  max-height: 70vh;
+  width: 75vw !important;
+  max-width: 75vw !important;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
 }
 
 .media-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 10px;
   overflow-y: auto;
-  max-height: 50vh;
+  max-height: 65vh;
   padding: 4px;
 }
 
