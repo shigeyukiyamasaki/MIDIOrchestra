@@ -218,6 +218,9 @@ let cloudShadowSpeed = 1;
 let cloudShadowScale = 2;
 let cloudShadowDirection = 45;
 let bloomEnabled = true;
+let bloomThresholdRange = { min: 0.8, max: 0.8 };
+let bloomThresholdTarget = 0.8;
+let bloomThresholdCurrent = 0.8;
 let flareEnabled = true;
 let cloudShadowEnabled = true;
 let cloudShadowContrast = false;
@@ -1887,12 +1890,8 @@ function setupEventListeners() {
     document.getElementById('bloomRadiusValue').textContent = v;
     if (bloomPass) bloomPass.radius = v;
   });
-  // ブルーム閾値
-  document.getElementById('bloomThreshold')?.addEventListener('input', (e) => {
-    const v = parseFloat(e.target.value);
-    document.getElementById('bloomThresholdValue').textContent = v;
-    if (bloomPass) bloomPass.threshold = v;
-  });
+  // ブルーム閾値（デュアルレンジスライダー）
+  initBloomThresholdRange();
   // レンズフレア強度
   document.getElementById('lensFlareIntensity')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
@@ -5131,11 +5130,120 @@ function updateCameraTransition() {
 // ============================================
 // カメラ位置スライダーの更新
 // デュアルレンジスライダーの初期化
+// ブルーム閾値デュアルレンジスライダーの初期化
+function initBloomThresholdRange() {
+  const slider = document.getElementById('bloomThresholdRange');
+  if (!slider) return;
+
+  const min = parseFloat(slider.dataset.min);
+  const max = parseFloat(slider.dataset.max);
+  const range = max - min;
+
+  const selected = slider.querySelector('.range-selected');
+  const minHandle = slider.querySelector('.min-handle');
+  const maxHandle = slider.querySelector('.max-handle');
+  const currentMarker = slider.querySelector('.current-marker');
+
+  let rangeMin = bloomThresholdRange.min;
+  let rangeMax = bloomThresholdRange.max;
+
+  function updatePositions() {
+    const minPercent = ((rangeMin - min) / range) * 100;
+    const maxPercent = ((rangeMax - min) / range) * 100;
+
+    minHandle.style.left = minPercent + '%';
+    maxHandle.style.left = maxPercent + '%';
+    selected.style.left = minPercent + '%';
+    selected.style.width = (maxPercent - minPercent) + '%';
+
+    document.getElementById('bloomThresholdMinVal').textContent = rangeMin.toFixed(2);
+    document.getElementById('bloomThresholdMaxVal').textContent = rangeMax.toFixed(2);
+
+    bloomThresholdRange.min = rangeMin;
+    bloomThresholdRange.max = rangeMax;
+
+    // min=maxなら固定値を即時反映
+    if (rangeMin === rangeMax && bloomPass) {
+      bloomPass.threshold = rangeMin;
+      bloomThresholdCurrent = rangeMin;
+      bloomThresholdTarget = rangeMin;
+    }
+  }
+
+  updatePositions();
+
+  let activeHandle = null;
+
+  function onMouseDown(e) {
+    e.preventDefault();
+    const rect = slider.getBoundingClientRect();
+    const clickPercent = (e.clientX - rect.left) / rect.width;
+    const clickValue = min + clickPercent * range;
+
+    if (rangeMin === rangeMax) {
+      // ハンドルが重なっている場合: 移動方向で判定
+      activeHandle = { isMin: null, startValue: clickValue };
+    } else {
+      // 近い方のハンドルを掴む
+      const distToMin = Math.abs(clickValue - rangeMin);
+      const distToMax = Math.abs(clickValue - rangeMax);
+      activeHandle = { isMin: distToMin <= distToMax };
+    }
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }
+
+  function onMouseMove(e) {
+    if (!activeHandle) return;
+
+    const rect = slider.getBoundingClientRect();
+    let percent = (e.clientX - rect.left) / rect.width;
+    percent = Math.max(0, Math.min(1, percent));
+    let value = min + percent * range;
+    value = Math.round(value * 100) / 100; // step=0.01
+
+    // ハンドル重なり時: 最初の移動方向で min/max を決定
+    if (activeHandle.isMin === null) {
+      activeHandle.isMin = (value < activeHandle.startValue);
+    }
+
+    if (activeHandle.isMin) {
+      rangeMin = Math.min(value, rangeMax);
+    } else {
+      rangeMax = Math.max(value, rangeMin);
+    }
+
+    updatePositions();
+  }
+
+  function onMouseUp() {
+    activeHandle = null;
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  }
+
+  slider.addEventListener('mousedown', onMouseDown);
+
+  slider._updateCurrentMarker = function(value) {
+    const percent = ((value - min) / range) * 100;
+    currentMarker.style.left = Math.max(0, Math.min(100, percent)) + '%';
+  };
+
+  slider._dualRange = {
+    setRange: (newMin, newMax) => {
+      rangeMin = newMin;
+      rangeMax = newMax;
+      updatePositions();
+    }
+  };
+}
+
 function initDualRangeSliders() {
   const sliders = document.querySelectorAll('.dual-range');
 
   sliders.forEach(slider => {
     const axis = slider.dataset.axis;
+    if (!axis) return; // カメラ以外のデュアルレンジはスキップ
     const min = parseFloat(slider.dataset.min);
     const max = parseFloat(slider.dataset.max);
     const range = max - min;
@@ -5418,6 +5526,21 @@ function animate() {
       ? cloudShadowIntensity : 0;
     floorPlane.material.uniforms.warmTint.value = warm;
   }
+
+  // ブルーム閾値ランダム変動
+  if (bloomPass && bloomThresholdRange.min < bloomThresholdRange.max) {
+    if (Math.abs(bloomThresholdCurrent - bloomThresholdTarget) < 0.005) {
+      bloomThresholdTarget = bloomThresholdRange.min +
+        Math.random() * (bloomThresholdRange.max - bloomThresholdRange.min);
+    }
+    bloomThresholdCurrent += (bloomThresholdTarget - bloomThresholdCurrent) * 0.05;
+    bloomPass.threshold = bloomThresholdCurrent;
+  } else if (bloomPass) {
+    bloomPass.threshold = bloomThresholdRange.min;
+    bloomThresholdCurrent = bloomThresholdRange.min;
+  }
+  const btSlider = document.getElementById('bloomThresholdRange');
+  if (btSlider?._updateCurrentMarker) btSlider._updateCurrentMarker(bloomThresholdCurrent);
 
   if (composer && bloomPass && bloomEnabled && bloomPass.strength > 0) {
     composer.render();
@@ -5776,6 +5899,18 @@ window.exportHelpers = {
       const rad = cloudShadowDirection * Math.PI / 180;
       cloudShadowPlane.material.map.offset.set(t * Math.cos(rad), t * Math.sin(rad));
       cloudShadowPlane.material.map.repeat.set(cloudShadowScale, cloudShadowScale);
+    }
+    // ブルーム閾値ランダム変動（エクスポート時）
+    if (bloomPass && bloomThresholdRange.min < bloomThresholdRange.max) {
+      if (Math.abs(bloomThresholdCurrent - bloomThresholdTarget) < 0.005) {
+        bloomThresholdTarget = bloomThresholdRange.min +
+          Math.random() * (bloomThresholdRange.max - bloomThresholdRange.min);
+      }
+      bloomThresholdCurrent += (bloomThresholdTarget - bloomThresholdCurrent) * 0.05;
+      bloomPass.threshold = bloomThresholdCurrent;
+    } else if (bloomPass) {
+      bloomPass.threshold = bloomThresholdRange.min;
+      bloomThresholdCurrent = bloomThresholdRange.min;
     }
   },
 };

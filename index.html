@@ -333,10 +333,19 @@
           <input type="range" id="bloomRadius" min="0" max="1" step="0.01" value="0.4">
           <span id="bloomRadiusValue">0.4</span>
         </div>
-        <div class="setting-item">
+        <div class="setting-item dual-range-container">
           <label>閾値</label>
-          <input type="range" id="bloomThreshold" min="0" max="1" step="0.01" value="0.8">
-          <span id="bloomThresholdValue">0.8</span>
+          <div class="dual-range" id="bloomThresholdRange" data-min="0" data-max="1">
+            <div class="range-track"></div>
+            <div class="range-selected"></div>
+            <div class="range-handle min-handle" title="下限"></div>
+            <div class="range-handle max-handle" title="上限"></div>
+            <div class="current-marker" title="現在値"></div>
+          </div>
+          <div class="range-values">
+            <span id="bloomThresholdMinVal">0.8</span>
+            <span id="bloomThresholdMaxVal">0.8</span>
+          </div>
         </div>
         <div class="setting-category"><span>レンズフレア</span><input type="checkbox" id="flareEnabled" checked></div>
         <div class="setting-item">

@@ -252,6 +252,12 @@ function collectCurrentSettings() {
     }
   });
 
+  // ブルーム閾値（デュアルレンジ）
+  const btMinEl = document.getElementById('bloomThresholdMinVal');
+  const btMaxEl = document.getElementById('bloomThresholdMaxVal');
+  if (btMinEl) s.bloomThresholdMin = parseFloat(btMinEl.textContent);
+  if (btMaxEl) s.bloomThresholdMax = parseFloat(btMaxEl.textContent);
+
   // ヘルパー: range/numberの値を取得
   const getRangeValue = (id) => {
     const el = document.getElementById(id);
@@ -438,7 +444,7 @@ function setRadioValue(name, value) {
 }
 
 function applySettings(s) {
-  // デュアルレンジスライダー
+  // デュアルレンジスライダー（カメラ）
   const sliders = document.querySelectorAll('.dual-range');
   sliders.forEach(slider => {
     const axis = slider._axis;
@@ -450,6 +456,12 @@ function applySettings(s) {
       }
     }
   });
+
+  // ブルーム閾値デュアルレンジ
+  const btSlider = document.getElementById('bloomThresholdRange');
+  if (btSlider?._dualRange && s.bloomThresholdMin !== undefined && s.bloomThresholdMax !== undefined) {
+    btSlider._dualRange.setRange(s.bloomThresholdMin, s.bloomThresholdMax);
+  }
 
   // カメラ
   setRangeValue('cameraTargetX', s.cameraTargetX);
@@ -581,7 +593,7 @@ function applySettings(s) {
     'backWallImageSize','backWallImageX','backWallImageOpacity','backWallImageFlip','backWallChromaColor','backWallChromaThreshold',
   ]);
   Object.keys(s).forEach(key => {
-    if (handled.has(key) || key.startsWith('cameraRange')) return;
+    if (handled.has(key) || key.startsWith('cameraRange') || key.startsWith('bloomThreshold')) return;
     if (s[key] === undefined) return;
     const el = document.getElementById(key);
     if (!el) return;
