@@ -1861,83 +1861,88 @@ function setupEventListeners() {
     settings.popIconScale = value;
   });
 
-  // エフェクトON/OFF
-  document.getElementById('bloomEnabled').addEventListener('change', (e) => {
+  // エフェクトON/OFF（日差しパネル — viewerモードではDOM不在のためnullチェック）
+  document.getElementById('bloomEnabled')?.addEventListener('change', (e) => {
     bloomEnabled = e.target.checked;
   });
-  document.getElementById('flareEnabled').addEventListener('change', (e) => {
+  document.getElementById('flareEnabled')?.addEventListener('change', (e) => {
     flareEnabled = e.target.checked;
   });
-  document.getElementById('cloudShadowEnabled').addEventListener('change', (e) => {
+  document.getElementById('cloudShadowEnabled')?.addEventListener('change', (e) => {
     cloudShadowEnabled = e.target.checked;
   });
-  document.getElementById('cloudShadowContrast').addEventListener('change', (e) => {
+  document.getElementById('cloudShadowContrast')?.addEventListener('change', (e) => {
     cloudShadowContrast = e.target.checked;
   });
   // ブルーム強度
-  document.getElementById('bloomStrength').addEventListener('input', (e) => {
+  document.getElementById('bloomStrength')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('bloomStrengthValue').textContent = v;
     if (bloomPass) bloomPass.strength = v;
   });
   // ブルーム半径
-  document.getElementById('bloomRadius').addEventListener('input', (e) => {
+  document.getElementById('bloomRadius')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('bloomRadiusValue').textContent = v;
     if (bloomPass) bloomPass.radius = v;
   });
   // ブルーム閾値
-  document.getElementById('bloomThreshold').addEventListener('input', (e) => {
+  document.getElementById('bloomThreshold')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('bloomThresholdValue').textContent = v;
     if (bloomPass) bloomPass.threshold = v;
   });
   // レンズフレア強度
-  document.getElementById('lensFlareIntensity').addEventListener('input', (e) => {
+  document.getElementById('lensFlareIntensity')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('lensFlareIntensityValue').textContent = v;
     flareIntensity = v;
   });
   // レンズフレアにじみ
-  document.getElementById('lensFlareBlur').addEventListener('input', (e) => {
+  document.getElementById('lensFlareBlur')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('lensFlareBlurValue').textContent = v;
     flareBlur = v;
   });
   // 雲の影
-  document.getElementById('cloudShadowIntensity').addEventListener('input', (e) => {
+  document.getElementById('cloudShadowIntensity')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('cloudShadowIntensityValue').textContent = v;
     cloudShadowIntensity = v;
   });
-  document.getElementById('cloudShadowSpeed').addEventListener('input', (e) => {
+  document.getElementById('cloudShadowSpeed')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('cloudShadowSpeedValue').textContent = v;
     cloudShadowSpeed = v;
   });
-  document.getElementById('cloudShadowScale').addEventListener('input', (e) => {
+  document.getElementById('cloudShadowScale')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('cloudShadowScaleValue').textContent = v;
     cloudShadowScale = v;
   });
   // 光源位置X
-  document.getElementById('sunPosX').addEventListener('input', (e) => {
+  document.getElementById('sunPosX')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('sunPosXValue').textContent = v;
     if (sunLight) sunLight.position.x = v;
   });
   // 光源位置Y
-  document.getElementById('sunPosY').addEventListener('input', (e) => {
+  document.getElementById('sunPosY')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('sunPosYValue').textContent = v;
     if (sunLight) sunLight.position.y = v;
   });
   // 光源位置Z
-  document.getElementById('sunPosZ').addEventListener('input', (e) => {
+  document.getElementById('sunPosZ')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('sunPosZValue').textContent = v;
     if (sunLight) sunLight.position.z = v;
   });
+
+  // ============================================
+  // 画像パネル系イベントリスナー（viewerモードではDOM不在のためスキップ）
+  // ============================================
+  if (document.getElementById('image-panel')) {
 
   // ============================================
   // スカイドーム（背景）のイベントリスナー
@@ -2060,12 +2065,14 @@ function setupEventListeners() {
   // 床曲率
   const floorCurvatureInput = document.getElementById('floorCurvature');
   const floorCurvatureValueEl = document.getElementById('floorCurvatureValue');
-  floorCurvatureInput.addEventListener('input', (e) => {
-    const value = parseFloat(e.target.value);
-    floorCurvatureValueEl.textContent = value;
-    floorCurvature = value;
-    applyFloorCurvature();
-  });
+  if (floorCurvatureInput) {
+    floorCurvatureInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      floorCurvatureValueEl.textContent = value;
+      floorCurvature = value;
+      applyFloorCurvature();
+    });
+  }
 
   // 床画像左右反転
   const floorImageFlipInput = document.getElementById('floorImageFlip');
@@ -2254,6 +2261,8 @@ function setupEventListeners() {
       backWallPlane.scale.x = e.target.checked ? -1 : 1;
     }
   });
+
+  } // image-panel guard end
 
   // ============================================
   // メディアライブラリモーダル
@@ -2454,27 +2463,29 @@ function setupEventListeners() {
   // ============================================
   // クロマキーのイベントリスナー（各面個別）
   // ============================================
-  const chromaKeyFaces = [
-    { prefix: 'floor', plane: () => floorPlane },
-    { prefix: 'leftWall', plane: () => leftWallPlane },
-    { prefix: 'rightWall', plane: () => rightWallPlane },
-    { prefix: 'backWall', plane: () => backWallPlane },
-  ];
-  chromaKeyFaces.forEach(({ prefix, plane }) => {
-    const colorInput = document.getElementById(`${prefix}ChromaColor`);
-    const thresholdInput = document.getElementById(`${prefix}ChromaThreshold`);
-    const thresholdValueSpan = document.getElementById(`${prefix}ChromaThresholdValue`);
-    colorInput.addEventListener('input', (e) => {
-      const p = plane();
-      if (p) p.material.uniforms.chromaKeyColor.value.set(e.target.value);
+  if (document.getElementById('floorChromaColor')) {
+    const chromaKeyFaces = [
+      { prefix: 'floor', plane: () => floorPlane },
+      { prefix: 'leftWall', plane: () => leftWallPlane },
+      { prefix: 'rightWall', plane: () => rightWallPlane },
+      { prefix: 'backWall', plane: () => backWallPlane },
+    ];
+    chromaKeyFaces.forEach(({ prefix, plane }) => {
+      const colorInput = document.getElementById(`${prefix}ChromaColor`);
+      const thresholdInput = document.getElementById(`${prefix}ChromaThreshold`);
+      const thresholdValueSpan = document.getElementById(`${prefix}ChromaThresholdValue`);
+      colorInput.addEventListener('input', (e) => {
+        const p = plane();
+        if (p) p.material.uniforms.chromaKeyColor.value.set(e.target.value);
+      });
+      thresholdInput.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        thresholdValueSpan.textContent = value;
+        const p = plane();
+        if (p) p.material.uniforms.chromaKeyThreshold.value = value;
+      });
     });
-    thresholdInput.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      thresholdValueSpan.textContent = value;
-      const p = plane();
-      if (p) p.material.uniforms.chromaKeyThreshold.value = value;
-    });
-  });
+  }
 
   // MIDI遅延スライダー
   const midiDelayInput = document.getElementById('midiDelay');
