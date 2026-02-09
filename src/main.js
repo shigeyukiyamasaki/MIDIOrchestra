@@ -216,6 +216,7 @@ let cloudShadowPlane = null;
 let cloudShadowIntensity = 0;
 let cloudShadowSpeed = 1;
 let cloudShadowScale = 2;
+let cloudShadowDirection = 45;
 let bloomEnabled = true;
 let flareEnabled = true;
 let cloudShadowEnabled = true;
@@ -1920,6 +1921,11 @@ function setupEventListeners() {
     document.getElementById('cloudShadowScaleValue').textContent = v;
     cloudShadowScale = v;
   });
+  document.getElementById('cloudShadowDirection')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('cloudShadowDirectionValue').textContent = v;
+    cloudShadowDirection = v;
+  });
   // 光源位置X
   document.getElementById('sunPosX')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
@@ -2010,6 +2016,21 @@ function setupEventListeners() {
     clearSkyDomeImage();
   });
 
+  // スカイドーム動画一時停止/再生
+  document.getElementById('skyDomeVideoPause')?.addEventListener('click', () => {
+    if (skyDomeVideo) {
+      if (skyDomeVideo.paused) {
+        skyDomeVideo.play();
+        document.getElementById('skyDomeVideoPreview')?.play();
+        document.getElementById('skyDomeVideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        skyDomeVideo.pause();
+        document.getElementById('skyDomeVideoPreview')?.pause();
+        document.getElementById('skyDomeVideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
+  });
+
   // スカイドーム画像/動画ドラッグ&ドロップ
   const skyDomeDropZone = document.getElementById('skyDomeDropZone');
   setupDropZone(skyDomeDropZone, loadSkyDomeImage, true, 'skyDome'); // 動画も許可
@@ -2056,6 +2077,21 @@ function setupEventListeners() {
   const floorImageClearBtn = document.getElementById('floorImageClear');
   floorImageClearBtn.addEventListener('click', () => {
     clearFloorImage();
+  });
+
+  // 床動画一時停止/再生
+  document.getElementById('floorVideoPause')?.addEventListener('click', () => {
+    if (floorVideo) {
+      if (floorVideo.paused) {
+        floorVideo.play();
+        document.getElementById('floorVideoPreview')?.play();
+        document.getElementById('floorVideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        floorVideo.pause();
+        document.getElementById('floorVideoPreview')?.pause();
+        document.getElementById('floorVideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
   });
 
   // 床画像ドラッグ&ドロップ
@@ -2126,6 +2162,21 @@ function setupEventListeners() {
     clearLeftWallImage();
   });
 
+  // 左側面動画一時停止/再生
+  document.getElementById('leftWallVideoPause')?.addEventListener('click', () => {
+    if (leftWallVideo) {
+      if (leftWallVideo.paused) {
+        leftWallVideo.play();
+        document.getElementById('leftWallVideoPreview')?.play();
+        document.getElementById('leftWallVideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        leftWallVideo.pause();
+        document.getElementById('leftWallVideoPreview')?.pause();
+        document.getElementById('leftWallVideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
+  });
+
   // 左側面画像ドラッグ&ドロップ
   const leftWallDropZone = document.getElementById('leftWallDropZone');
   setupDropZone(leftWallDropZone, loadLeftWallImage, true, 'leftWall');
@@ -2180,6 +2231,21 @@ function setupEventListeners() {
   const rightWallImageClearBtn = document.getElementById('rightWallImageClear');
   rightWallImageClearBtn.addEventListener('click', () => {
     clearRightWallImage();
+  });
+
+  // 右側面動画一時停止/再生
+  document.getElementById('rightWallVideoPause')?.addEventListener('click', () => {
+    if (rightWallVideo) {
+      if (rightWallVideo.paused) {
+        rightWallVideo.play();
+        document.getElementById('rightWallVideoPreview')?.play();
+        document.getElementById('rightWallVideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        rightWallVideo.pause();
+        document.getElementById('rightWallVideoPreview')?.pause();
+        document.getElementById('rightWallVideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
   });
 
   // 右側面画像ドラッグ&ドロップ
@@ -2248,6 +2314,21 @@ function setupEventListeners() {
   const backWallImageClearBtn = document.getElementById('backWallImageClear');
   backWallImageClearBtn.addEventListener('click', () => {
     clearBackWallImage();
+  });
+
+  // 奥側動画一時停止/再生
+  document.getElementById('backWallVideoPause')?.addEventListener('click', () => {
+    if (backWallVideo) {
+      if (backWallVideo.paused) {
+        backWallVideo.play();
+        document.getElementById('backWallVideoPreview')?.play();
+        document.getElementById('backWallVideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        backWallVideo.pause();
+        document.getElementById('backWallVideoPreview')?.pause();
+        document.getElementById('backWallVideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
   });
 
   // 奥側画像ドラッグ&ドロップ
@@ -4089,6 +4170,12 @@ function loadSkyDomeVideo(file) {
     videoPreview.style.display = 'block';
     text.style.display = 'none';
 
+    const pauseBtn = document.getElementById('skyDomeVideoPause');
+    if (pauseBtn) {
+      pauseBtn.style.display = '';
+      pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
+
     console.log('Sky dome video loaded:', file.name);
   };
 
@@ -4135,6 +4222,9 @@ function clearSkyDomeImage() {
   videoPreview.pause();
   videoPreview.src = '';
   text.style.display = 'block';
+
+  const pauseBtn = document.getElementById('skyDomeVideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
 
   console.log('Sky dome cleared');
 }
@@ -4227,6 +4317,12 @@ function loadFloorVideo(file) {
     imagePreview.style.display = 'none';
     videoPreview.style.display = 'block';
     text.style.display = 'none';
+
+    const pauseBtn = document.getElementById('floorVideoPause');
+    if (pauseBtn) {
+      pauseBtn.style.display = '';
+      pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
 
     console.log('Floor video loaded:', file.name, 'aspect:', floorAspect);
   };
@@ -4327,6 +4423,9 @@ function clearFloorImage() {
   videoPreview.src = '';
   text.style.display = 'block';
 
+  const pauseBtn = document.getElementById('floorVideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
+
   console.log('Floor image cleared');
 }
 
@@ -4412,6 +4511,12 @@ function loadLeftWallVideo(file) {
     videoPreview.style.display = 'block';
     text.style.display = 'none';
 
+    const pauseBtn = document.getElementById('leftWallVideoPause');
+    if (pauseBtn) {
+      pauseBtn.style.display = '';
+      pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
+
     console.log('Left wall video loaded:', file.name, 'aspect:', leftWallAspect);
   };
   leftWallVideo.load();
@@ -4471,6 +4576,9 @@ function clearLeftWallImage() {
   videoPreview.pause();
   videoPreview.src = '';
   text.style.display = 'block';
+
+  const pauseBtn = document.getElementById('leftWallVideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
 
   console.log('Left wall image cleared');
 }
@@ -4557,6 +4665,12 @@ function loadRightWallVideo(file) {
     videoPreview.style.display = 'block';
     text.style.display = 'none';
 
+    const pauseBtn = document.getElementById('rightWallVideoPause');
+    if (pauseBtn) {
+      pauseBtn.style.display = '';
+      pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
+
     console.log('Right wall video loaded:', file.name, 'aspect:', rightWallAspect);
   };
   rightWallVideo.load();
@@ -4616,6 +4730,9 @@ function clearRightWallImage() {
   videoPreview.pause();
   videoPreview.src = '';
   text.style.display = 'block';
+
+  const pauseBtn = document.getElementById('rightWallVideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
 
   console.log('Right wall image cleared');
 }
@@ -4702,6 +4819,12 @@ function loadBackWallVideo(file) {
     videoPreview.style.display = 'block';
     text.style.display = 'none';
 
+    const pauseBtn = document.getElementById('backWallVideoPause');
+    if (pauseBtn) {
+      pauseBtn.style.display = '';
+      pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
+
     console.log('Back wall video loaded:', file.name, 'aspect:', backWallAspect);
   };
   backWallVideo.load();
@@ -4758,6 +4881,9 @@ function clearBackWallImage() {
   videoPreview.pause();
   videoPreview.src = '';
   text.style.display = 'block';
+
+  const pauseBtn = document.getElementById('backWallVideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
 
   console.log('Back wall image cleared');
 }
@@ -5144,6 +5270,7 @@ function updateCameraPositionSliders() {
 
 function animate() {
   requestAnimationFrame(animate);
+  if (window._export360Active) return; // 360エクスポート中はスキップ
 
   // 前フレームのシェイクオフセットを除去（OrbitControlsが正しい位置で動作するため）
   removeCameraShakeOffset();
@@ -5246,19 +5373,8 @@ function animate() {
     updateTimeDisplay();
   }
 
-  // タイムライン平面のX位置（スライダーで調整可能）
-  const timelineXSlider = document.getElementById('timelineX');
-  const tlOffset = timelineXSlider ? parseInt(timelineXSlider.value) : 0;
-  if (timelinePlane) {
-    timelinePlane.position.x = tlOffset;
-  }
-
-  // ノートを左に流す（midiDelay適用 + タイムラインオフセット）
-  const delayOffset = syncConfig.midiDelay * CONFIG.timeScale;
-  const timeOffset = state.currentTime * CONFIG.timeScale;
-  state.noteObjects.forEach(mesh => {
-    mesh.position.x = mesh.userData.originalX - timeOffset + delayOffset + tlOffset;
-  });
+  // ノート位置更新
+  updateNotePositions();
 
   // ノートのハイライト（現在再生中のノート）
   updateNoteHighlights();
@@ -5290,7 +5406,8 @@ function animate() {
     cloudShadowPlane.visible = true;
     cloudShadowPlane.material.opacity = cloudShadowIntensity;
     const t = performance.now() * 0.0001 * cloudShadowSpeed;
-    cloudShadowPlane.material.map.offset.set(t, t * 0.7);
+    const rad = cloudShadowDirection * Math.PI / 180;
+    cloudShadowPlane.material.map.offset.set(t * Math.cos(rad), t * Math.sin(rad));
     cloudShadowPlane.material.map.repeat.set(cloudShadowScale, cloudShadowScale);
   } else if (cloudShadowPlane) {
     cloudShadowPlane.visible = false;
@@ -5355,6 +5472,19 @@ function updateTimeDisplay() {
   const seconds = Math.floor(state.currentTime % 60);
   document.getElementById('currentTime').textContent =
     `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function updateNotePositions() {
+  const timelineXSlider = document.getElementById('timelineX');
+  const tlOffset = timelineXSlider ? parseInt(timelineXSlider.value) : 0;
+  if (timelinePlane) {
+    timelinePlane.position.x = tlOffset;
+  }
+  const delayOffset = syncConfig.midiDelay * CONFIG.timeScale;
+  const timeOffset = state.currentTime * CONFIG.timeScale;
+  state.noteObjects.forEach(mesh => {
+    mesh.position.x = mesh.userData.originalX - timeOffset + delayOffset + tlOffset;
+  });
 }
 
 function updateNoteHighlights() {
@@ -5439,6 +5569,8 @@ async function loadViewerData() {
     const file = new File([blob], m.midi.name, { type: m.midi.mimeType });
     await loadMidi(file);
     document.getElementById('midiFileName').textContent = m.midi.name;
+    const midiClearBtn = document.getElementById('midiClearBtn');
+    if (midiClearBtn) midiClearBtn.style.display = '';
   }
 
   if (m.audio) {
@@ -5446,6 +5578,8 @@ async function loadViewerData() {
     const file = new File([blob], m.audio.name, { type: m.audio.mimeType });
     loadAudio(file);
     document.getElementById('audioFileName').textContent = m.audio.name;
+    const audioClearBtn = document.getElementById('audioClearBtn');
+    if (audioClearBtn) audioClearBtn.style.display = '';
   }
 
   const imageSlots = [
@@ -5613,4 +5747,35 @@ window.appFunctions = {
   loadMidi, loadAudio, clearMidi, clearAudio,
   loadSkyDomeImage, loadFloorImage, loadLeftWallImage, loadRightWallImage, loadBackWallImage,
   clearSkyDomeImage, clearFloorImage, clearLeftWallImage, clearRightWallImage, clearBackWallImage,
+};
+
+// 360度エクスポート用にinternal関数・オブジェクトを公開
+window.exportHelpers = {
+  getRenderer: () => renderer,
+  getScene: () => scene,
+  getCamera: () => camera,
+  getComposer: () => composer,
+  getBloomPass: () => bloomPass,
+  getFlareEnabled: () => flareEnabled,
+  setFlareEnabled: (v) => { flareEnabled = v; },
+  getSyncConfig: () => syncConfig,
+  getTimelinePlane: () => timelinePlane,
+  getAudioElement: () => audioElement,
+  updateSceneForExport: (dt) => {
+    updateNotePositions();
+    updateNoteHighlights();
+    updateNoteBounce(dt);
+    updateOrchestraHighlights();
+    checkNoteRipples();
+    updateRipples(dt);
+    updatePopIcons(dt);
+    if (cloudShadowPlane && cloudShadowEnabled && cloudShadowIntensity > 0) {
+      cloudShadowPlane.visible = true;
+      cloudShadowPlane.material.opacity = cloudShadowIntensity;
+      const t = performance.now() * 0.0001 * cloudShadowSpeed;
+      const rad = cloudShadowDirection * Math.PI / 180;
+      cloudShadowPlane.material.map.offset.set(t * Math.cos(rad), t * Math.sin(rad));
+      cloudShadowPlane.material.map.repeat.set(cloudShadowScale, cloudShadowScale);
+    }
+  },
 };

@@ -72,6 +72,7 @@
         <button id="presetDeleteBtn"><i class="fa-solid fa-trash"></i> 削除</button>
         <button id="publishBtn"><i class="fa-solid fa-globe"></i> 公開</button>
       </div>
+      <button id="export360Btn" title="360度動画書き出し"><i class="fa-solid fa-vr-cardboard"></i> 360°</button>
     </div>
   </div>
 
@@ -380,6 +381,11 @@
           <span id="cloudShadowScaleValue">2</span>
         </div>
         <div class="setting-item">
+          <label>方向(°)</label>
+          <input type="range" id="cloudShadowDirection" min="0" max="360" step="5" value="45">
+          <span id="cloudShadowDirectionValue">45</span>
+        </div>
+        <div class="setting-item">
           <label>日向コントラスト</label>
           <input type="checkbox" id="cloudShadowContrast">
         </div>
@@ -407,6 +413,7 @@
             <div class="control-row"><label>透明度</label><input type="range" id="skyDomeOpacity" min="0.1" max="1" step="0.05" value="1"><span id="skyDomeOpacityValue">1</span></div>
             <div class="control-row"><label>範囲(度)</label><input type="range" id="skyDomeRange" min="60" max="360" step="10" value="180"><span id="skyDomeRangeValue">180</span></div>
             <div class="control-row"><label>距離</label><input type="range" id="skyDomeRadius" min="100" max="3000" step="50" value="2000"><span id="skyDomeRadiusValue">2000</span></div>
+            <button id="skyDomeVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
             <button id="skyDomeImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
@@ -430,6 +437,7 @@
             <div class="control-row"><label>曲率</label><input type="range" id="floorCurvature" min="0" max="0.0003" step="0.00001" value="0"><span id="floorCurvatureValue">0</span></div>
             <div class="control-row"><label><input type="checkbox" id="floorImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floorChromaColor" value="#00ff00"><input type="range" id="floorChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floorChromaThresholdValue">0</span></div>
+            <button id="floorVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
             <button id="floorImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
@@ -452,6 +460,7 @@
             <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="leftWallImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="leftWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="leftWallChromaColor" value="#00ff00"><input type="range" id="leftWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="leftWallChromaThresholdValue">0</span></div>
+            <button id="leftWallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
             <button id="leftWallImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
@@ -474,6 +483,7 @@
             <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="rightWallImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="rightWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="rightWallChromaColor" value="#00ff00"><input type="range" id="rightWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="rightWallChromaThresholdValue">0</span></div>
+            <button id="rightWallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
             <button id="rightWallImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
@@ -495,7 +505,9 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="backWallImageSize" min="50" max="1000" step="10" value="300"><span id="backWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="backWallImageX" min="0" max="500" step="10" value="250"><span id="backWallImageXValue">250</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="backWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="backWallImageOpacityValue">0.8</span></div>
-            <div class="control-row chroma-key-row"><label><input type="checkbox" id="backWallImageFlip">反転</label><label>透過色</label><input type="color" id="backWallChromaColor" value="#00ff00"><input type="range" id="backWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="backWallChromaThresholdValue">0</span></div>
+            <div class="control-row"><label><input type="checkbox" id="backWallImageFlip">反転</label></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="backWallChromaColor" value="#00ff00"><input type="range" id="backWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="backWallChromaThresholdValue">0</span></div>
+            <button id="backWallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
             <button id="backWallImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
@@ -640,6 +652,62 @@
     </div>
   </div>
 
+  <!-- 360度書き出しモーダル -->
+  <div id="export360Modal" class="modal-overlay modal-centered" style="display:none;">
+    <div class="modal-content e360-modal">
+      <h3><i class="fa-solid fa-vr-cardboard"></i> 360度動画書き出し</h3>
+      <div class="e360-settings">
+        <div class="e360-row">
+          <label>解像度</label>
+          <select id="e360Resolution">
+            <option value="2048">2K (2048×1024)</option>
+            <option value="3840" selected>4K (3840×1920)</option>
+          </select>
+        </div>
+        <div class="e360-row">
+          <label>FPS</label>
+          <select id="e360Fps">
+            <option value="30" selected>30</option>
+            <option value="60">60</option>
+          </select>
+        </div>
+        <div class="e360-row">
+          <label>キューブ面サイズ</label>
+          <select id="e360CubeSize">
+            <option value="1024">1024 (速い)</option>
+            <option value="2048" selected>2048 (標準)</option>
+          </select>
+        </div>
+        <div class="e360-row">
+          <label>カメラ位置</label>
+          <div class="e360-cam-inputs">
+            <label>X<input type="number" id="e360CamX" value="0"></label>
+            <label>Y<input type="number" id="e360CamY" value="150"></label>
+            <label>Z<input type="number" id="e360CamZ" value="0"></label>
+          </div>
+        </div>
+        <div class="e360-row">
+          <label>範囲 (秒)</label>
+          <div class="e360-range-inputs">
+            <label>開始<input type="number" id="e360Start" value="0" min="0" step="0.1"></label>
+            <label>終了<input type="number" id="e360End" value="0" min="0" step="0.1"></label>
+          </div>
+        </div>
+      </div>
+      <div id="e360Progress" class="e360-progress" style="display:none;">
+        <div class="e360-progress-track">
+          <div id="e360ProgressBar" class="e360-progress-bar"></div>
+        </div>
+        <div id="e360StatusText" class="e360-status"></div>
+      </div>
+      <div class="modal-buttons">
+        <button id="e360StartBtn"><i class="fa-solid fa-circle-play"></i> 書き出し開始</button>
+        <button id="e360CancelBtn">キャンセル</button>
+        <button id="e360CloseBtn">閉じる</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ライブラリ読み込み -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -654,5 +722,6 @@
   <script src="src/presetManager.js"></script>
   <script src="src/viewerExport.js"></script>
   <script type="module" src="src/main.js"></script>
+  <script src="src/export360.js"></script>
 </body>
 </html>
