@@ -938,10 +938,14 @@ function setupThreeJS() {
     transparent: true,
     opacity: 0,
     depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnit: -4,
   });
   cloudShadowPlane = new THREE.Mesh(cloudGeom, cloudMat);
   cloudShadowPlane.rotation.x = -Math.PI / 2;
-  cloudShadowPlane.position.y = -49.9;
+  cloudShadowPlane.position.y = -49.5;
+  cloudShadowPlane.renderOrder = 1;
   cloudShadowPlane.visible = false;
   scene.add(cloudShadowPlane);
 
