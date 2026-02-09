@@ -205,6 +205,22 @@ let beatEffectState = {
   chromaticEnabled: false,
 };
 let fadeOverlay = null; // フェード用オーバーレイ
+let composer = null;    // EffectComposer（ブルーム用）
+let bloomPass = null;   // UnrealBloomPass
+let flareScene = null;  // レンズフレア用オーバーレイシーン
+let flareCamera = null; // レンズフレア用正射影カメラ
+let flareMeshes = [];   // フレア要素のメッシュ配列
+let flareIntensity = 0; // レンズフレア強度
+let flareBlur = 0;      // レンズフレアにじみ
+let cloudShadowPlane = null;
+let cloudShadowIntensity = 0;
+let cloudShadowSpeed = 1;
+let cloudShadowScale = 2;
+let bloomEnabled = true;
+let flareEnabled = true;
+let cloudShadowEnabled = true;
+let cloudShadowContrast = false;
+let sunLight = null;    // DirectionalLight（光源位置操作用）
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
@@ -594,6 +610,7 @@ function createChromaKeyMaterial(opacity = 0.8) {
       chromaKeyColor: { value: new THREE.Color(0x00ff00) },
       chromaKeyThreshold: { value: 0 },
       opacity: { value: opacity },
+      warmTint: { value: 0.0 },
     },
     vertexShader: `
       varying vec2 vUv;
@@ -607,18 +624,151 @@ function createChromaKeyMaterial(opacity = 0.8) {
       uniform vec3 chromaKeyColor;
       uniform float chromaKeyThreshold;
       uniform float opacity;
+      uniform float warmTint;
       varying vec2 vUv;
       void main() {
         vec4 texColor = texture2D(map, vUv);
         float dist = distance(texColor.rgb, chromaKeyColor);
         if (dist < chromaKeyThreshold) discard;
-        gl_FragColor = vec4(texColor.rgb, opacity);
+        vec3 col = texColor.rgb;
+        // 暖色シフト + ブルーム風輝き
+        col.r = min(col.r + warmTint * 0.08, 1.0);
+        col.g = min(col.g + warmTint * 0.03, 1.0);
+        col.b = max(col.b - warmTint * 0.05, 0.0);
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        col += col * warmTint * 0.4 * (0.5 + lum);
+        col = min(col, 1.0);
+        gl_FragColor = vec4(col, opacity);
       }
     `,
     transparent: true,
     side: THREE.DoubleSide,
     depthWrite: false,
   });
+}
+
+function generateFlareTexture() {
+  const size = 256;
+  const cx = size / 2, cy = size / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(size, size);
+  const d = imgData.data;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      // 六角形の距離関数（正六角形）
+      let dx = (x - cx) / cx, dy = (y - cy) / cy;
+      const ax = Math.abs(dx), ay = Math.abs(dy);
+      // hexagonal distance: max(|x|, (|x|+√3·|y|)/2)
+      const hexDist = Math.max(ax, (ax + Math.sqrt(3) * ay) / 2);
+      // ソフトな減衰
+      const alpha = 1 - smoothstep(0.0, 1.0, hexDist);
+      const glow = Math.exp(-hexDist * hexDist * 3);
+      const t = alpha * 0.7 + glow * 0.3;
+      const i = (y * size + x) * 4;
+      d[i]     = 255;
+      d[i + 1] = Math.round(220 + 35 * (1 - hexDist));
+      d[i + 2] = Math.round(140 + 115 * (1 - hexDist));
+      d[i + 3] = Math.round(t * 255);
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return new THREE.CanvasTexture(canvas);
+}
+function smoothstep(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function generateHaloTexture() {
+  const size = 256;
+  const cx = size / 2, cy = size / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(size, size);
+  const d = imgData.data;
+  const ringCenter = 0.7; // リングのピーク位置（0〜1）
+  const ringWidth = 0.15; // リングの太さ
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (x - cx) / cx, dy = (y - cy) / cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      // リング型: ピーク位置からの距離でガウシアン減衰
+      const ringDist = Math.abs(dist - ringCenter) / ringWidth;
+      const ring = Math.exp(-ringDist * ringDist * 2);
+      const i = (y * size + x) * 4;
+      d[i]     = 220;
+      d[i + 1] = 230;
+      d[i + 2] = 255;
+      d[i + 3] = Math.round(ring * 180);
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return new THREE.CanvasTexture(canvas);
+}
+
+function generateCloudTexture(size = 512) {
+  const perm = new Uint8Array(512);
+  for (let i = 0; i < 256; i++) perm[i] = i;
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [perm[i], perm[j]] = [perm[j], perm[i]];
+  }
+  for (let i = 0; i < 256; i++) perm[256 + i] = perm[i];
+
+  function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function lerp(a, b, t) { return a + t * (b - a); }
+  function grad(hash, x, y) {
+    const h = hash & 3;
+    const u = h < 2 ? x : y;
+    const v = h < 2 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+  }
+  // タイル可能ノイズ: period で座標をラップして継ぎ目なし
+  function noise(x, y, px, py) {
+    const xi = Math.floor(x) % px, yi = Math.floor(y) % py;
+    const xi1 = (xi + 1) % px, yi1 = (yi + 1) % py;
+    const xf = x - Math.floor(x), yf = y - Math.floor(y);
+    const u = fade(xf), v = fade(yf);
+    const aa = perm[perm[xi] + yi], ab = perm[perm[xi] + yi1];
+    const ba = perm[perm[xi1] + yi], bb = perm[perm[xi1] + yi1];
+    return lerp(lerp(grad(aa, xf, yf), grad(ba, xf - 1, yf), u),
+                lerp(grad(ab, xf, yf - 1), grad(bb, xf - 1, yf - 1), u), v);
+  }
+
+  const baseFreq = 4; // 1タイルあたりのノイズ周期数
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(size, size);
+  const d = imgData.data;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let val = 0, amp = 1, freq = 1, totalAmp = 0;
+      for (let o = 0; o < 5; o++) {
+        const p = baseFreq * freq; // 各オクターブの周期
+        val += noise(x / size * p, y / size * p, p, p) * amp;
+        totalAmp += amp;
+        amp *= 0.5; freq *= 2;
+      }
+      val = (val / totalAmp + 1) * 0.5;
+      val = smoothstep(0.3, 0.7, val);
+      const i = (y * size + x) * 4;
+      d[i] = 20;      // R — 青灰（空の散乱光）
+      d[i+1] = 30;    // G
+      d[i+2] = 70;    // B
+      d[i+3] = Math.round(val * 255);
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
 }
 
 function setupThreeJS() {
@@ -639,6 +789,18 @@ function setupThreeJS() {
   renderer.setSize(width, height);
   renderer.setPixelRatio(window.devicePixelRatio);
   container.appendChild(renderer.domElement);
+
+  // EffectComposer（ブルーム用）
+  composer = new THREE.EffectComposer(renderer);
+  const renderPass = new THREE.RenderPass(scene, camera);
+  composer.addPass(renderPass);
+  bloomPass = new THREE.UnrealBloomPass(
+    new THREE.Vector2(width, height),
+    0,    // strength（初期0=オフ）
+    0.4,  // radius
+    0.8   // threshold
+  );
+  composer.addPass(bloomPass);
 
   // フェードオーバーレイ（クロスフェード用）
   fadeOverlay = document.createElement('div');
@@ -678,6 +840,55 @@ function setupThreeJS() {
   const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
   directionalLight.position.set(50, 100, 50);
   scene.add(directionalLight);
+  sunLight = directionalLight;
+
+  // レンズフレア（カスタムスクリーン空間実装）
+  // dist: 0=光源, 0.5=画面中心, 1.0=反対側（ミラー）
+  flareScene = new THREE.Scene();
+  flareCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const haloTexture = generateHaloTexture();
+  const flareDefs = [
+    { size: 0.15, dist: 0,    color: [1, 0.95, 0.8],   halo: false }, // メインフレア
+    { size: 0.02, dist: 0.2,  color: [0.8, 0.9, 1],    halo: true  }, // ゴースト
+    { size: 0.04, dist: 0.35, color: [0.6, 0.8, 1],    halo: true  },
+    { size: 0.03, dist: 0.5,  color: [0.9, 0.85, 1],   halo: true  }, // 画面中心
+    { size: 0.06, dist: 0.65, color: [0.5, 0.7, 1],    halo: true  },
+    { size: 0.02, dist: 0.8,  color: [0.7, 0.85, 1],   halo: true  },
+    { size: 0.04, dist: 1.0,  color: [0.6, 0.75, 0.9], halo: true  }, // 反対側
+  ];
+  flareDefs.forEach(def => {
+    const mat = new THREE.MeshBasicMaterial({
+      map: generateFlareTexture(),
+      color: new THREE.Color(def.color[0], def.color[1], def.color[2]),
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+    mesh.visible = false;
+    mesh._flareDist = def.dist;
+    mesh._flareBaseSize = def.size;
+    mesh._flareBaseColor = new THREE.Color(def.color[0], def.color[1], def.color[2]);
+    mesh._haloMesh = null;
+    flareScene.add(mesh);
+    flareMeshes.push(mesh);
+    // ゴーストにハロー（輪）を追加
+    if (def.halo) {
+      const haloMat = new THREE.MeshBasicMaterial({
+        map: haloTexture,
+        color: new THREE.Color(def.color[0], def.color[1], def.color[2]),
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloMat);
+      haloMesh.visible = false;
+      flareScene.add(haloMesh);
+      mesh._haloMesh = haloMesh;
+    }
+  });
 
   // スカイドーム（背景半球）- 前方180度のみ、初期は非表示
   // SphereGeometry(radius, widthSegments, heightSegments, phiStart, phiLength)
@@ -719,6 +930,20 @@ function setupThreeJS() {
   floorPlane.renderOrder = 0;
   floorPlane.visible = false; // 画像がロードされるまで非表示
   scene.add(floorPlane);
+
+  // 雲の影メッシュ（床面max3000対応、曲率用128x128セグメント）
+  const cloudGeom = new THREE.PlaneGeometry(3000, 3000, 128, 128);
+  const cloudMat = new THREE.MeshBasicMaterial({
+    map: generateCloudTexture(),
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  cloudShadowPlane = new THREE.Mesh(cloudGeom, cloudMat);
+  cloudShadowPlane.rotation.x = -Math.PI / 2;
+  cloudShadowPlane.position.y = -49.9;
+  cloudShadowPlane.visible = false;
+  scene.add(cloudShadowPlane);
 
   // 左側面画像用平面（初期は非表示）- 幕に垂直な壁
   const leftWallGeometry = new THREE.PlaneGeometry(300, 300);
@@ -810,6 +1035,7 @@ function onWindowResize() {
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   renderer.setSize(width, height);
+  if (composer) composer.setSize(width, height);
 }
 
 // ============================================
@@ -1629,6 +1855,84 @@ function setupEventListeners() {
     const value = parseFloat(e.target.value);
     popIconScaleValue.textContent = value;
     settings.popIconScale = value;
+  });
+
+  // エフェクトON/OFF
+  document.getElementById('bloomEnabled').addEventListener('change', (e) => {
+    bloomEnabled = e.target.checked;
+  });
+  document.getElementById('flareEnabled').addEventListener('change', (e) => {
+    flareEnabled = e.target.checked;
+  });
+  document.getElementById('cloudShadowEnabled').addEventListener('change', (e) => {
+    cloudShadowEnabled = e.target.checked;
+  });
+  document.getElementById('cloudShadowContrast').addEventListener('change', (e) => {
+    cloudShadowContrast = e.target.checked;
+  });
+  // ブルーム強度
+  document.getElementById('bloomStrength').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('bloomStrengthValue').textContent = v;
+    if (bloomPass) bloomPass.strength = v;
+  });
+  // ブルーム半径
+  document.getElementById('bloomRadius').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('bloomRadiusValue').textContent = v;
+    if (bloomPass) bloomPass.radius = v;
+  });
+  // ブルーム閾値
+  document.getElementById('bloomThreshold').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('bloomThresholdValue').textContent = v;
+    if (bloomPass) bloomPass.threshold = v;
+  });
+  // レンズフレア強度
+  document.getElementById('lensFlareIntensity').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('lensFlareIntensityValue').textContent = v;
+    flareIntensity = v;
+  });
+  // レンズフレアにじみ
+  document.getElementById('lensFlareBlur').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('lensFlareBlurValue').textContent = v;
+    flareBlur = v;
+  });
+  // 雲の影
+  document.getElementById('cloudShadowIntensity').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('cloudShadowIntensityValue').textContent = v;
+    cloudShadowIntensity = v;
+  });
+  document.getElementById('cloudShadowSpeed').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('cloudShadowSpeedValue').textContent = v;
+    cloudShadowSpeed = v;
+  });
+  document.getElementById('cloudShadowScale').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('cloudShadowScaleValue').textContent = v;
+    cloudShadowScale = v;
+  });
+  // 光源位置X
+  document.getElementById('sunPosX').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('sunPosXValue').textContent = v;
+    if (sunLight) sunLight.position.x = v;
+  });
+  // 光源位置Y
+  document.getElementById('sunPosY').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('sunPosYValue').textContent = v;
+    if (sunLight) sunLight.position.y = v;
+  });
+  // 光源位置Z
+  document.getElementById('sunPosZ').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('sunPosZValue').textContent = v;
+    if (sunLight) sunLight.position.z = v;
   });
 
   // ============================================
@@ -3959,6 +4263,28 @@ function applyFloorCurvature() {
   }
   pos.needsUpdate = true;
   geom.computeVertexNormals();
+  applyCloudShadowCurvature();
+}
+
+// 雲の影メッシュに床の曲率を反映（床の範囲内で同じ曲率、範囲外はフラット）
+function applyCloudShadowCurvature() {
+  if (!cloudShadowPlane || !floorPlane) return;
+  const geom = cloudShadowPlane.geometry;
+  const pos = geom.attributes.position;
+  const fp = floorPlane.geometry.parameters;
+  const halfW = fp.width / 2;
+  const halfH = fp.height / 2;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    // 床の範囲内は同じ曲率、範囲外は床端の曲率で固定
+    const cx = Math.max(-halfW, Math.min(halfW, x));
+    const cy = Math.max(-halfH, Math.min(halfH, y));
+    const z = -floorCurvature * (cx * cx + cy * cy);
+    pos.setZ(i, z);
+  }
+  pos.needsUpdate = true;
+  geom.computeVertexNormals();
 }
 
 // 床画像をクリア
@@ -4944,7 +5270,69 @@ function animate() {
   calculateCameraShakeOffset();
   applyCameraShakeOffset();
 
-  renderer.render(scene, camera);
+  // 雲の影UVスクロール
+  if (cloudShadowPlane && cloudShadowEnabled && cloudShadowIntensity > 0) {
+    cloudShadowPlane.visible = true;
+    cloudShadowPlane.material.opacity = cloudShadowIntensity;
+    const t = performance.now() * 0.0001 * cloudShadowSpeed;
+    cloudShadowPlane.material.map.offset.set(t, t * 0.7);
+    cloudShadowPlane.material.map.repeat.set(cloudShadowScale, cloudShadowScale);
+  } else if (cloudShadowPlane) {
+    cloudShadowPlane.visible = false;
+  }
+  // 日向コントラスト: 床の暖色シフト
+  if (floorPlane && floorPlane.material.uniforms.warmTint) {
+    const warm = (cloudShadowContrast && cloudShadowEnabled && cloudShadowIntensity > 0)
+      ? cloudShadowIntensity : 0;
+    floorPlane.material.uniforms.warmTint.value = warm;
+  }
+
+  if (composer && bloomPass && bloomEnabled && bloomPass.strength > 0) {
+    composer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
+
+  // レンズフレアオーバーレイ（スクリーン空間）
+  if (flareEnabled && flareIntensity > 0 && sunLight && flareScene) {
+    // 光源方向を無限遠に投影（太陽のように振る舞う）
+    const lightPos = sunLight.position.clone().normalize().multiplyScalar(10000);
+    lightPos.project(camera);
+    // カメラ背面なら非表示
+    if (lightPos.z <= 1) {
+      const aspect = renderer.domElement.width / renderer.domElement.height;
+      const vecX = -lightPos.x * 2;
+      const vecY = -lightPos.y * 2;
+      const blurScale = 1 + flareBlur * 2;
+      const blurOpacity = 1 / Math.sqrt(blurScale);
+      flareMeshes.forEach(mesh => {
+        mesh.visible = true;
+        const d = mesh._flareDist;
+        const px = lightPos.x + vecX * d;
+        const py = lightPos.y + vecY * d;
+        mesh.position.set(px, py, 0);
+        const s = mesh._flareBaseSize * flareIntensity * blurScale;
+        mesh.scale.set(s, s * aspect, 1);
+        mesh.material.color.copy(mesh._flareBaseColor).multiplyScalar(Math.min(flareIntensity, 1) * blurOpacity);
+        // ハロー（輪）
+        if (mesh._haloMesh) {
+          mesh._haloMesh.visible = true;
+          mesh._haloMesh.position.set(px, py, 0);
+          const hs = s * 2.5;
+          mesh._haloMesh.scale.set(hs, hs * aspect, 1);
+          mesh._haloMesh.material.color.copy(mesh._flareBaseColor).multiplyScalar(Math.min(flareIntensity, 1) * blurOpacity * 0.5);
+        }
+      });
+      renderer.autoClear = false;
+      renderer.render(flareScene, flareCamera);
+      renderer.autoClear = true;
+    } else {
+      flareMeshes.forEach(mesh => {
+        mesh.visible = false;
+        if (mesh._haloMesh) mesh._haloMesh.visible = false;
+      });
+    }
+  }
 }
 
 function updateTimeDisplay() {

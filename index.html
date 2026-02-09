@@ -317,6 +317,74 @@
         </div>
       </div>
     </div>
+    <!-- 日差しパネル（右列） -->
+    <div id="sunlight-panel" class="settings-column">
+      <h3>日差し</h3>
+      <div id="sunlight-list">
+        <div class="setting-category"><span>ブルーム</span><input type="checkbox" id="bloomEnabled" checked></div>
+        <div class="setting-item">
+          <label>強度</label>
+          <input type="range" id="bloomStrength" min="0" max="3" step="0.05" value="0">
+          <span id="bloomStrengthValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>半径</label>
+          <input type="range" id="bloomRadius" min="0" max="1" step="0.01" value="0.4">
+          <span id="bloomRadiusValue">0.4</span>
+        </div>
+        <div class="setting-item">
+          <label>閾値</label>
+          <input type="range" id="bloomThreshold" min="0" max="1" step="0.01" value="0.8">
+          <span id="bloomThresholdValue">0.8</span>
+        </div>
+        <div class="setting-category"><span>レンズフレア</span><input type="checkbox" id="flareEnabled" checked></div>
+        <div class="setting-item">
+          <label>強度</label>
+          <input type="range" id="lensFlareIntensity" min="0" max="3" step="0.05" value="0">
+          <span id="lensFlareIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>にじみ</label>
+          <input type="range" id="lensFlareBlur" min="0" max="3" step="0.05" value="0">
+          <span id="lensFlareBlurValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>X位置</label>
+          <input type="range" id="sunPosX" min="-200" max="200" step="5" value="50">
+          <span id="sunPosXValue">50</span>
+        </div>
+        <div class="setting-item">
+          <label>Y位置</label>
+          <input type="range" id="sunPosY" min="0" max="300" step="5" value="100">
+          <span id="sunPosYValue">100</span>
+        </div>
+        <div class="setting-item">
+          <label>Z位置</label>
+          <input type="range" id="sunPosZ" min="-200" max="200" step="5" value="50">
+          <span id="sunPosZValue">50</span>
+        </div>
+        <div class="setting-category"><span>雲の影</span><input type="checkbox" id="cloudShadowEnabled" checked></div>
+        <div class="setting-item">
+          <label>濃さ</label>
+          <input type="range" id="cloudShadowIntensity" min="0" max="1" step="0.05" value="0">
+          <span id="cloudShadowIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="cloudShadowSpeed" min="0" max="5" step="0.1" value="1">
+          <span id="cloudShadowSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>スケール</label>
+          <input type="range" id="cloudShadowScale" min="0.5" max="5" step="0.1" value="2">
+          <span id="cloudShadowScaleValue">2</span>
+        </div>
+        <div class="setting-item">
+          <label>日向コントラスト</label>
+          <input type="checkbox" id="cloudShadowContrast">
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- 画像配置パネル（メインエリア上部） -->
@@ -575,6 +643,12 @@
   <!-- ライブラリ読み込み -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
 
   <script src="src/presetManager.js"></script>

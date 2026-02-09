@@ -311,7 +311,7 @@ button:disabled {
   position: fixed;
   top: 100px;
   right: 0;
-  width: 360px;
+  width: 540px;
   bottom: 0;
   display: flex;
   z-index: 50;
@@ -334,7 +334,7 @@ button:disabled {
   position: fixed;
   top: 100px;
   left: 260px;
-  right: 360px;
+  right: 540px;
   height: 320px;
   background: rgba(0, 0, 0, 0.8);
   z-index: 40;
@@ -601,7 +601,7 @@ button:disabled {
   position: fixed;
   top: 420px;
   left: 260px;
-  right: 360px;
+  right: 540px;
   bottom: 260px;
   display: flex;
   align-items: center;
@@ -615,7 +615,7 @@ button:disabled {
   position: fixed;
   bottom: 0;
   left: 260px;
-  right: 360px;
+  right: 540px;
   height: 260px;
   background: rgba(0, 0, 0, 0.8);
   display: flex;
@@ -815,6 +815,14 @@ button:disabled {
   margin-bottom: 4px;
   padding-bottom: 4px;
   border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.setting-category input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
 }
 
 .setting-category:first-child {

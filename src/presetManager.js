@@ -371,10 +371,11 @@ function collectCurrentSettings() {
   s.backWallChromaColor = getColorValue('backWallChromaColor');
   s.backWallChromaThreshold = getRangeValue('backWallChromaThreshold');
 
-  // 自動収集: #controls内のid付きinput/selectで未収集のものを自動追加
-  const controls = document.getElementById('controls');
-  if (controls) {
-    controls.querySelectorAll('input[id], select[id]').forEach(el => {
+  // 自動収集: 各パネル内のid付きinput/selectで未収集のものを自動追加
+  ['controls', 'settings-container', 'image-panel'].forEach(containerId => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('input[id], select[id]').forEach(el => {
       if (s[el.id] !== undefined) return; // 既に収集済み
       if (el.type === 'file') return; // ファイル入力は除外
       if (el.type === 'checkbox' || el.type === 'radio') {
@@ -386,7 +387,7 @@ function collectCurrentSettings() {
         s[el.id] = parseFloat(el.value) || el.value;
       }
     });
-  }
+  });
 
   return s;
 }
