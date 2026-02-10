@@ -223,8 +223,10 @@ let bloomThresholdTarget = 0.8;
 let bloomThresholdCurrent = 0.8;
 let flareEnabled = true;
 let cloudShadowEnabled = true;
-let cloudShadowContrast = false;
+let cloudShadowContrast = 0;
 let sunLight = null;    // DirectionalLight（光源位置操作用）
+let shadowPlane = null; // 影受け用ShadowMaterialプレーン
+let shadowEnabled = false; // 影ON/OFF
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
@@ -651,6 +653,48 @@ function createChromaKeyMaterial(opacity = 0.8) {
   });
 }
 
+// クロマキー対応デプスマテリアル（影用：クロマキーで除去した部分の影を出さない）
+function createChromaKeyDepthMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      map: { value: null },
+      chromaKeyColor: { value: new THREE.Color(0x00ff00) },
+      chromaKeyThreshold: { value: 0 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      #include <packing>
+      uniform sampler2D map;
+      uniform vec3 chromaKeyColor;
+      uniform float chromaKeyThreshold;
+      varying vec2 vUv;
+      void main() {
+        vec4 texColor = texture2D(map, vUv);
+        float dist = distance(texColor.rgb, chromaKeyColor);
+        if (dist < chromaKeyThreshold) discard;
+        gl_FragColor = packDepthToRGBA(gl_FragCoord.z);
+      }
+    `,
+    side: THREE.DoubleSide,
+  });
+}
+
+// customDepthMaterialのuniformsを壁のマテリアルと同期
+function syncDepthMaterialUniforms(plane) {
+  if (!plane || !plane.customDepthMaterial) return;
+  const depth = plane.customDepthMaterial;
+  const main = plane.material;
+  depth.uniforms.map.value = main.uniforms.map.value;
+  depth.uniforms.chromaKeyColor.value.copy(main.uniforms.chromaKeyColor.value);
+  depth.uniforms.chromaKeyThreshold.value = main.uniforms.chromaKeyThreshold.value;
+}
+
 function generateFlareTexture() {
   const size = 256;
   const cx = size / 2, cy = size / 2;
@@ -792,6 +836,8 @@ function setupThreeJS() {
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);
   renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
   // EffectComposer（ブルーム用）
@@ -845,6 +891,15 @@ function setupThreeJS() {
   directionalLight.position.set(50, 100, 50);
   scene.add(directionalLight);
   sunLight = directionalLight;
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.width = 2048;
+  sunLight.shadow.mapSize.height = 2048;
+  sunLight.shadow.camera.left = -500;
+  sunLight.shadow.camera.right = 500;
+  sunLight.shadow.camera.top = 500;
+  sunLight.shadow.camera.bottom = -500;
+  sunLight.shadow.camera.near = 0.1;
+  sunLight.shadow.camera.far = 2000;
 
   // レンズフレア（カスタムスクリーン空間実装）
   // dist: 0=光源, 0.5=画面中心, 1.0=反対側（ミラー）
@@ -961,8 +1016,10 @@ function setupThreeJS() {
   // 床基準でY位置を設定（下端が床に接する）
   const initialWallSize = 300;
   leftWallPlane.position.set(0, floorY + initialWallSize / 2, -150); // 手前側に配置
-  leftWallPlane.renderOrder = 1;
+  leftWallPlane.renderOrder = 3;
   leftWallPlane.visible = false;
+  leftWallPlane.castShadow = true;
+  leftWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(leftWallPlane);
 
   // 右側面画像用平面（初期は非表示）- 幕に垂直な壁（奥側）
@@ -970,7 +1027,10 @@ function setupThreeJS() {
   const rightWallMaterial = createChromaKeyMaterial(0.8);
   rightWallPlane = new THREE.Mesh(rightWallGeometry, rightWallMaterial);
   rightWallPlane.position.set(0, floorY + initialWallSize / 2, 150); // 奥側に配置
+  rightWallPlane.renderOrder = 3;
   rightWallPlane.visible = false;
+  rightWallPlane.castShadow = true;
+  rightWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(rightWallPlane);
 
   // 奥側画像用平面（初期は非表示）- タイムライン幕と平行（YZ平面）
@@ -979,8 +1039,28 @@ function setupThreeJS() {
   backWallPlane = new THREE.Mesh(backWallGeometry, backWallMaterial);
   backWallPlane.rotation.y = Math.PI / 2; // 幕と同じ向きに回転
   backWallPlane.position.set(250, floorY + initialWallSize / 2, 0); // グリッドの端に配置
+  backWallPlane.renderOrder = 3;
   backWallPlane.visible = false;
+  backWallPlane.castShadow = true;
+  backWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(backWallPlane);
+
+  // 影受け用ShadowMaterialプレーン（床の直上に配置）
+  const shadowGeom = new THREE.PlaneGeometry(3000, 3000);
+  const shadowMat = new THREE.ShadowMaterial({
+    opacity: 0.3,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -6,
+    polygonOffsetUnit: -6,
+  });
+  shadowPlane = new THREE.Mesh(shadowGeom, shadowMat);
+  shadowPlane.rotation.x = -Math.PI / 2;
+  shadowPlane.position.y = floorY + 0.5;
+  shadowPlane.renderOrder = 2;
+  shadowPlane.receiveShadow = true;
+  shadowPlane.visible = false; // デフォルトOFF
+  scene.add(shadowPlane);
 
   // タイムライン平面（現在位置を示す「幕」）
   // PlaneGeometry(奥行き, 高さ) - MIDI読み込み後にサイズ更新
@@ -1875,8 +1955,10 @@ function setupEventListeners() {
   document.getElementById('cloudShadowEnabled')?.addEventListener('change', (e) => {
     cloudShadowEnabled = e.target.checked;
   });
-  document.getElementById('cloudShadowContrast')?.addEventListener('change', (e) => {
-    cloudShadowContrast = e.target.checked;
+  document.getElementById('cloudShadowContrast')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('cloudShadowContrastValue').textContent = v;
+    cloudShadowContrast = v;
   });
   // ブルーム強度
   document.getElementById('bloomStrength')?.addEventListener('input', (e) => {
@@ -1942,6 +2024,17 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('sunPosZValue').textContent = v;
     if (sunLight) sunLight.position.z = v;
+  });
+  // 影ON/OFF
+  document.getElementById('shadowEnabled')?.addEventListener('change', (e) => {
+    shadowEnabled = e.target.checked;
+    if (shadowPlane) shadowPlane.visible = shadowEnabled;
+  });
+  // 影の濃さ
+  document.getElementById('shadowOpacity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('shadowOpacityValue').textContent = v;
+    if (shadowPlane) shadowPlane.material.opacity = v;
   });
 
   // ============================================
@@ -2556,13 +2649,19 @@ function setupEventListeners() {
       const thresholdValueSpan = document.getElementById(`${prefix}ChromaThresholdValue`);
       colorInput.addEventListener('input', (e) => {
         const p = plane();
-        if (p) p.material.uniforms.chromaKeyColor.value.set(e.target.value);
+        if (p) {
+          p.material.uniforms.chromaKeyColor.value.set(e.target.value);
+          syncDepthMaterialUniforms(p);
+        }
       });
       thresholdInput.addEventListener('input', (e) => {
         const value = parseFloat(e.target.value);
         thresholdValueSpan.textContent = value;
         const p = plane();
-        if (p) p.material.uniforms.chromaKeyThreshold.value = value;
+        if (p) {
+          p.material.uniforms.chromaKeyThreshold.value = value;
+          syncDepthMaterialUniforms(p);
+        }
       });
     });
   }
@@ -4111,8 +4210,7 @@ function loadSkyDomeImageFile(file) {
       skyDome.visible = true;
       skyDomeIsVideo = false;
 
-      // 背景色を黒に（スカイドームの隙間対策）
-      scene.background = new THREE.Color(0x000000);
+      // ユーザーの背景色を維持（スカイドーム透過時に背景が見える）
 
       // ドロップゾーンにプレビューを表示
       const imagePreview = document.getElementById('skyDomeImagePreview');
@@ -4156,8 +4254,7 @@ function loadSkyDomeVideo(file) {
     // 動画を再生
     skyDomeVideo.play();
 
-    // 背景色を黒に
-    scene.background = new THREE.Color(0x000000);
+    // ユーザーの背景色を維持（スカイドーム透過時に背景が見える）
 
     // ドロップゾーンにプレビューを表示
     const imagePreview = document.getElementById('skyDomeImagePreview');
@@ -4455,6 +4552,7 @@ function loadLeftWallImageFile(file) {
       leftWallAspect = img.width / img.height;
 
       leftWallPlane.material.uniforms.map.value = leftWallTexture;
+      syncDepthMaterialUniforms(leftWallPlane);
       leftWallPlane.visible = true;
       leftWallIsVideo = false;
 
@@ -4493,6 +4591,7 @@ function loadLeftWallVideo(file) {
     leftWallAspect = leftWallVideo.videoWidth / leftWallVideo.videoHeight;
 
     leftWallPlane.material.uniforms.map.value = leftWallTexture;
+    syncDepthMaterialUniforms(leftWallPlane);
     leftWallPlane.visible = true;
     leftWallIsVideo = true;
 
@@ -4609,6 +4708,7 @@ function loadRightWallImageFile(file) {
       rightWallAspect = img.width / img.height;
 
       rightWallPlane.material.uniforms.map.value = rightWallTexture;
+      syncDepthMaterialUniforms(rightWallPlane);
       rightWallPlane.visible = true;
       rightWallIsVideo = false;
 
@@ -4647,6 +4747,7 @@ function loadRightWallVideo(file) {
     rightWallAspect = rightWallVideo.videoWidth / rightWallVideo.videoHeight;
 
     rightWallPlane.material.uniforms.map.value = rightWallTexture;
+    syncDepthMaterialUniforms(rightWallPlane);
     rightWallPlane.visible = true;
     rightWallIsVideo = true;
 
@@ -4763,6 +4864,7 @@ function loadBackWallImageFile(file) {
       backWallAspect = img.width / img.height;
 
       backWallPlane.material.uniforms.map.value = backWallTexture;
+      syncDepthMaterialUniforms(backWallPlane);
       backWallPlane.visible = true;
       backWallIsVideo = false;
 
@@ -4801,6 +4903,7 @@ function loadBackWallVideo(file) {
     backWallAspect = backWallVideo.videoWidth / backWallVideo.videoHeight;
 
     backWallPlane.material.uniforms.map.value = backWallTexture;
+    syncDepthMaterialUniforms(backWallPlane);
     backWallPlane.visible = true;
     backWallIsVideo = true;
 
@@ -5522,8 +5625,8 @@ function animate() {
   }
   // 日向コントラスト: 床の暖色シフト
   if (floorPlane && floorPlane.material.uniforms.warmTint) {
-    const warm = (cloudShadowContrast && cloudShadowEnabled && cloudShadowIntensity > 0)
-      ? cloudShadowIntensity : 0;
+    const warm = (cloudShadowContrast > 0 && cloudShadowEnabled && cloudShadowIntensity > 0)
+      ? cloudShadowIntensity * cloudShadowContrast : 0;
     floorPlane.material.uniforms.warmTint.value = warm;
   }
 
