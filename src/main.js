@@ -227,6 +227,13 @@ let cloudShadowContrast = 0;
 let sunLight = null;    // DirectionalLight（光源位置操作用）
 let shadowPlane = null; // 影受け用ShadowMaterialプレーン
 let shadowEnabled = false; // 影ON/OFF
+let weatherParticles = null; // 天候パーティクルシステム
+let weatherType = 'none'; // none / rain / snow
+let weatherAmount = 3000;
+let weatherSpeed = 1;
+let weatherSpread = 400;
+let weatherAngle = 0;   // 傾き角度(度) 0=真下, 80=ほぼ横
+let weatherWindDir = 0;  // 風向(度) 0=+Z方向
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
@@ -268,7 +275,7 @@ const INSTRUMENTS = {
   viola:      { name: 'Viola',       category: 'strings',    color: 0x8b5a2b, icon: '🎻', position: [60, 80] },
   cello:      { name: 'Cello',       category: 'strings',    color: 0x6b4423, icon: '🎻', position: [75, 75] },
   contrabass: { name: 'Contrabass',  category: 'strings',    color: 0x4a3728, icon: '🎻', position: [88, 65] },
-  harp:       { name: 'Harp',        category: 'strings',    color: 0xdaa520, icon: '🪕', position: [10, 50] },
+  harp:       { name: 'Harp',        category: 'strings',    color: 0xe91e90, icon: '🪕', position: [10, 50] },
 
   // 木管楽器（緑系）- 中央後方左
   flute:       { name: 'Flute',        category: 'woodwind',   color: 0x7cb342, icon: '🪈', position: [25, 35] },
@@ -286,24 +293,24 @@ const INSTRUMENTS = {
   tuba:       { name: 'Tuba',        category: 'brass',      color: 0xff6f00, icon: '📯', position: [65, 45] },
   flugelhorn: { name: 'Flugelhorn',  category: 'brass',      color: 0xffa000, icon: '🎺', position: [70, 40] },
 
-  // 打楽器（グレー/シルバー系）- 最後方
-  timpani:      { name: 'Timpani',       category: 'percussion', color: 0x78909c, icon: '🥁', position: [50, 15] },
-  snare:        { name: 'Snare Drum',    category: 'percussion', color: 0x90a4ae, icon: '🥁', position: [55, 20] },
-  bassdrum:     { name: 'Bass Drum',     category: 'percussion', color: 0x546e7a, icon: '🥁', position: [60, 20] },
-  xylophone:    { name: 'Xylophone',     category: 'percussion', color: 0x8d6e63, icon: '🎵', position: [65, 15] },
-  marimba:      { name: 'Marimba',       category: 'percussion', color: 0x6d4c41, icon: '🎵', position: [67, 18] },
-  vibraphone:   { name: 'Vibraphone',    category: 'percussion', color: 0x7e57c2, icon: '🎵', position: [69, 15] },
-  glocken:      { name: 'Glockenspiel',  category: 'percussion', color: 0xb0bec5, icon: '🔔', position: [70, 15] },
-  tubularbells: { name: 'Tubular Bells', category: 'percussion', color: 0x9e9e9e, icon: '🔔', position: [72, 18] },
-  triangle:     { name: 'Triangle',      category: 'percussion', color: 0xbdbdbd, icon: '🔔', position: [74, 15] },
-  windchimes:   { name: 'Wind Chimes',   category: 'percussion', color: 0xc0c0c0, icon: '🎐', position: [76, 18] },
-  tambourine:   { name: 'Tambourine',    category: 'percussion', color: 0xa1887f, icon: '🥁', position: [78, 15] },
-  tamtam:       { name: 'Tam-tam',       category: 'percussion', color: 0x455a64, icon: '🔔', position: [75, 20] },
-  cymbals:         { name: 'Cymbals',          category: 'percussion', color: 0xb0bec5, icon: '🔔', position: [80, 15] },
-  suspendedcymbal: { name: 'Suspended Cymbal', category: 'percussion', color: 0xd4af37, icon: '🔔', position: [81, 17] },
-  hihat:           { name: 'Hi-Hat',           category: 'percussion', color: 0xcfd8dc, icon: '🔔', position: [82, 18] },
-  percussion:   { name: 'Percussion',    category: 'percussion', color: 0x607d8b, icon: '🥁', position: [85, 20] },
-  drums:        { name: 'Drums',         category: 'percussion', color: 0x546e7a, icon: '🥁', position: [88, 30] },
+  // 打楽器（青系）- 最後方
+  timpani:      { name: 'Timpani',       category: 'percussion', color: 0x1565c0, icon: '🥁', position: [50, 15] },
+  snare:        { name: 'Snare Drum',    category: 'percussion', color: 0x42a5f5, icon: '🥁', position: [55, 20] },
+  bassdrum:     { name: 'Bass Drum',     category: 'percussion', color: 0x0d47a1, icon: '🥁', position: [60, 20] },
+  xylophone:    { name: 'Xylophone',     category: 'percussion', color: 0xab47bc, icon: '🎵', position: [65, 15] },
+  marimba:      { name: 'Marimba',       category: 'percussion', color: 0x8e24aa, icon: '🎵', position: [67, 18] },
+  vibraphone:   { name: 'Vibraphone',    category: 'percussion', color: 0xce93d8, icon: '🎵', position: [69, 15] },
+  glocken:      { name: 'Glockenspiel',  category: 'percussion', color: 0xba68c8, icon: '🔔', position: [70, 15] },
+  tubularbells: { name: 'Tubular Bells', category: 'percussion', color: 0x5c6bc0, icon: '🔔', position: [72, 18] },
+  triangle:     { name: 'Triangle',      category: 'percussion', color: 0x90caf9, icon: '🔔', position: [74, 15] },
+  windchimes:   { name: 'Wind Chimes',   category: 'percussion', color: 0x81d4fa, icon: '🎐', position: [76, 18] },
+  tambourine:   { name: 'Tambourine',    category: 'percussion', color: 0x2979ff, icon: '🥁', position: [78, 15] },
+  tamtam:       { name: 'Tam-tam',       category: 'percussion', color: 0x1a237e, icon: '🔔', position: [75, 20] },
+  cymbals:         { name: 'Cymbals',          category: 'percussion', color: 0x448aff, icon: '🔔', position: [80, 15] },
+  suspendedcymbal: { name: 'Suspended Cymbal', category: 'percussion', color: 0x536dfe, icon: '🔔', position: [81, 17] },
+  hihat:           { name: 'Hi-Hat',           category: 'percussion', color: 0xbbdefb, icon: '🔔', position: [82, 18] },
+  percussion:   { name: 'Percussion',    category: 'percussion', color: 0x1e88e5, icon: '🥁', position: [85, 20] },
+  drums:        { name: 'Drums',         category: 'percussion', color: 0x1565c0, icon: '🥁', position: [88, 30] },
 
   // 鍵盤楽器（青系）- 左端
   piano:      { name: 'Piano',       category: 'keyboard',   color: 0x1976d2, icon: '🎹', position: [10, 70] },
@@ -651,6 +658,192 @@ function createChromaKeyMaterial(opacity = 0.8) {
     side: THREE.DoubleSide,
     depthWrite: false,
   });
+}
+
+// 天候パーティクルシステムの構築・再構築
+// 雪用の丸テクスチャを生成
+function generateSnowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 32;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.6)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 32, 32);
+  const tex = new THREE.CanvasTexture(canvas);
+  return tex;
+}
+
+function buildWeatherParticles() {
+  // 既存のパーティクルを除去
+  if (weatherParticles) {
+    scene.remove(weatherParticles);
+    weatherParticles.geometry.dispose();
+    weatherParticles.material.dispose();
+    weatherParticles = null;
+  }
+  if (weatherType === 'none') return;
+
+  const count = weatherAmount;
+  const spread = weatherSpread;
+  // 角度から水平・垂直成分を算出
+  const angleRad = weatherAngle * Math.PI / 180;
+  const windRad = weatherWindDir * Math.PI / 180;
+  const horizComponent = Math.sin(angleRad); // 水平方向の強さ
+  const vertComponent = Math.cos(angleRad);  // 垂直方向の強さ
+  const windX = horizComponent * Math.sin(windRad);
+  const windZ = horizComponent * Math.cos(windRad);
+
+  if (weatherType === 'rain') {
+    // 雨: LineSegmentsで縦長の棒状
+    const positions = new Float32Array(count * 6); // 始点+終点 × 3
+    const velocities = new Float32Array(count * 3);
+    const streakLen = 10;
+    // 雨粒の線分方向も風に沿わせる
+    const dx = windX * streakLen;
+    const dy = -vertComponent * streakLen;
+    const dz = windZ * streakLen;
+
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3;
+      const i6 = i * 6;
+      const x = (Math.random() - 0.5) * spread * 2;
+      const y = Math.random() * spread * 2 - 50;
+      const z = (Math.random() - 0.5) * spread * 2;
+      positions[i6]     = x;
+      positions[i6 + 1] = y;
+      positions[i6 + 2] = z;
+      positions[i6 + 3] = x + dx;
+      positions[i6 + 4] = y + dy;
+      positions[i6 + 5] = z + dz;
+      const baseSpeed = 3 + Math.random() * 2;
+      velocities[i3]     = windX * baseSpeed;
+      velocities[i3 + 1] = -vertComponent * baseSpeed;
+      velocities[i3 + 2] = windZ * baseSpeed;
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom._velocities = velocities;
+    geom._spread = spread;
+    geom._isRain = true;
+    geom._streakDx = dx;
+    geom._streakDy = dy;
+    geom._streakDz = dz;
+
+    const mat = new THREE.LineBasicMaterial({
+      color: 0xaaccff,
+      transparent: true,
+      opacity: 0.4,
+      depthWrite: false,
+    });
+
+    weatherParticles = new THREE.LineSegments(geom, mat);
+  } else {
+    // 雪: Pointsで丸い粒
+    const positions = new Float32Array(count * 3);
+    const velocities = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3;
+      positions[i3]     = (Math.random() - 0.5) * spread * 2;
+      positions[i3 + 1] = Math.random() * spread * 2 - 50;
+      positions[i3 + 2] = (Math.random() - 0.5) * spread * 2;
+      const baseSpeed = 0.3 + Math.random() * 0.3;
+      velocities[i3]     = (Math.random() - 0.5) * 0.3 + windX * baseSpeed;
+      velocities[i3 + 1] = -vertComponent * baseSpeed;
+      velocities[i3 + 2] = (Math.random() - 0.5) * 0.3 + windZ * baseSpeed;
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom._velocities = velocities;
+    geom._spread = spread;
+    geom._isRain = false;
+
+    const mat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 3,
+      map: generateSnowTexture(),
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+
+    weatherParticles = new THREE.Points(geom, mat);
+  }
+
+  weatherParticles.frustumCulled = false;
+  scene.add(weatherParticles);
+}
+
+// 天候パーティクルの毎フレーム更新
+function updateWeatherParticles() {
+  if (!weatherParticles || weatherType === 'none') return;
+  const geom = weatherParticles.geometry;
+  const pos = geom.attributes.position.array;
+  const vel = geom._velocities;
+  const spread = geom._spread;
+  const speed = weatherSpeed;
+  const isRain = geom._isRain;
+
+  const cx = camera ? camera.position.x : 0;
+  const cz = camera ? camera.position.z : 0;
+
+  if (isRain) {
+    // 雨: 始点・終点ペア（6要素ごと）
+    const count = vel.length / 3;
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3;
+      const i6 = i * 6;
+      const dxv = vel[i3]     * speed;
+      const dy  = vel[i3 + 1] * speed;
+      const dzv = vel[i3 + 2] * speed;
+      pos[i6]     += dxv;    // 始点X
+      pos[i6 + 1] += dy;     // 始点Y
+      pos[i6 + 2] += dzv;    // 始点Z
+      pos[i6 + 3] += dxv;    // 終点X
+      pos[i6 + 4] += dy;     // 終点Y
+      pos[i6 + 5] += dzv;    // 終点Z
+      if (pos[i6 + 1] < -50) {
+        // 落下中の水平ドリフト分を風上側にオフセット
+        const fallDist = spread * 2;
+        const driftX = vel[i3] / Math.abs(vel[i3 + 1]) * fallDist;
+        const driftZ = vel[i3 + 2] / Math.abs(vel[i3 + 1]) * fallDist;
+        const x = cx + (Math.random() - 0.5) * spread * 2 - driftX;
+        const y = spread * 2 - 50;
+        const z = cz + (Math.random() - 0.5) * spread * 2 - driftZ;
+        pos[i6]     = x;
+        pos[i6 + 1] = y;
+        pos[i6 + 2] = z;
+        pos[i6 + 3] = x + geom._streakDx;
+        pos[i6 + 4] = y + geom._streakDy;
+        pos[i6 + 5] = z + geom._streakDz;
+      }
+    }
+  } else {
+    // 雪: 1頂点ずつ
+    const count = pos.length / 3;
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3;
+      pos[i3]     += vel[i3]     * speed;
+      pos[i3 + 1] += vel[i3 + 1] * speed;
+      pos[i3 + 2] += vel[i3 + 2] * speed;
+      if (pos[i3 + 1] < -50) {
+        const fallDist = spread * 2;
+        const driftX = vel[i3] / Math.abs(vel[i3 + 1]) * fallDist;
+        const driftZ = vel[i3 + 2] / Math.abs(vel[i3 + 1]) * fallDist;
+        pos[i3]     = cx + (Math.random() - 0.5) * spread * 2 - driftX;
+        pos[i3 + 1] = spread * 2 - 50;
+        pos[i3 + 2] = cz + (Math.random() - 0.5) * spread * 2 - driftZ;
+      }
+    }
+  }
+  geom.attributes.position.needsUpdate = true;
 }
 
 // クロマキー対応デプスマテリアル（影用：クロマキーで除去した部分の影を出さない）
@@ -2030,11 +2223,56 @@ function setupEventListeners() {
     shadowEnabled = e.target.checked;
     if (shadowPlane) shadowPlane.visible = shadowEnabled;
   });
+  // 影の環境（屋内/屋外）
+  document.querySelectorAll('input[name="shadowEnvironment"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      if (!shadowPlane) return;
+      if (e.target.value === 'outdoor') {
+        shadowPlane.material.color.setRGB(20 / 255, 30 / 255, 70 / 255);
+      } else {
+        shadowPlane.material.color.setRGB(0, 0, 0);
+      }
+    });
+  });
   // 影の濃さ
   document.getElementById('shadowOpacity')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('shadowOpacityValue').textContent = v;
     if (shadowPlane) shadowPlane.material.opacity = v;
+  });
+  // 天候エフェクト
+  document.getElementById('weatherType')?.addEventListener('change', (e) => {
+    weatherType = e.target.value;
+    buildWeatherParticles();
+  });
+  document.getElementById('weatherAmount')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('weatherAmountValue').textContent = v;
+    weatherAmount = v;
+    buildWeatherParticles();
+  });
+  document.getElementById('weatherSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('weatherSpeedValue').textContent = v;
+    weatherSpeed = v;
+  });
+  document.getElementById('weatherAngle')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('weatherAngleValue').textContent = v;
+    weatherAngle = v;
+    buildWeatherParticles();
+  });
+  document.getElementById('weatherWindDir')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('weatherWindDirValue').textContent = v;
+    weatherWindDir = v;
+    buildWeatherParticles();
+  });
+  document.getElementById('weatherSpread')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('weatherSpreadValue').textContent = v;
+    weatherSpread = v;
+    buildWeatherParticles();
   });
 
   // ============================================
@@ -5612,6 +5850,9 @@ function animate() {
   calculateCameraShakeOffset();
   applyCameraShakeOffset();
 
+  // 天候パーティクル更新
+  updateWeatherParticles();
+
   // 雲の影UVスクロール
   if (cloudShadowPlane && cloudShadowEnabled && cloudShadowIntensity > 0) {
     cloudShadowPlane.visible = true;
@@ -5995,6 +6236,7 @@ window.exportHelpers = {
     checkNoteRipples();
     updateRipples(dt);
     updatePopIcons(dt);
+    updateWeatherParticles();
     if (cloudShadowPlane && cloudShadowEnabled && cloudShadowIntensity > 0) {
       cloudShadowPlane.visible = true;
       cloudShadowPlane.material.opacity = cloudShadowIntensity;

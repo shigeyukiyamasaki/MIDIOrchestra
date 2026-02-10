@@ -342,6 +342,12 @@ function collectCurrentSettings() {
   s.loopEndTime = window.state ? window.state.loopEndTime : 0;
   s.fadeOutDuration = getRangeValue('fadeOutDuration');
 
+  // 影
+  s.shadowEnvironment = getRadioValue('shadowEnvironment');
+
+  // 天候
+  s.weatherType = getSelectValue('weatherType');
+
   // スカイドーム
   s.skyDomeOpacity = getRangeValue('skyDomeOpacity');
   s.skyDomeRange = getRangeValue('skyDomeRange');
@@ -538,6 +544,12 @@ function applySettings(s) {
     if (foSlider) foSlider.dispatchEvent(new Event('input'));
   }
 
+  // 影
+  setRadioValue('shadowEnvironment', s.shadowEnvironment);
+
+  // 天候
+  setSelectValue('weatherType', s.weatherType);
+
   // スカイドーム
   setRangeValue('skyDomeOpacity', s.skyDomeOpacity);
   setRangeValue('skyDomeRange', s.skyDomeRange);
@@ -585,7 +597,7 @@ function applySettings(s) {
     'noteHeight','noteDepth','noteOpacity','trackSpacing','timeScale','pitchScale',
     'timelineOpacity','timelineColor','timelineX','bgColorTop','bgColorBottom',
     'gridOpacity','gridSize','gridColor','aspectRatioSelect',
-    'midiDelay','audioDelay','loopEndEnabled','loopEndTime','fadeOutDuration',
+    'midiDelay','audioDelay','loopEndEnabled','loopEndTime','fadeOutDuration','shadowEnvironment','weatherType',
     'skyDomeOpacity','skyDomeRange','skyDomeRadius',
     'floorImageSize','floorImageOpacity','floorImageFlip','floorChromaColor','floorChromaThreshold','floorCurvature',
     'leftWallImageSize','leftWallImageOpacity','leftWallImageFlip','leftWallChromaColor','leftWallChromaThreshold',

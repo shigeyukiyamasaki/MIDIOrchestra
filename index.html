@@ -318,9 +318,9 @@
         </div>
       </div>
     </div>
-    <!-- 日差しパネル（右列） -->
+    <!-- 天候エフェクトパネル（右列） -->
     <div id="sunlight-panel" class="settings-column">
-      <h3>日差し</h3>
+      <h3>天候エフェクト</h3>
       <div id="sunlight-list">
         <div class="setting-category"><span>ブルーム</span><input type="checkbox" id="bloomEnabled" checked></div>
         <div class="setting-item">
@@ -401,9 +401,48 @@
         </div>
         <div class="setting-category"><span>影</span><input type="checkbox" id="shadowEnabled"></div>
         <div class="setting-item">
+          <label>環境</label>
+          <label><input type="radio" name="shadowEnvironment" value="indoor" checked> 屋内</label>
+          <label><input type="radio" name="shadowEnvironment" value="outdoor"> 屋外</label>
+        </div>
+        <div class="setting-item">
           <label>濃さ</label>
           <input type="range" id="shadowOpacity" min="0" max="1" step="0.05" value="0.3">
           <span id="shadowOpacityValue">0.3</span>
+        </div>
+        <div class="setting-category"><span>天候</span></div>
+        <div class="setting-item">
+          <label>種類</label>
+          <select id="weatherType">
+            <option value="none">なし</option>
+            <option value="rain">雨</option>
+            <option value="snow">雪</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <label>量</label>
+          <input type="range" id="weatherAmount" min="100" max="50000" step="100" value="3000">
+          <span id="weatherAmountValue">3000</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="weatherSpeed" min="0.1" max="5" step="0.1" value="1">
+          <span id="weatherSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>角度(°)</label>
+          <input type="range" id="weatherAngle" min="0" max="80" step="1" value="0">
+          <span id="weatherAngleValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>風向(°)</label>
+          <input type="range" id="weatherWindDir" min="0" max="360" step="5" value="0">
+          <span id="weatherWindDirValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>範囲</label>
+          <input type="range" id="weatherSpread" min="100" max="1000" step="50" value="400">
+          <span id="weatherSpreadValue">400</span>
         </div>
       </div>
     </div>
