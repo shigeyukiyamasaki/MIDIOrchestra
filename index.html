@@ -487,7 +487,7 @@
             <input type="file" id="floorImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
-            <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="50" max="3000" step="10" value="300"><span id="floorImageSizeValue">300</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="50" max="10000" step="10" value="300"><span id="floorImageSizeValue">300</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="floorImageOpacityValue">0.8</span></div>
             <div class="control-row"><label>曲率</label><input type="range" id="floorCurvature" min="0" max="0.0003" step="0.00001" value="0"><span id="floorCurvatureValue">0</span></div>
             <div class="control-row"><label><input type="checkbox" id="floorImageFlip">反転</label></div>
@@ -512,11 +512,35 @@
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="leftWallImageSize" min="50" max="1000" step="10" value="300"><span id="leftWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="leftWallImageX" min="-500" max="500" step="10" value="0"><span id="leftWallImageXValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="leftWallImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="leftWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="leftWallChromaColor" value="#00ff00"><input type="range" id="leftWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="leftWallChromaThresholdValue">0</span></div>
             <button id="leftWallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
             <button id="leftWallImageClear" class="clear-btn-small">クリア</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- センター画像 -->
+      <div class="image-section">
+        <div class="setting-category">センター</div>
+        <div class="image-row">
+          <div class="drop-zone" id="centerWallDropZone">
+            <img id="centerWallImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="centerWallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+            <span class="drop-zone-text" id="centerWallDropZoneText">ドラッグ&ドロップ<br>または</span>
+            <button class="library-btn" data-slot="centerWall">ライブラリ</button>
+            <input type="file" id="centerWallImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
+          </div>
+          <div class="image-controls">
+            <div class="control-row"><label>サイズ</label><input type="range" id="centerWallImageSize" min="50" max="1000" step="10" value="300"><span id="centerWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="centerWallImageX" min="-500" max="500" step="10" value="0"><span id="centerWallImageXValue">0</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="centerWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="centerWallImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label><input type="checkbox" id="centerWallImageFlip">反転</label></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="centerWallChromaColor" value="#00ff00"><input type="range" id="centerWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="centerWallChromaThresholdValue">0</span></div>
+            <button id="centerWallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
+            <button id="centerWallImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
       </div>
@@ -535,6 +559,7 @@
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="rightWallImageSize" min="50" max="1000" step="10" value="300"><span id="rightWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="rightWallImageX" min="-500" max="500" step="10" value="0"><span id="rightWallImageXValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="rightWallImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="rightWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="rightWallChromaColor" value="#00ff00"><input type="range" id="rightWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="rightWallChromaThresholdValue">0</span></div>
@@ -611,6 +636,11 @@
         <label>縦スケール</label>
         <input type="range" id="pitchScale" min="0.5" max="10" step="0.1" value="1">
         <span id="pitchScaleValue">1</span>
+      </div>
+      <div class="setting-item">
+        <label>高さオフセット</label>
+        <input type="range" id="noteYOffset" min="-100" max="200" step="1" value="0">
+        <span id="noteYOffsetValue">0</span>
       </div>
     </div>
     <div class="display-section">

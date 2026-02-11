@@ -333,7 +333,7 @@ button:disabled {
 #image-panel {
   position: fixed;
   top: 100px;
-  left: 260px;
+  left: 310px;
   right: 540px;
   height: 320px;
   background: rgba(0, 0, 0, 0.8);
@@ -614,7 +614,7 @@ button:disabled {
 #canvas-container {
   position: fixed;
   top: 420px;
-  left: 260px;
+  left: 310px;
   right: 540px;
   bottom: 260px;
   display: flex;
@@ -628,7 +628,7 @@ button:disabled {
 #display-settings-panel {
   position: fixed;
   bottom: 0;
-  left: 260px;
+  left: 310px;
   right: 540px;
   height: 260px;
   background: rgba(0, 0, 0, 0.8);
@@ -674,7 +674,7 @@ button:disabled {
   position: fixed;
   top: 100px;
   left: 0;
-  width: 260px;
+  width: 310px;
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
   padding: 15px;
@@ -801,6 +801,40 @@ button:disabled {
   font-size: 10px;
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+.track-pitch-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #999;
+}
+
+.track-pitch-filter label {
+  flex-shrink: 0;
+}
+
+.track-pitch-filter input {
+  width: 48px;
+  padding: 4px 6px;
+  background: #1a1a2e;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 3px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.track-pitch-filter input:focus {
+  outline: none;
+  border-color: #4fc3f7;
+}
+
+.pitch-note-name {
+  color: #4fc3f7;
+  font-size: 11px;
+  min-width: 26px;
 }
 
 /* ファイル選択ボタン（画像パネル用） */

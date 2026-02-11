@@ -323,6 +323,7 @@ function collectCurrentSettings() {
   s.trackSpacing = getRangeValue('trackSpacing');
   s.timeScale = getRangeValue('timeScale');
   s.pitchScale = getRangeValue('pitchScale');
+  s.noteYOffset = getRangeValue('noteYOffset');
   s.timelineOpacity = getRangeValue('timelineOpacity');
   s.timelineColor = getColorValue('timelineColor');
   s.timelineX = getRangeValue('timelineX');
@@ -517,6 +518,7 @@ function applySettings(s) {
   setRangeValue('trackSpacing', s.trackSpacing);
   setRangeValue('timeScale', s.timeScale);
   setRangeValue('pitchScale', s.pitchScale);
+  setRangeValue('noteYOffset', s.noteYOffset);
   setRangeValue('timelineOpacity', s.timelineOpacity);
   setColorValue('timelineColor', s.timelineColor);
   setRangeValue('timelineX', s.timelineX);
@@ -594,7 +596,7 @@ function applySettings(s) {
     'effectCameraShake','effectCameraShakeTrigger','effectCameraZoom','effectCameraZoomTrigger',
     'effectFlash','effectFlashTrigger','effectBlur','effectBlurTrigger',
     'effectCrack','effectCrackTrigger','effectGlitch','effectGlitchTrigger',
-    'noteHeight','noteDepth','noteOpacity','trackSpacing','timeScale','pitchScale',
+    'noteHeight','noteDepth','noteOpacity','trackSpacing','timeScale','pitchScale','noteYOffset',
     'timelineOpacity','timelineColor','timelineX','bgColorTop','bgColorBottom',
     'gridOpacity','gridSize','gridColor','aspectRatioSelect',
     'midiDelay','audioDelay','loopEndEnabled','loopEndTime','fadeOutDuration','shadowEnvironment','weatherType',
@@ -703,6 +705,7 @@ async function loadPreset(presetId) {
     window.currentMediaRefs.skyDome = media.skyDome || null;
     window.currentMediaRefs.floor = media.floor || null;
     window.currentMediaRefs.leftWall = media.leftWall || null;
+    window.currentMediaRefs.centerWall = media.centerWall || null;
     window.currentMediaRefs.rightWall = media.rightWall || null;
     window.currentMediaRefs.backWall = media.backWall || null;
   }
@@ -737,6 +740,9 @@ async function loadPreset(presetId) {
   }
   if (media.leftWall) {
     await restoreMediaSlot(media.leftWall, app.loadLeftWallImage, null);
+  }
+  if (media.centerWall) {
+    await restoreMediaSlot(media.centerWall, app.loadCenterWallImage, null);
   }
   if (media.rightWall) {
     await restoreMediaSlot(media.rightWall, app.loadRightWallImage, null);

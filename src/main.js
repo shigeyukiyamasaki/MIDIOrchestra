@@ -31,6 +31,8 @@ let leftWallPlane;      // 左側面画像用平面
 let leftWallTexture;    // 左側面テクスチャ
 let rightWallPlane;     // 右側面画像用平面
 let rightWallTexture;   // 右側面テクスチャ
+let centerWallPlane;    // センター画像用平面
+let centerWallTexture;  // センターテクスチャ
 let backWallPlane;      // 奥側画像用平面
 let backWallTexture;    // 奥側テクスチャ
 let skyDome;            // スカイドーム（背景球体）
@@ -40,6 +42,7 @@ let skyDomeIsVideo = false; // スカイドームが動画かどうか
 let floorAspect = 1;    // 床画像のアスペクト比（幅/高さ）
 let leftWallAspect = 1; // 左側面画像のアスペクト比
 let rightWallAspect = 1; // 右側面画像のアスペクト比
+let centerWallAspect = 1; // センター画像のアスペクト比
 let backWallAspect = 1; // 奥側画像のアスペクト比
 let floorY = -50;
 let floorCurvature = 0; // 床の曲率（0=フラット）       // 床のY位置（共有用、グリッドと同じ）
@@ -56,12 +59,13 @@ let fadeOutDuration = 0.1; // フェードアウト秒数（0.1〜1.0）
 let overlapAudio = null;  // オーバーラップ用の先行再生Audio
 
 // プリセット用メディア参照
-window.currentMediaRefs = { midi: null, audio: null, skyDome: null, floor: null, leftWall: null, rightWall: null, backWall: null };
+window.currentMediaRefs = { midi: null, audio: null, skyDome: null, floor: null, leftWall: null, rightWall: null, centerWall: null, backWall: null };
 
 // 床・壁面の動画対応
 let floorVideo = null, floorIsVideo = false;
 let leftWallVideo = null, leftWallIsVideo = false;
 let rightWallVideo = null, rightWallIsVideo = false;
+let centerWallVideo = null, centerWallIsVideo = false;
 let backWallVideo = null, backWallIsVideo = false;
 
 // クロマキー設定（4面共通）
@@ -255,6 +259,7 @@ const CONFIG = {
   // 空間のスケール
   timeScale: 50,        // 1秒 = 50単位（横軸）
   pitchScale: 1,        // 1半音 = 1単位（縦軸）
+  noteYOffset: 0,       // ノート全体の高さオフセット
   trackSpacing: 6,      // トラック間の距離（奥行き）
 
   // ノートの見た目
@@ -276,6 +281,7 @@ const INSTRUMENTS = {
   cello:      { name: 'Cello',       category: 'strings',    color: 0x6b4423, icon: '🎻', position: [75, 75] },
   contrabass: { name: 'Contrabass',  category: 'strings',    color: 0x4a3728, icon: '🎻', position: [88, 65] },
   harp:       { name: 'Harp',        category: 'strings',    color: 0xe91e90, icon: '🪕', position: [10, 50] },
+  dulcimer:   { name: 'Dulcimer',    category: 'strings',    color: 0xf06292, icon: '🪕', position: [12, 48] },
 
   // 木管楽器（緑系）- 中央後方左
   flute:       { name: 'Flute',        category: 'woodwind',   color: 0x7cb342, icon: '🪈', position: [25, 35] },
@@ -314,7 +320,7 @@ const INSTRUMENTS = {
 
   // 鍵盤楽器（青系）- 左端
   piano:      { name: 'Piano',       category: 'keyboard',   color: 0x1976d2, icon: '🎹', position: [10, 70] },
-  celesta:    { name: 'Celesta',     category: 'keyboard',   color: 0x64b5f6, icon: '🎹', position: [15, 60] },
+  celesta:    { name: 'Celesta',     category: 'percussion', color: 0x9c27b0, icon: '🎵', position: [71, 17] },
   organ:      { name: 'Organ',       category: 'keyboard',   color: 0x0d47a1, icon: '🎹', position: [5, 60] },
 
   // その他
@@ -348,6 +354,7 @@ const INSTRUMENT_KEYWORDS = [
   { id: 'cello',      keywords: ['cello', 'vc', 'vlc', 'cellos', 'celli'] },
   { id: 'contrabass', keywords: ['contrabass', 'double bass', 'basses', 'contrabasses'] },
   { id: 'harp',       keywords: ['harp', 'harps'] },
+  { id: 'dulcimer',   keywords: ['dulcimer'] },
 
   // 打楽器（具体的なものを先に）
   { id: 'timpani',      keywords: ['timpani', 'timp', 'kettle'] },
@@ -370,7 +377,7 @@ const INSTRUMENT_KEYWORDS = [
 
   // 鍵盤楽器
   { id: 'piano',      keywords: ['piano'] },
-  { id: 'celesta',    keywords: ['celesta'] },
+  { id: 'celesta',    keywords: ['celesta', 'celeste'] },
   { id: 'organ',      keywords: ['organ'] },
 ];
 
@@ -413,6 +420,7 @@ const ORCHESTRAL_ORDER = {
   celesta: 41,
   organ: 42,
   harp: 43,
+  dulcimer: 44,
   // 弦楽器
   violin1: 50,
   violin2: 51,
@@ -504,6 +512,49 @@ async function preloadCustomIcons() {
   const promises = instrumentIds.map(id => loadCustomIcon(id));
   await Promise.all(promises);
   console.log('Custom icons preloaded');
+}
+
+// トラック名別の音域フィルター永続化
+const PITCH_FILTER_STORAGE_KEY = 'midiOrchestra_pitchFilters';
+
+// オクターブ表記修正に伴う一回限りのマイグレーション（+12）
+(function migratePitchFilters() {
+  const MIGRATION_KEY = 'midiOrchestra_pitchFilterMigrated_v1';
+  if (localStorage.getItem(MIGRATION_KEY)) return;
+  const raw = localStorage.getItem(PITCH_FILTER_STORAGE_KEY);
+  if (raw) {
+    const filters = JSON.parse(raw);
+    Object.keys(filters).forEach(name => {
+      const f = filters[name];
+      f.pitchMin = Math.min(127, f.pitchMin + 12);
+      f.pitchMax = Math.min(127, f.pitchMax + 12);
+    });
+    localStorage.setItem(PITCH_FILTER_STORAGE_KEY, JSON.stringify(filters));
+  }
+  localStorage.setItem(MIGRATION_KEY, '1');
+})();
+
+function savePitchFilter(trackName, pitchMin, pitchMax) {
+  const filters = JSON.parse(localStorage.getItem(PITCH_FILTER_STORAGE_KEY) || '{}');
+  if (pitchMin === 0 && pitchMax === 127) {
+    delete filters[trackName];
+  } else {
+    filters[trackName] = { pitchMin, pitchMax };
+  }
+  localStorage.setItem(PITCH_FILTER_STORAGE_KEY, JSON.stringify(filters));
+}
+
+function loadPitchFilter(trackName) {
+  const filters = JSON.parse(localStorage.getItem(PITCH_FILTER_STORAGE_KEY) || '{}');
+  return filters[trackName] || null;
+}
+
+// MIDIノート番号→ノート名変換
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+function midiToNoteName(midi) {
+  const note = NOTE_NAMES[midi % 12];
+  const octave = Math.floor(midi / 12) - 2; // Logic Pro準拠（C3 = MIDI 60）
+  return `${note}${octave}`;
 }
 
 // トラック名から楽器を推定
@@ -1183,8 +1234,8 @@ function setupThreeJS() {
   floorPlane.visible = false; // 画像がロードされるまで非表示
   scene.add(floorPlane);
 
-  // 雲の影メッシュ（床面max3000対応、曲率用128x128セグメント）
-  const cloudGeom = new THREE.PlaneGeometry(3000, 3000, 128, 128);
+  // 雲の影メッシュ（床面max10000対応、曲率用256x256セグメント）
+  const cloudGeom = new THREE.PlaneGeometry(10000, 10000, 256, 256);
   const cloudMat = new THREE.MeshBasicMaterial({
     map: generateCloudTexture(),
     transparent: true,
@@ -1225,6 +1276,17 @@ function setupThreeJS() {
   rightWallPlane.castShadow = true;
   rightWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(rightWallPlane);
+
+  // センター画像用平面（初期は非表示）- 幕に垂直な壁（中央）
+  const centerWallGeometry = new THREE.PlaneGeometry(300, 300);
+  const centerWallMaterial = createChromaKeyMaterial(0.8);
+  centerWallPlane = new THREE.Mesh(centerWallGeometry, centerWallMaterial);
+  centerWallPlane.position.set(0, floorY + initialWallSize / 2, 0); // センターに配置
+  centerWallPlane.renderOrder = 3;
+  centerWallPlane.visible = false;
+  centerWallPlane.castShadow = true;
+  centerWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
+  scene.add(centerWallPlane);
 
   // 奥側画像用平面（初期は非表示）- タイムライン幕と平行（YZ平面）
   const backWallGeometry = new THREE.PlaneGeometry(300, 300);
@@ -1735,6 +1797,14 @@ function setupEventListeners() {
     const value = parseFloat(e.target.value);
     pitchScaleValue.textContent = value;
     CONFIG.pitchScale = value;
+    debouncedRebuildNotes();
+  });
+
+  // 高さオフセット
+  document.getElementById('noteYOffset')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('noteYOffsetValue').textContent = value;
+    CONFIG.noteYOffset = value;
     debouncedRebuildNotes();
   });
 
@@ -2475,6 +2545,13 @@ function setupEventListeners() {
     updateLeftWallImageSize(value);
   });
 
+  // 左側面画像X位置
+  document.getElementById('leftWallImageX')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('leftWallImageXValue').textContent = value;
+    if (leftWallPlane) leftWallPlane.position.x = value;
+  });
+
   // 左側面画像透明度
   const leftWallImageOpacityInput = document.getElementById('leftWallImageOpacity');
   const leftWallImageOpacityValue = document.getElementById('leftWallImageOpacityValue');
@@ -2520,6 +2597,82 @@ function setupEventListeners() {
   });
 
   // ============================================
+  // センター画像のイベントリスナー
+  // ============================================
+
+  // 画像ラベルクリックでファイル選択を開く
+  const centerWallImageLabel = document.getElementById('centerWallImageLabel');
+  const centerWallImageInput = document.getElementById('centerWallImageInput');
+  centerWallImageLabel?.addEventListener('click', () => centerWallImageInput?.click());
+
+  // 画像ファイル選択
+  centerWallImageInput?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'centerWall');
+      loadCenterWallImage(file);
+    }
+  });
+
+  // センター画像サイズ
+  const centerWallImageSizeInput = document.getElementById('centerWallImageSize');
+  const centerWallImageSizeValue = document.getElementById('centerWallImageSizeValue');
+  centerWallImageSizeInput?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    centerWallImageSizeValue.textContent = value;
+    updateCenterWallImageSize(value);
+  });
+
+  // センター画像X位置
+  document.getElementById('centerWallImageX')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('centerWallImageXValue').textContent = value;
+    if (centerWallPlane) centerWallPlane.position.x = value;
+  });
+
+  // センター画像透明度
+  const centerWallImageOpacityInput = document.getElementById('centerWallImageOpacity');
+  const centerWallImageOpacityValue = document.getElementById('centerWallImageOpacityValue');
+  centerWallImageOpacityInput?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    centerWallImageOpacityValue.textContent = value;
+    if (centerWallPlane) {
+      centerWallPlane.material.uniforms.opacity.value = value;
+    }
+  });
+
+  // センター画像クリア
+  document.getElementById('centerWallImageClear')?.addEventListener('click', () => {
+    clearCenterWallImage();
+  });
+
+  // センター動画一時停止/再生
+  document.getElementById('centerWallVideoPause')?.addEventListener('click', () => {
+    if (centerWallVideo) {
+      if (centerWallVideo.paused) {
+        centerWallVideo.play();
+        document.getElementById('centerWallVideoPreview')?.play();
+        document.getElementById('centerWallVideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        centerWallVideo.pause();
+        document.getElementById('centerWallVideoPreview')?.pause();
+        document.getElementById('centerWallVideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
+  });
+
+  // センター画像ドラッグ&ドロップ
+  const centerWallDropZone = document.getElementById('centerWallDropZone');
+  if (centerWallDropZone) setupDropZone(centerWallDropZone, loadCenterWallImage, true, 'centerWall');
+
+  // センター画像左右反転
+  document.getElementById('centerWallImageFlip')?.addEventListener('change', (e) => {
+    if (centerWallPlane) {
+      centerWallPlane.scale.x = e.target.checked ? -1 : 1;
+    }
+  });
+
+  // ============================================
   // 右側面画像のイベントリスナー
   // ============================================
 
@@ -2544,6 +2697,13 @@ function setupEventListeners() {
     const value = parseFloat(e.target.value);
     rightWallImageSizeValue.textContent = value;
     updateRightWallImageSize(value);
+  });
+
+  // 右側面画像X位置
+  document.getElementById('rightWallImageX')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('rightWallImageXValue').textContent = value;
+    if (rightWallPlane) rightWallPlane.position.x = value;
   });
 
   // 右側面画像透明度
@@ -2690,6 +2850,7 @@ function setupEventListeners() {
     skyDome: loadSkyDomeImage,
     floor: loadFloorImage,
     leftWall: loadLeftWallImage,
+    centerWall: loadCenterWallImage,
     rightWall: loadRightWallImage,
     backWall: loadBackWallImage,
   };
@@ -2878,6 +3039,7 @@ function setupEventListeners() {
     const chromaKeyFaces = [
       { prefix: 'floor', plane: () => floorPlane },
       { prefix: 'leftWall', plane: () => leftWallPlane },
+      { prefix: 'centerWall', plane: () => centerWallPlane },
       { prefix: 'rightWall', plane: () => rightWallPlane },
       { prefix: 'backWall', plane: () => backWallPlane },
     ];
@@ -2957,6 +3119,7 @@ async function loadMidi(file) {
     const instrumentId = guessInstrument(trackName);
     const instrument = INSTRUMENTS[instrumentId];
 
+    const saved = loadPitchFilter(trackName);
     return {
       index,
       name: trackName,
@@ -2965,6 +3128,8 @@ async function loadMidi(file) {
       channel: track.channel,
       noteCount: track.notes.length,
       color: instrument.color,
+      pitchMin: saved ? saved.pitchMin : 0,
+      pitchMax: saved ? saved.pitchMax : 127,
     };
   });
 
@@ -3149,6 +3314,11 @@ function updateTrackPanel() {
     item.id = `track-item-${group.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
     item.dataset.trackName = group.name;
     item.dataset.trackIndices = JSON.stringify(group.trackIndices);
+    // グループ内の最初のトラックからpitchMin/pitchMaxを取得
+    const firstTrackInfo = state.tracks[group.trackIndices[0]];
+    const currentPitchMin = firstTrackInfo ? firstTrackInfo.pitchMin : 0;
+    const currentPitchMax = firstTrackInfo ? firstTrackInfo.pitchMax : 127;
+
     item.innerHTML = `
       <div class="track-icon">${iconHtml}</div>
       <div class="track-color" style="background: #${instrument.color.toString(16).padStart(6, '0')}"></div>
@@ -3157,6 +3327,14 @@ function updateTrackPanel() {
         <select class="instrument-select" data-track-name="${group.name}">
           ${instrumentOptions}
         </select>
+        <div class="track-pitch-filter">
+          <label>音域</label>
+          <input type="number" class="pitch-min" min="0" max="127" value="${currentPitchMin}" title="下限" data-track-name="${group.name}">
+          <span class="pitch-note-name pitch-min-name">${midiToNoteName(currentPitchMin)}</span>
+          〜
+          <input type="number" class="pitch-max" min="0" max="127" value="${currentPitchMax}" title="上限" data-track-name="${group.name}">
+          <span class="pitch-note-name pitch-max-name">${midiToNoteName(currentPitchMax)}</span>
+        </div>
       </div>
       <div class="track-notes">${group.totalNotes}音</div>
     `;
@@ -3170,6 +3348,32 @@ function updateTrackPanel() {
       const trackName = e.target.dataset.trackName;
       const newInstrumentId = e.target.value;
       updateTrackInstrument(trackName, newInstrumentId);
+    });
+
+    // 音域フィルター変更イベント
+    item.querySelector('.pitch-min')?.addEventListener('change', (e) => {
+      const trackName = e.target.dataset.trackName;
+      const val = Math.max(0, Math.min(127, parseInt(e.target.value) || 0));
+      e.target.value = val;
+      e.target.closest('.track-pitch-filter').querySelector('.pitch-min-name').textContent = midiToNoteName(val);
+      let currentMax = 127;
+      state.tracks.forEach(track => {
+        if (track.name === trackName) { track.pitchMin = val; currentMax = track.pitchMax; }
+      });
+      savePitchFilter(trackName, val, currentMax);
+      debouncedRebuildNotes();
+    });
+    item.querySelector('.pitch-max')?.addEventListener('change', (e) => {
+      const trackName = e.target.dataset.trackName;
+      const val = Math.max(0, Math.min(127, parseInt(e.target.value) || 127));
+      e.target.value = val;
+      e.target.closest('.track-pitch-filter').querySelector('.pitch-max-name').textContent = midiToNoteName(val);
+      let currentMin = 0;
+      state.tracks.forEach(track => {
+        if (track.name === trackName) { track.pitchMax = val; currentMin = track.pitchMin; }
+      });
+      savePitchFilter(trackName, currentMin, val);
+      debouncedRebuildNotes();
     });
 
     trackList.appendChild(item);
@@ -3318,9 +3522,12 @@ function createNoteObjects() {
   if (!midi) return;
 
   // 全トラックの音域を計算（中央揃え用）
+  // 音域フィルター範囲外のノートは除外
   let minPitch = 127, maxPitch = 0;
-  midi.tracks.forEach(track => {
+  midi.tracks.forEach((track, trackIndex) => {
+    const trackInfo = state.tracks[trackIndex];
     track.notes.forEach(note => {
+      if (trackInfo && (note.midi < trackInfo.pitchMin || note.midi > trackInfo.pitchMax)) return;
       minPitch = Math.min(minPitch, note.midi);
       maxPitch = Math.max(maxPitch, note.midi);
     });
@@ -3368,12 +3575,14 @@ function createNoteObjects() {
     const zPosition = (zIdx - totalUniqueNames / 2) * CONFIG.trackSpacing;
 
     track.notes.forEach(note => {
+      if (CONFIG.velocityFilter > 0 && note.velocity < CONFIG.velocityFilter / 127) return; // キースイッチ除外
+      if (note.midi < trackInfo.pitchMin || note.midi > trackInfo.pitchMax) return; // 音域フィルター
       // ノートの位置とサイズ
       const x = note.time * CONFIG.timeScale;
       const width = note.duration * CONFIG.timeScale;
       // 地面基準で上に展開（最低音が床のすぐ上に来る）
       const floorOffset = 5; // 床からの余白
-      const y = (note.midi - minPitch) * CONFIG.pitchScale + floorY + floorOffset;
+      const y = (note.midi - minPitch) * CONFIG.pitchScale + floorY + floorOffset + CONFIG.noteYOffset;
 
       // Box geometry
       const geometry = new THREE.BoxGeometry(
@@ -3402,6 +3611,7 @@ function createNoteObjects() {
         velocity: note.velocity,
         originalColor: color,
         originalX: originalX,  // 元のX座標を保存
+        originalY: y,          // 元のY座標を保存（曲率補正用）
       };
 
       scene.add(mesh);
@@ -3432,15 +3642,22 @@ function createNoteObjects() {
   // 左側面画像の位置を調整（幕に垂直、手前側に配置、床基準、幕に隣接）
   if (leftWallPlane) {
     const currentSize = leftWallPlane.geometry.parameters.height;
-    // 画像（平面）を幕の端に直接配置
-    leftWallPlane.position.set(0, floorY + currentSize / 2, noteEdgeZ);
+    const xVal = parseFloat(document.getElementById('leftWallImageX')?.value || 0);
+    leftWallPlane.position.set(xVal, floorY + currentSize / 2, noteEdgeZ);
   }
 
   // 右側面画像の位置を調整（幕に垂直、奥側に配置、床基準、幕に隣接）
   if (rightWallPlane) {
     const currentSize = rightWallPlane.geometry.parameters.height;
-    // 画像（平面）を幕の奥側端に直接配置
-    rightWallPlane.position.set(0, floorY + currentSize / 2, noteEdgeZPositive);
+    const xVal = parseFloat(document.getElementById('rightWallImageX')?.value || 0);
+    rightWallPlane.position.set(xVal, floorY + currentSize / 2, noteEdgeZPositive);
+  }
+
+  // センター画像の位置を調整（幕に垂直、中央に配置、床基準）
+  if (centerWallPlane) {
+    const currentSize = centerWallPlane.geometry.parameters.height;
+    const xVal = parseFloat(document.getElementById('centerWallImageX')?.value || 0);
+    centerWallPlane.position.set(xVal, floorY + currentSize / 2, 0);
   }
 
   // 奥側画像の位置を調整（スライダーの値を維持）
@@ -3478,9 +3695,11 @@ function create3DInstrumentIcons() {
   });
 
   // 全トラックの音域を計算（Y位置用）
+  // ベロシティ10未満はキースイッチとして除外
   let minPitch = 127, maxPitch = 0;
   midi.tracks.forEach(track => {
     track.notes.forEach(note => {
+
       minPitch = Math.min(minPitch, note.midi);
       maxPitch = Math.max(maxPitch, note.midi);
     });
@@ -4688,6 +4907,11 @@ function updateFloorImageSize(size) {
   const height = size;
   floorPlane.geometry.dispose();
   floorPlane.geometry = new THREE.PlaneGeometry(width, height, 64, 64);
+  // 雲の影メッシュも床サイズに合わせてリサイズ
+  if (cloudShadowPlane) {
+    cloudShadowPlane.geometry.dispose();
+    cloudShadowPlane.geometry = new THREE.PlaneGeometry(width, height, 256, 256);
+  }
   // 曲率を再適用
   applyFloorCurvature();
 }
@@ -4887,6 +5111,10 @@ function updateLeftWallImageSize(size) {
   // Y位置を再計算（床基準：下端が床に接する）
   leftWallPlane.position.y = floorY + height / 2;
 
+  // X位置はスライダーの値を維持
+  const xVal = parseFloat(document.getElementById('leftWallImageX')?.value || 0);
+  leftWallPlane.position.x = xVal;
+
   // Z位置は幕の端に固定
   leftWallPlane.position.z = noteEdgeZ;
 }
@@ -5043,6 +5271,10 @@ function updateRightWallImageSize(size) {
   // Y位置を再計算（床基準：下端が床に接する）
   rightWallPlane.position.y = floorY + height / 2;
 
+  // X位置はスライダーの値を維持
+  const xVal = parseFloat(document.getElementById('rightWallImageX')?.value || 0);
+  rightWallPlane.position.x = xVal;
+
   // Z位置は幕の奥側端に固定
   rightWallPlane.position.z = noteEdgeZPositive;
 }
@@ -5073,6 +5305,160 @@ function clearRightWallImage() {
   if (pauseBtn) pauseBtn.style.display = 'none';
 
   console.log('Right wall image cleared');
+}
+
+// ============================================
+// センター画像関連関数
+// ============================================
+
+// センターにファイルを読み込み（画像または動画）
+function loadCenterWallImage(file) {
+  clearCenterWallMedia();
+
+  if (file.type.startsWith('video/')) {
+    loadCenterWallVideo(file);
+  } else {
+    loadCenterWallImageFile(file);
+  }
+}
+
+// センター画像を読み込み
+function loadCenterWallImageFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      centerWallTexture = new THREE.Texture(img);
+      centerWallTexture.needsUpdate = true;
+
+      centerWallAspect = img.width / img.height;
+
+      centerWallPlane.material.uniforms.map.value = centerWallTexture;
+      syncDepthMaterialUniforms(centerWallPlane);
+      centerWallPlane.visible = true;
+      centerWallIsVideo = false;
+
+      const currentSize = parseFloat(document.getElementById('centerWallImageSize').value);
+      updateCenterWallImageSize(currentSize);
+
+      const imagePreview = document.getElementById('centerWallImagePreview');
+      const videoPreview = document.getElementById('centerWallVideoPreview');
+      const text = document.getElementById('centerWallDropZoneText');
+      imagePreview.src = e.target.result;
+      imagePreview.style.display = 'block';
+      videoPreview.style.display = 'none';
+      text.style.display = 'none';
+
+      console.log('Center wall image loaded:', file.name, 'aspect:', centerWallAspect);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// センター動画を読み込み
+function loadCenterWallVideo(file) {
+  const url = URL.createObjectURL(file);
+  centerWallVideo = document.createElement('video');
+  centerWallVideo.src = url;
+  centerWallVideo.loop = true;
+  centerWallVideo.muted = true;
+  centerWallVideo.playsInline = true;
+
+  centerWallVideo.onloadeddata = () => {
+    centerWallTexture = new THREE.VideoTexture(centerWallVideo);
+    centerWallTexture.minFilter = THREE.LinearFilter;
+    centerWallTexture.magFilter = THREE.LinearFilter;
+
+    centerWallAspect = centerWallVideo.videoWidth / centerWallVideo.videoHeight;
+
+    centerWallPlane.material.uniforms.map.value = centerWallTexture;
+    syncDepthMaterialUniforms(centerWallPlane);
+    centerWallPlane.visible = true;
+    centerWallIsVideo = true;
+
+    centerWallVideo.play();
+
+    const currentSize = parseFloat(document.getElementById('centerWallImageSize').value);
+    updateCenterWallImageSize(currentSize);
+
+    const imagePreview = document.getElementById('centerWallImagePreview');
+    const videoPreview = document.getElementById('centerWallVideoPreview');
+    const text = document.getElementById('centerWallDropZoneText');
+    videoPreview.src = url;
+    videoPreview.play();
+    imagePreview.style.display = 'none';
+    videoPreview.style.display = 'block';
+    text.style.display = 'none';
+
+    const pauseBtn = document.getElementById('centerWallVideoPause');
+    if (pauseBtn) {
+      pauseBtn.style.display = '';
+      pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
+
+    console.log('Center wall video loaded:', file.name, 'aspect:', centerWallAspect);
+  };
+  centerWallVideo.load();
+}
+
+// センターメディアを破棄
+function clearCenterWallMedia() {
+  if (centerWallTexture) {
+    centerWallTexture.dispose();
+    centerWallTexture = null;
+  }
+  if (centerWallVideo) {
+    centerWallVideo.pause();
+    const src = centerWallVideo.src;
+    centerWallVideo.src = '';
+    if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+    centerWallVideo = null;
+  }
+  centerWallIsVideo = false;
+}
+
+// センター画像サイズを更新（床基準で拡大）
+function updateCenterWallImageSize(size) {
+  if (!centerWallPlane) return;
+
+  const width = size * centerWallAspect;
+  const height = size;
+  centerWallPlane.geometry.dispose();
+  centerWallPlane.geometry = new THREE.PlaneGeometry(width, height);
+
+  centerWallPlane.position.y = floorY + height / 2;
+
+  const xVal = parseFloat(document.getElementById('centerWallImageX')?.value || 0);
+  centerWallPlane.position.x = xVal;
+
+  centerWallPlane.position.z = 0;
+}
+
+// センター画像をクリア
+function clearCenterWallImage() {
+  window.currentMediaRefs.centerWall = null;
+  clearCenterWallMedia();
+
+  centerWallPlane.material.uniforms.map.value = null;
+  centerWallPlane.visible = false;
+
+  centerWallAspect = 1;
+
+  const input = document.getElementById('centerWallImageInput');
+  if (input) input.value = '';
+
+  const imagePreview = document.getElementById('centerWallImagePreview');
+  const videoPreview = document.getElementById('centerWallVideoPreview');
+  const text = document.getElementById('centerWallDropZoneText');
+  if (imagePreview) { imagePreview.style.display = 'none'; imagePreview.src = ''; }
+  if (videoPreview) { videoPreview.style.display = 'none'; videoPreview.pause(); videoPreview.src = ''; }
+  if (text) text.style.display = 'block';
+
+  const pauseBtn = document.getElementById('centerWallVideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
+
+  console.log('Center wall image cleared');
 }
 
 // ============================================
@@ -5949,8 +6335,16 @@ function updateNotePositions() {
   }
   const delayOffset = syncConfig.midiDelay * CONFIG.timeScale;
   const timeOffset = state.currentTime * CONFIG.timeScale;
+  const curv = floorCurvature;
   state.noteObjects.forEach(mesh => {
-    mesh.position.x = mesh.userData.originalX - timeOffset + delayOffset + tlOffset;
+    const x = mesh.userData.originalX - timeOffset + delayOffset + tlOffset;
+    mesh.position.x = x;
+    if (curv !== 0) {
+      // 床と同じ放物面: 距離の2乗に比例して沈む
+      mesh.position.y = mesh.userData.originalY - curv * (x * x + mesh.position.z * mesh.position.z);
+    } else {
+      mesh.position.y = mesh.userData.originalY;
+    }
   });
 }
 
@@ -6212,8 +6606,9 @@ window.CONFIG = CONFIG;
 // プリセット復元用に関数を公開
 window.appFunctions = {
   loadMidi, loadAudio, clearMidi, clearAudio,
-  loadSkyDomeImage, loadFloorImage, loadLeftWallImage, loadRightWallImage, loadBackWallImage,
-  clearSkyDomeImage, clearFloorImage, clearLeftWallImage, clearRightWallImage, clearBackWallImage,
+  loadSkyDomeImage, loadFloorImage, loadLeftWallImage, loadCenterWallImage, loadRightWallImage, loadBackWallImage,
+  clearSkyDomeImage, clearFloorImage, clearLeftWallImage, clearCenterWallImage, clearRightWallImage, clearBackWallImage,
+  updateTrackPanel, debouncedRebuildNotes,
 };
 
 // 360度エクスポート用にinternal関数・オブジェクトを公開
