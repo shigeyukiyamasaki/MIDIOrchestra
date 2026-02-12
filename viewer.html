@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>MIDI Orchestra Viewer</title>
-  <link rel="stylesheet" href="style.css?v=20260208p">
+  <link rel="stylesheet" href="style.css?v=20260212l">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     /* ビューアーモード: 編集パネルを非表示、キャンバスを全画面化 */
@@ -23,9 +23,29 @@
       height: 100vh !important;
     }
     #presetModal { display: none !important; }
+    #viewer-loading-blur {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 9999;
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      background: rgba(0,0,0,0.3);
+      transition: opacity 0.8s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 18px;
+      letter-spacing: 2px;
+    }
+    #viewer-loading-blur.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
+  <div id="viewer-loading-blur">Loading...</div>
   <!-- コントロールパネル（非表示だがDOM互換性のため残す） -->
   <div id="controls">
     <div class="control-group file-inputs">
@@ -334,7 +354,29 @@
             <div class="control-row"><label>透明度</label><input type="range" id="skyDomeOpacity" min="0.1" max="1" step="0.05" value="1"><span id="skyDomeOpacityValue">1</span></div>
             <div class="control-row"><label>範囲(度)</label><input type="range" id="skyDomeRange" min="60" max="360" step="10" value="180"><span id="skyDomeRangeValue">180</span></div>
             <div class="control-row"><label>距離</label><input type="range" id="skyDomeRadius" min="100" max="3000" step="50" value="2000"><span id="skyDomeRadiusValue">2000</span></div>
+            <div class="control-row"><label>Yオフセット</label><input type="range" id="skyDomeOffsetY" min="-1000" max="1000" step="10" value="0"><span id="skyDomeOffsetYValue">0</span></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="skyDomeChromaColor" value="#00ff00"><input type="range" id="skyDomeChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="skyDomeChromaThresholdValue">0</span></div>
             <button id="skyDomeImageClear" class="clear-btn-small">クリア</button>
+          </div>
+        </div>
+      </div>
+      <div class="image-section">
+        <div class="setting-category">前景スカイ</div>
+        <div class="image-row">
+          <div class="drop-zone" id="innerSkyDropZone">
+            <img id="innerSkyImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="innerSkyVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+            <span class="drop-zone-text" id="innerSkyDropZoneText">ドラッグ&ドロップ<br>または</span>
+            <label class="file-label" id="innerSkyImageLabel">ファイル選択</label>
+            <input type="file" id="innerSkyImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
+          </div>
+          <div class="image-controls">
+            <div class="control-row"><label>透明度</label><input type="range" id="innerSkyOpacity" min="0.1" max="1" step="0.05" value="1"><span id="innerSkyOpacityValue">1</span></div>
+            <div class="control-row"><label>範囲(度)</label><input type="range" id="innerSkyRange" min="60" max="360" step="10" value="180"><span id="innerSkyRangeValue">180</span></div>
+            <div class="control-row"><label>距離</label><input type="range" id="innerSkyRadius" min="50" max="2000" step="50" value="500"><span id="innerSkyRadiusValue">500</span></div>
+            <div class="control-row"><label>Yオフセット</label><input type="range" id="innerSkyOffsetY" min="-1000" max="1000" step="10" value="0"><span id="innerSkyOffsetYValue">0</span></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="innerSkyChromaColor" value="#00ff00"><input type="range" id="innerSkyChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="innerSkyChromaThresholdValue">0</span></div>
+            <button id="innerSkyImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
       </div>
@@ -353,6 +395,7 @@
             <div class="control-row"><label>透明度</label><input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="floorImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="floorImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floorChromaColor" value="#00ff00"><input type="range" id="floorChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floorChromaThresholdValue">0</span></div>
+            <div class="control-row"><label>曲率</label><input type="range" id="floorCurvature" min="0" max="0.0003" step="0.00001" value="0"><span id="floorCurvatureValue">0</span></div>
             <button id="floorImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
@@ -369,6 +412,7 @@
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="leftWallImageSize" min="50" max="1000" step="10" value="300"><span id="leftWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="leftWallImageX" min="-500" max="500" step="10" value="0"><span id="leftWallImageXValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="leftWallImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="leftWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="leftWallChromaColor" value="#00ff00"><input type="range" id="leftWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="leftWallChromaThresholdValue">0</span></div>
@@ -388,10 +432,31 @@
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="rightWallImageSize" min="50" max="1000" step="10" value="300"><span id="rightWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="rightWallImageX" min="-500" max="500" step="10" value="0"><span id="rightWallImageXValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="rightWallImageOpacityValue">0.8</span></div>
             <div class="control-row"><label><input type="checkbox" id="rightWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="rightWallChromaColor" value="#00ff00"><input type="range" id="rightWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="rightWallChromaThresholdValue">0</span></div>
             <button id="rightWallImageClear" class="clear-btn-small">クリア</button>
+          </div>
+        </div>
+      </div>
+      <div class="image-section">
+        <div class="setting-category">正面</div>
+        <div class="image-row">
+          <div class="drop-zone" id="centerWallDropZone">
+            <img id="centerWallImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="centerWallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+            <span class="drop-zone-text" id="centerWallDropZoneText">ドラッグ&ドロップ<br>または</span>
+            <label class="file-label" id="centerWallImageLabel">ファイル選択</label>
+            <input type="file" id="centerWallImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
+          </div>
+          <div class="image-controls">
+            <div class="control-row"><label>サイズ</label><input type="range" id="centerWallImageSize" min="50" max="1000" step="10" value="300"><span id="centerWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="centerWallImageX" min="-500" max="500" step="10" value="0"><span id="centerWallImageXValue">0</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="centerWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="centerWallImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label><input type="checkbox" id="centerWallImageFlip">反転</label></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="centerWallChromaColor" value="#00ff00"><input type="range" id="centerWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="centerWallChromaThresholdValue">0</span></div>
+            <button id="centerWallImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
       </div>
@@ -419,7 +484,14 @@
   </div>
 
   <!-- Three.js キャンバス -->
-  <div id="canvas-container"></div>
+  <div id="canvas-container">
+    <div id="credits-overlay">
+      <div id="credits-line1" class="credits-line credits-line-tight" contenteditable="false"></div>
+      <div id="credits-line2" class="credits-line" contenteditable="false"></div>
+      <div class="credits-line credits-has-prefix" contenteditable="false"><span class="credits-prefix">Comp. </span><span id="credits-line3"></span></div>
+      <div class="credits-line credits-has-prefix credits-visible" contenteditable="false"><span class="credits-prefix">Arr. </span><span id="credits-line4">Romashige</span></div>
+    </div>
+  </div>
 
   <!-- 表示設定パネル -->
   <div id="display-settings-panel">
@@ -441,6 +513,11 @@
         <label>透明度</label>
         <input type="range" id="noteOpacity" min="0.1" max="1" step="0.05" value="0.85">
         <span id="noteOpacityValue">0.85</span>
+      </div>
+      <div class="setting-item">
+        <label>高さオフセット</label>
+        <input type="range" id="noteYOffset" min="-100" max="200" step="1" value="0">
+        <span id="noteYOffsetValue">0</span>
       </div>
     </div>
     <div class="display-section">
@@ -518,6 +595,67 @@
     <div id="track-list"></div>
   </div>
 
+  <!-- ビューワー用: エディターと共通のDOM互換要素（非表示） -->
+  <div id="viewer-compat-elements" style="display:none !important;">
+    <!-- カメラ -->
+    <input type="range" id="cameraFloorLimit" min="0" max="100" step="1" value="100"><span id="cameraFloorLimitValue">100</span>
+    <!-- ブルーム -->
+    <input type="checkbox" id="bloomEnabled" checked>
+    <input type="range" id="bloomStrength" min="0" max="3" step="0.05" value="0"><span id="bloomStrengthValue">0</span>
+    <input type="range" id="bloomRadius" min="0" max="1" step="0.01" value="0.4"><span id="bloomRadiusValue">0.4</span>
+    <div class="dual-range" id="bloomThresholdRange" data-min="0" data-max="1">
+      <div class="range-track"></div>
+      <div class="range-selected"></div>
+      <div class="range-handle min-handle"></div>
+      <div class="range-handle max-handle"></div>
+      <div class="current-marker"></div>
+      <span id="bloomThresholdMinVal">0.8</span>
+      <span id="bloomThresholdMaxVal">0.8</span>
+    </div>
+    <!-- レンズフレア -->
+    <input type="checkbox" id="flareEnabled" checked>
+    <input type="range" id="lensFlareIntensity" min="0" max="3" step="0.05" value="0"><span id="lensFlareIntensityValue">0</span>
+    <input type="range" id="lensFlareBlur" min="0" max="3" step="0.05" value="0"><span id="lensFlareBlurValue">0</span>
+    <input type="range" id="sunPosX" min="-200" max="200" step="5" value="50"><span id="sunPosXValue">50</span>
+    <input type="range" id="sunPosY" min="0" max="300" step="5" value="100"><span id="sunPosYValue">100</span>
+    <input type="range" id="sunPosZ" min="-200" max="200" step="5" value="50"><span id="sunPosZValue">50</span>
+    <!-- 雲の影 -->
+    <input type="checkbox" id="cloudShadowEnabled" checked>
+    <input type="range" id="cloudShadowIntensity" min="0" max="1" step="0.05" value="0"><span id="cloudShadowIntensityValue">0</span>
+    <input type="range" id="cloudShadowSpeed" min="0" max="5" step="0.1" value="1"><span id="cloudShadowSpeedValue">1</span>
+    <input type="range" id="cloudShadowScale" min="0.5" max="5" step="0.1" value="2"><span id="cloudShadowScaleValue">2</span>
+    <input type="range" id="cloudShadowDirection" min="0" max="360" step="5" value="45"><span id="cloudShadowDirectionValue">45</span>
+    <input type="range" id="cloudShadowContrast" min="0" max="3" step="0.05" value="0"><span id="cloudShadowContrastValue">0</span>
+    <!-- 影 -->
+    <input type="checkbox" id="shadowEnabled">
+    <input type="radio" name="shadowEnvironment" value="outdoor" checked>
+    <input type="radio" name="shadowEnvironment" value="indoor">
+    <input type="range" id="shadowOpacity" min="0" max="1" step="0.05" value="0.3"><span id="shadowOpacityValue">0.3</span>
+    <input type="checkbox" id="noteShadowEnabled">
+    <!-- 天候 -->
+    <select id="weatherType"><option value="none">なし</option><option value="snow">雪</option><option value="rain">雨</option><option value="sakura">桜</option><option value="leaves">落ち葉</option><option value="firefly">蛍</option></select>
+    <input type="range" id="weatherAmount" min="100" max="50000" step="100" value="3000"><span id="weatherAmountValue">3000</span>
+    <input type="range" id="weatherSpeed" min="0.1" max="5" step="0.1" value="1"><span id="weatherSpeedValue">1</span>
+    <input type="range" id="weatherAngle" min="0" max="80" step="1" value="0"><span id="weatherAngleValue">0</span>
+    <input type="range" id="weatherWindDir" min="0" max="360" step="5" value="0"><span id="weatherWindDirValue">0</span>
+    <input type="range" id="weatherSpread" min="100" max="1000" step="50" value="400"><span id="weatherSpreadValue">400</span>
+    <!-- 再生制御 -->
+    <input type="checkbox" id="loopEndEnabled">
+    <input type="range" id="loopEndSeek" min="0" max="1000" step="1" value="1000">
+    <span id="loopEndTime">-:--.--</span>
+    <input type="range" id="fadeOutDuration" min="0" max="50" step="1" value="0"><span id="fadeOutValue">0</span>
+    <!-- クレジット -->
+    <input type="text" id="creditsLine1">
+    <input type="text" id="creditsLine2">
+    <input type="text" id="creditsLine3">
+    <input type="number" id="creditsSize1" min="8" max="72" value="16">
+    <input type="number" id="creditsSize2" min="8" max="72" value="16">
+    <input type="number" id="creditsSize3" min="8" max="72" value="16">
+    <input type="number" id="creditsSize4" min="8" max="72" value="16">
+    <input type="color" id="creditsColor" value="#ffffff">
+    <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8"><span id="creditsOpacityValue">0.8</span>
+  </div>
+
   <!-- ローディング表示 -->
   <div id="viewerLoading">読み込み中...</div>
 
@@ -548,6 +686,7 @@
       <div><span>太さ</span><input type="range" id="viewerNoteHeight" min="0.3" max="3" step="0.1" value="0.8"></div>
       <div><span>奥行</span><input type="range" id="viewerNoteDepth" min="1" max="10" step="0.5" value="1"></div>
       <div><span>透明</span><input type="range" id="viewerNoteOpacity" min="0.1" max="1" step="0.05" value="0.85"></div>
+      <div><span>高さ</span><input type="range" id="viewerNoteYOffset" min="-100" max="200" step="1" value="0"></div>
     </div>
     <div class="viewer-control-group">
       <label>レイアウト</label>
@@ -579,7 +718,7 @@
       document.write('<script src="viewer-data.js"><\/script>');
     }
   </script>
-  <script src="src/presetManager.js?v=20260208d"></script>
-  <script type="module" src="src/main.js?v=20260209a"></script>
+  <script src="src/presetManager.js?v=20260212l"></script>
+  <script type="module" src="src/main.js?v=20260212l"></script>
 </body>
 </html>

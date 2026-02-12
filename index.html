@@ -631,7 +631,14 @@
   </div>
 
   <!-- Three.js キャンバス -->
-  <div id="canvas-container"></div>
+  <div id="canvas-container">
+    <div id="credits-overlay">
+      <div id="credits-line1" class="credits-line credits-line-tight" contenteditable="false"></div>
+      <div id="credits-line2" class="credits-line" contenteditable="false"></div>
+      <div class="credits-line credits-has-prefix" contenteditable="false"><span class="credits-prefix">Comp. </span><span id="credits-line3"></span></div>
+      <div class="credits-line credits-has-prefix credits-visible" contenteditable="false"><span class="credits-prefix">Arr. </span><span id="credits-line4">Romashige</span></div>
+    </div>
+  </div>
 
   <!-- 表示設定パネル（プレビュー下段・横並び） -->
   <div id="display-settings-panel">
@@ -707,6 +714,22 @@
       </div>
       <div class="setting-item">
         <button id="bgColorSwap" style="padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-arrows-up-down"></i> 上下入替</button>
+      </div>
+    </div>
+    <div class="display-section">
+      <div class="setting-category">クレジット</div>
+      <div class="setting-item credits-row"><label>1行目</label><input type="text" id="creditsLine1" class="credits-input" placeholder="曲名"><input type="number" id="creditsSize1" class="credits-size-input" min="8" max="72" value="16"></div>
+      <div class="setting-item credits-row"><label>2行目</label><input type="text" id="creditsLine2" class="credits-input" placeholder="作曲"><input type="number" id="creditsSize2" class="credits-size-input" min="8" max="72" value="16"></div>
+      <div class="setting-item credits-row"><label>3行目</label><input type="text" id="creditsLine3" class="credits-input" placeholder="編曲"><input type="number" id="creditsSize3" class="credits-size-input" min="8" max="72" value="16"></div>
+      <div class="setting-item credits-row"><label>4行目</label><span style="color:#888;font-size:11px;">Arr. Romashige（固定）</span><input type="number" id="creditsSize4" class="credits-size-input" min="8" max="72" value="16"></div>
+      <div class="setting-item">
+        <label>色</label>
+        <input type="color" id="creditsColor" value="#ffffff">
+      </div>
+      <div class="setting-item">
+        <label>透明度</label>
+        <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8">
+        <span id="creditsOpacityValue">0.8</span>
       </div>
     </div>
     <div class="display-section">
@@ -839,9 +862,9 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
 
-  <script src="src/presetManager.js"></script>
-  <script src="src/viewerExport.js"></script>
-  <script type="module" src="src/main.js"></script>
-  <script src="src/export360.js"></script>
+  <script src="src/presetManager.js?v=20260212l"></script>
+  <script src="src/viewerExport.js?v=20260212l"></script>
+  <script type="module" src="src/main.js?v=20260212l"></script>
+  <script src="src/export360.js?v=20260212l"></script>
 </body>
 </html>

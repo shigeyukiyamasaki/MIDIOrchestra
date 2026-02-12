@@ -344,6 +344,19 @@ function collectCurrentSettings() {
   s.gridColor = getColorValue('gridColor');
   s.aspectRatioSelect = getSelectValue('aspectRatioSelect');
 
+  // クレジット
+  const getTextValue = (id) => { const el = document.getElementById(id); return el ? el.value : undefined; };
+  s.creditsLine1 = getTextValue('creditsLine1');
+  s.creditsLine2 = getTextValue('creditsLine2');
+  s.creditsLine3 = getTextValue('creditsLine3');
+  s.creditsLine4 = getTextValue('creditsLine4');
+  s.creditsSize1 = getRangeValue('creditsSize1');
+  s.creditsSize2 = getRangeValue('creditsSize2');
+  s.creditsSize3 = getRangeValue('creditsSize3');
+  s.creditsSize4 = getRangeValue('creditsSize4');
+  s.creditsColor = getColorValue('creditsColor');
+  s.creditsOpacity = getRangeValue('creditsOpacity');
+
   // 同期
   s.midiDelay = getRangeValue('midiDelay');
   s.audioDelay = getRangeValue('audioDelay');
@@ -497,6 +510,28 @@ function applySettings(s) {
       if (el) el.dispatchEvent(new Event('input'));
     });
   }
+  // クレジット復元
+  [1, 2, 3, 4].forEach(i => {
+    const lineKey = `creditsLine${i}`;
+    const sizeKey = `creditsSize${i}`;
+    const lineEl = document.getElementById(lineKey);
+    const sizeEl = document.getElementById(sizeKey);
+    if (lineEl && s[lineKey] !== undefined) {
+      lineEl.value = s[lineKey];
+      lineEl.dispatchEvent(new Event('input'));
+    }
+    if (sizeEl && s[sizeKey] !== undefined) {
+      sizeEl.value = s[sizeKey];
+      sizeEl.dispatchEvent(new Event('input'));
+    }
+  });
+  setColorValue('creditsColor', s.creditsColor);
+  setRangeValue('creditsOpacity', s.creditsOpacity);
+  ['creditsColor', 'creditsOpacity'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.dispatchEvent(new Event('input'));
+  });
+
   setCheckbox('autoCameraEnabled', s.autoCameraEnabled);
   setRangeValue('autoCameraInterval', s.autoCameraInterval);
   setSelectValue('autoCameraMode', s.autoCameraMode);
@@ -616,6 +651,8 @@ function applySettings(s) {
     'effectCrack','effectCrackTrigger','effectGlitch','effectGlitchTrigger',
     'noteHeight','noteDepth','noteOpacity','trackSpacing','timeScale','pitchScale','noteYOffset',
     'timelineOpacity','timelineColor','timelineX','bgColorTop','bgColorBottom',
+    'creditsLine1','creditsLine2','creditsLine3','creditsLine4',
+    'creditsSize1','creditsSize2','creditsSize3','creditsSize4','creditsColor','creditsOpacity',
     'gridOpacity','gridSize','gridColor','aspectRatioSelect',
     'midiDelay','audioDelay','loopEndEnabled','loopEndTime','fadeOutDuration','shadowEnvironment','weatherType',
     'skyDomeOpacity','skyDomeRange','skyDomeRadius',

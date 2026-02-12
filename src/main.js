@@ -72,6 +72,52 @@ let rightWallVideo = null, rightWallIsVideo = false;
 let centerWallVideo = null, centerWallIsVideo = false;
 let backWallVideo = null, backWallIsVideo = false;
 
+// ロード済みメディアのblobを取得（Export用フォールバック）
+window.getLoadedMediaBlob = async function(slot) {
+  const slotMap = {
+    skyDome:    { video: () => skyDomeVideo,    plane: () => skyDome,        isVideo: () => typeof skyDomeIsVideo !== 'undefined' && skyDomeIsVideo },
+    innerSky:   { video: () => innerSkyVideo,   plane: () => innerSkyDome,   isVideo: () => typeof innerSkyIsVideo !== 'undefined' && innerSkyIsVideo },
+    floor:      { video: () => floorVideo,      plane: () => floorPlane,     isVideo: () => floorIsVideo },
+    leftWall:   { video: () => leftWallVideo,   plane: () => leftWallPlane,  isVideo: () => leftWallIsVideo },
+    centerWall: { video: () => centerWallVideo, plane: () => centerWallPlane,isVideo: () => centerWallIsVideo },
+    rightWall:  { video: () => rightWallVideo,  plane: () => rightWallPlane, isVideo: () => rightWallIsVideo },
+    backWall:   { video: () => backWallVideo,   plane: () => backWallPlane,  isVideo: () => backWallIsVideo },
+  };
+  const info = slotMap[slot];
+  if (!info) { console.log(`[Fallback] ${slot}: not in slotMap`); return null; }
+  const plane = info.plane();
+  if (!plane) { console.log(`[Fallback] ${slot}: plane is null`); return null; }
+  if (!plane.visible) { console.log(`[Fallback] ${slot}: plane not visible`); return null; }
+  console.log(`[Fallback] ${slot}: plane exists & visible, isVideo=${info.isVideo()}`);
+  if (info.isVideo()) {
+    const vid = info.video();
+    console.log(`[Fallback] ${slot}: video element exists=${!!vid}, src=${vid?.src?.substring(0, 30)}`);
+    if (vid && vid.src && vid.src.startsWith('blob:')) {
+      try {
+        const resp = await fetch(vid.src);
+        const blob = await resp.blob();
+        console.log(`[Fallback] ${slot}: video blob fetched, size=${blob.size}`);
+        return { blob, name: slot + '.mp4', mimeType: 'video/mp4' };
+      } catch(e) { console.error(`[Fallback] ${slot}: fetch failed`, e); return null; }
+    }
+  } else {
+    // 画像: canvasに描画してblob化
+    const tex = plane.material?.uniforms?.map?.value;
+    if (tex && tex.image) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = tex.image.width || tex.image.videoWidth || 512;
+        canvas.height = tex.image.height || tex.image.videoHeight || 512;
+        canvas.getContext('2d').drawImage(tex.image, 0, 0);
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        return { blob, name: slot + '.png', mimeType: 'image/png' };
+      } catch(e) { console.error(`[Fallback] ${slot}: canvas failed`, e); return null; }
+    }
+  }
+  console.log(`[Fallback] ${slot}: no media data found`);
+  return null;
+};
+
 // クロマキー設定（4面共通）
 // 各面ごとのクロマキー設定（個別）
 
@@ -612,12 +658,17 @@ async function init() {
     const confirmBtn = document.getElementById('publishConfirm');
     const cancelBtn = document.getElementById('publishCancel');
 
+    let lastPublishedSong = localStorage.getItem('lastPublishedSong') || '';
     publishBtn.addEventListener('click', () => {
       statusDiv.style.display = 'none';
-      const presetSelect = document.getElementById('presetSelect');
-      const selected = presetSelect && presetSelect.selectedOptions[0];
-      if (selected && selected.value) {
-        songInput.value = selected.textContent;
+      if (lastPublishedSong) {
+        songInput.value = lastPublishedSong;
+      } else {
+        const presetSelect = document.getElementById('presetSelect');
+        const selected = presetSelect && presetSelect.selectedOptions[0];
+        if (selected && selected.value) {
+          songInput.value = selected.textContent;
+        }
       }
       positionModalNearButton(publishModal, publishBtn);
       publishModal.style.display = 'flex';
@@ -655,8 +706,16 @@ async function init() {
       statusDiv.style.display = 'block';
 
       try {
-        const result = await window.viewerExport.publishViewerData(song);
-        statusDiv.innerHTML = '公開完了！<br><a href="' + result.url + '" target="_blank" style="color:#4fc3f7;">' + result.url + '</a>';
+        const result = await window.viewerExport.publishViewerData(song, (msg) => {
+          statusDiv.textContent = msg;
+        });
+        lastPublishedSong = song;
+        localStorage.setItem('lastPublishedSong', song);
+        let msg = '公開完了！<br><a href="' + result.url + '" target="_blank" style="color:#4fc3f7;">' + result.url + '</a>';
+        if (result.skipped && result.skipped.length > 0) {
+          msg += '<br><span style="color:#ffb74d;font-size:11px;">⚠ 大きすぎてスキップ: ' + result.skipped.join(', ') + '</span>';
+        }
+        statusDiv.innerHTML = msg;
         statusDiv.style.color = '#66bb6a';
       } catch (e) {
         statusDiv.textContent = 'エラー: ' + e.message;
@@ -667,6 +726,7 @@ async function init() {
     });
   }
 
+  updateCreditsPosition();
   console.log('MIDI Orchestra Visualizer initialized');
 }
 
@@ -1431,6 +1491,20 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(width, height);
   if (composer) composer.setSize(width, height);
+  updateCreditsPosition();
+}
+
+// クレジットオーバーレイを描画エリア（canvas）の左下に合わせる
+function updateCreditsPosition() {
+  const overlay = document.getElementById('credits-overlay');
+  if (!overlay || !renderer) return;
+  const canvas = renderer.domElement;
+  const container = canvas.parentElement;
+  if (!container) return;
+  const canvasLeft = canvas.offsetLeft;
+  const canvasBottom = container.clientHeight - (canvas.offsetTop + canvas.clientHeight);
+  overlay.style.left = (canvasLeft + 20) + 'px';
+  overlay.style.bottom = (canvasBottom + 20) + 'px';
 }
 
 // ============================================
@@ -1578,7 +1652,7 @@ function setupEventListeners() {
   function updateLoopEndDisplay() {
     const m = Math.floor(state.loopEndTime / 60);
     const sec = (state.loopEndTime % 60).toFixed(1);
-    loopEndTime.textContent = `${m}:${sec.padStart(4, '0')}`;
+    if (loopEndTime) loopEndTime.textContent = `${m}:${sec.padStart(4, '0')}`;
     if (loopEndSeek && state.duration > 0) {
       loopEndSeek.value = (state.loopEndTime / state.duration) * 1000;
     }
@@ -1599,7 +1673,7 @@ function setupEventListeners() {
         state.loopEndTime = (parseFloat(loopEndSeek.value) / 1000) * state.duration;
         updateLoopEndDisplay();
       } else {
-        loopEndTime.textContent = '-:--.--';
+        if (loopEndTime) loopEndTime.textContent = '-:--.--';
       }
     });
   }
@@ -1975,6 +2049,36 @@ function setupEventListeners() {
     }
   });
 
+  // クレジット表示
+  const creditsOverlay = document.getElementById('credits-overlay');
+  if (creditsOverlay) {
+    [1, 2, 3, 4].forEach(i => {
+      document.getElementById(`creditsLine${i}`)?.addEventListener('input', (e) => {
+        const line = document.getElementById(`credits-line${i}`);
+        if (line) {
+          line.textContent = e.target.value;
+          const parent = line.closest('.credits-has-prefix');
+          if (parent) parent.classList.toggle('credits-visible', e.target.value.length > 0);
+        }
+      });
+      document.getElementById(`creditsSize${i}`)?.addEventListener('input', (e) => {
+        const line = document.getElementById(`credits-line${i}`);
+        if (line) {
+          const target = line.closest('.credits-line') || line;
+          target.style.fontSize = e.target.value + 'px';
+        }
+      });
+    });
+    document.getElementById('creditsColor')?.addEventListener('input', (e) => {
+      creditsOverlay.querySelectorAll('.credits-line').forEach(el => { el.style.color = e.target.value; });
+    });
+    document.getElementById('creditsOpacity')?.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      document.getElementById('creditsOpacityValue').textContent = v;
+      creditsOverlay.querySelectorAll('.credits-line').forEach(el => { el.style.opacity = v; });
+    });
+  }
+
   // デュアルレンジスライダーの初期化
   initDualRangeSliders();
 
@@ -2045,7 +2149,8 @@ function setupEventListeners() {
   // カメラ下限角度
   document.getElementById('cameraFloorLimit')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
-    document.getElementById('cameraFloorLimitValue').textContent = value;
+    const floorLimitVal = document.getElementById('cameraFloorLimitValue');
+    if (floorLimitVal) floorLimitVal.textContent = value;
     // 0 = フリー(Math.PI), 100 = 水平まで(Math.PI/2)
     controls.maxPolarAngle = Math.PI - (value / 100) * (Math.PI / 2);
   });
@@ -5121,6 +5226,8 @@ function loadFloorVideo(file) {
   floorVideo.loop = true;
   floorVideo.muted = true;
   floorVideo.playsInline = true;
+  floorVideo.setAttribute('playsinline', '');
+  floorVideo.setAttribute('webkit-playsinline', '');
 
   floorVideo.onloadeddata = () => {
     floorTexture = new THREE.VideoTexture(floorVideo);
@@ -5133,7 +5240,7 @@ function loadFloorVideo(file) {
     floorPlane.visible = true;
     floorIsVideo = true;
 
-    floorVideo.play();
+    floorVideo.play().catch(e => console.warn('Floor video autoplay blocked:', e));
 
     const currentSize = parseFloat(document.getElementById('floorImageSize').value);
     updateFloorImageSize(currentSize);
@@ -5915,6 +6022,21 @@ function clearBackWallImage() {
 // ============================================
 // 再生コントロール
 // ============================================
+// モバイル対応: 全動画要素を再生（ユーザー操作のコンテキストで呼ぶ）
+function resumeAllVideos() {
+  const videos = [skyDomeVideo, innerSkyVideo, floorVideo, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo];
+  videos.forEach(v => {
+    if (v && v.paused) {
+      v.play().then(() => {
+        // 再生成功後、テクスチャ未セットアップなら再試行
+        if (v._retryTextureSetup) {
+          setTimeout(() => v._retryTextureSetup(), 500);
+        }
+      }).catch(() => {});
+    }
+  });
+}
+
 function togglePlay() {
   if (state.isPlaying) {
     pause();
@@ -5960,6 +6082,8 @@ function play() {
       audioElement.play();
     }
   }
+  // モバイル対応: ユーザー操作を契機に全動画をplay
+  resumeAllVideos();
 }
 
 function pause() {
@@ -6528,6 +6652,12 @@ function animate() {
   // カメラコントロール更新（遷移中はスキップ）
   if (controls && !cameraTransition) {
     controls.update();
+    // 中心点が床の下に行かないよう制限（カメラも同量補正）
+    if (controls.target.y < floorY) {
+      const correction = floorY - controls.target.y;
+      controls.target.y = floorY;
+      camera.position.y += correction;
+    }
   }
 
   // シェイクオフセットを計算して適用（controls.update後、render前）
@@ -6701,6 +6831,119 @@ function base64ToBlob(base64, mimeType) {
   return new Blob([bytes], { type: mimeType });
 }
 
+// URL参照の動画をストリーミング読み込み（メモリ節約・モバイル対応）
+function loadVideoFromURL(slotName, url, loadFn) {
+  return new Promise((resolve) => {
+    // モバイル: _mobile版があれば使う（4K動画はモバイルでは再生困難）
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const originalUrl = url;
+    if (isMobile && url.match(/\.\w+$/)) {
+      url = url.replace(/(\.\w+)$/, '_mobile$1');
+      console.log(`[Viewer] Mobile detected, trying: ${url}`);
+    }
+    console.log(`[Viewer] Streaming video ${slotName} from URL: ${url}`);
+    const video = document.createElement('video');
+    video.loop = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('muted', '');
+    video.preload = 'auto';
+    // DOMに追加（モバイルSafariで再生に必要）
+    video.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1;';
+    document.body.appendChild(video);
+
+    const slotSetup = {
+      skyDome:    { setVideo: (v) => { skyDomeVideo = v; skyDomeIsVideo = true; },  getPlane: () => skyDome },
+      innerSky:   { setVideo: (v) => { innerSkyVideo = v; innerSkyIsVideo = true; }, getPlane: () => innerSkyDome },
+      floor:      { setVideo: (v) => { floorVideo = v; floorIsVideo = true; },       getPlane: () => floorPlane },
+      leftWall:   { setVideo: (v) => { leftWallVideo = v; leftWallIsVideo = true; }, getPlane: () => leftWallPlane },
+      centerWall: { setVideo: (v) => { centerWallVideo = v; centerWallIsVideo = true; }, getPlane: () => centerWallPlane },
+      rightWall:  { setVideo: (v) => { rightWallVideo = v; rightWallIsVideo = true; }, getPlane: () => rightWallPlane },
+      backWall:   { setVideo: (v) => { backWallVideo = v; backWallIsVideo = true; }, getPlane: () => backWallPlane },
+    };
+
+    // 即座にスロット変数に割り当て（resumeAllVideosで再生可能にするため）
+    const setup = slotSetup[slotName];
+    if (setup) {
+      setup.setVideo(video);
+    }
+
+    let textureReady = false;
+    function setupTexture() {
+      if (textureReady) return;
+      if (video.videoWidth === 0) return false;
+      textureReady = true;
+      const plane = setup ? setup.getPlane() : null;
+      if (plane) {
+        const texture = new THREE.VideoTexture(video);
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        plane.material.uniforms.map.value = texture;
+        plane.visible = true;
+
+        if (slotName === 'floor') {
+          floorTexture = texture;
+          floorAspect = video.videoWidth / video.videoHeight;
+          const sizeEl = document.getElementById('floorImageSize');
+          if (sizeEl) updateFloorImageSize(parseFloat(sizeEl.value));
+        }
+      }
+      console.log(`[Viewer] ${slotName} video texture ready (${video.videoWidth}x${video.videoHeight})`);
+      return true;
+    }
+
+    // テクスチャ未セットアップ時のリトライ用（ユーザー操作後に呼ばれる）
+    video._retryTextureSetup = () => {
+      if (!textureReady && video.videoWidth > 0) {
+        setupTexture();
+      }
+    };
+
+    function onReady() {
+      if (textureReady) return;
+      if (video.videoWidth === 0) return;
+      setupTexture();
+      video.play().catch(e => console.warn(`[Viewer] ${slotName} autoplay blocked:`, e));
+      resolve();
+    }
+    video.addEventListener('loadedmetadata', onReady);
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('canplaythrough', onReady);
+
+    video.onerror = (e) => {
+      // モバイル版がない場合、オリジナルURLにフォールバック
+      if (isMobile && url !== originalUrl) {
+        console.warn(`[Viewer] ${slotName} mobile version not found, falling back to: ${originalUrl}`);
+        url = originalUrl;
+        video.src = originalUrl;
+        video.load();
+        return;
+      }
+      console.error(`[Viewer] ${slotName} video load error:`, e);
+      resolve();
+    };
+
+    // タイムアウト: 30秒待ってもダメなら諦める
+    setTimeout(() => {
+      if (!textureReady) {
+        console.warn(`[Viewer] ${slotName} video timeout (videoWidth=${video.videoWidth}, readyState=${video.readyState})`);
+        video.play().then(() => {
+          setTimeout(() => {
+            setupTexture();
+            resolve();
+          }, 1000);
+        }).catch(() => { resolve(); });
+      }
+    }, 30000);
+
+    video.src = url;
+    video.load();
+  });
+}
+
 async function loadViewerData() {
   const data = window.VIEWER_DATA;
   if (!data) return;
@@ -6743,19 +6986,76 @@ async function loadViewerData() {
 
   const imageSlots = [
     { key: 'skyDome', loadFn: loadSkyDomeImage },
+    { key: 'innerSky', loadFn: loadInnerSkyImage },
     { key: 'floor', loadFn: loadFloorImage },
     { key: 'leftWall', loadFn: loadLeftWallImage },
+    { key: 'centerWall', loadFn: loadCenterWallImage },
     { key: 'rightWall', loadFn: loadRightWallImage },
     { key: 'backWall', loadFn: loadBackWallImage },
   ];
 
+  // メディア読み込み（URL参照の動画はストリーミング、それ以外はblob変換）
+  const mediaLoadPromises = [];
   for (const { key, loadFn } of imageSlots) {
     if (m[key]) {
-      const blob = base64ToBlob(m[key].data, m[key].mimeType);
-      const file = new File([blob], m[key].name, { type: m[key].mimeType });
-      loadFn(file);
+      if (m[key].url && m[key].mimeType && m[key].mimeType.startsWith('video/')) {
+        // 動画のURL参照: blobに変換せず直接URLをストリーミング
+        const p = loadVideoFromURL(key, m[key].url, loadFn);
+        mediaLoadPromises.push(p);
+      } else if (m[key].url) {
+        // 画像のURL参照: fetchしてblob変換
+        const p = (async () => {
+          try {
+            console.log(`[Viewer] Fetching ${key} from URL: ${m[key].url}`);
+            const resp = await fetch(m[key].url);
+            const blob = await resp.blob();
+            const file = new File([blob], m[key].name, { type: m[key].mimeType });
+            loadFn(file);
+            console.log(`[Viewer] ${key} loaded from URL`);
+          } catch (e) {
+            console.error(`[Viewer] Failed to fetch ${key}:`, e);
+          }
+        })();
+        mediaLoadPromises.push(p);
+      } else if (m[key].data) {
+        // base64埋め込みデータ
+        const blob = base64ToBlob(m[key].data, m[key].mimeType);
+        const file = new File([blob], m[key].name, { type: m[key].mimeType });
+        loadFn(file);
+      }
     }
   }
+
+  // 全メディア読み込みを待つ
+  if (mediaLoadPromises.length > 0) {
+    await Promise.all(mediaLoadPromises);
+  }
+
+  // メディア読み込み後に設定を再適用（画像のロードは非同期なので遅延）
+  if (data.settings && window.presetManager) {
+    setTimeout(() => {
+      window.presetManager.applySettings(data.settings);
+    }, 500);
+  }
+
+  // 読み込み完了: ぼかしオーバーレイを除去
+  const loadingBlur = document.getElementById('viewer-loading-blur');
+  if (loadingBlur) {
+    // 動画のロードを少し待ってからフェードアウト
+    setTimeout(() => {
+      loadingBlur.classList.add('fade-out');
+      setTimeout(() => loadingBlur.remove(), 1000);
+    }, 800);
+  }
+
+  // モバイル対応: 初回タッチ時に全動画を再生開始
+  function onFirstInteraction() {
+    resumeAllVideos();
+    document.removeEventListener('touchstart', onFirstInteraction);
+    document.removeEventListener('click', onFirstInteraction);
+  }
+  document.addEventListener('touchstart', onFirstInteraction, { once: true });
+  document.addEventListener('click', onFirstInteraction, { once: true });
 
   // ビューアーオーバーレイのイベント登録
   const playBtn = document.getElementById('viewerPlayBtn');
@@ -6845,6 +7145,7 @@ async function loadViewerData() {
     { viewer: 'viewerTrackSpacing', hidden: 'trackSpacing' },
     { viewer: 'viewerTimeScale', hidden: 'timeScale' },
     { viewer: 'viewerPitchScale', hidden: 'pitchScale' },
+    { viewer: 'viewerNoteYOffset', hidden: 'noteYOffset' },
   ];
   viewerDisplayMappings.forEach(({ viewer, hidden }) => {
     const viewerSlider = document.getElementById(viewer);

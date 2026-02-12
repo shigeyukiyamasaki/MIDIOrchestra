@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Corporate Mincho';
+  src: url('fonts/Corporate-Mincho-ver3.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -622,6 +630,63 @@ button:disabled {
   justify-content: center;
   background: #000;
   border-left: 1px solid #333;
+}
+
+/* クレジットオーバーレイ */
+#credits-overlay {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.credits-line {
+  font-family: 'Corporate Mincho', serif;
+  font-size: 16px;
+  color: #fff;
+  opacity: 0.8;
+  white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0,0,0,1), 0 0 12px rgba(0,0,0,0.6);
+  line-height: 1.2;
+}
+.credits-line:empty {
+  display: none;
+}
+.credits-line-tight {
+}
+.credits-line.credits-has-prefix {
+  display: none;
+}
+.credits-line.credits-has-prefix.credits-visible {
+  display: block;
+}
+.credits-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 4px;
+}
+.credits-input {
+  flex: 1;
+  min-width: 0;
+  background: #222;
+  border: 1px solid #444;
+  color: #eee;
+  padding: 2px 6px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+.credits-size-input {
+  width: 42px;
+  background: #222;
+  border: 1px solid #444;
+  color: #eee;
+  padding: 2px 2px;
+  font-size: 11px;
+  border-radius: 3px;
+  text-align: center;
 }
 
 /* 表示設定パネル（プレビュー下段） */
@@ -1494,6 +1559,11 @@ button:disabled {
 
   .viewer-side-controls label {
     font-size: 10px;
+  }
+
+  #credits-overlay {
+    transform: scale(0.5);
+    transform-origin: bottom left;
   }
 }
 
