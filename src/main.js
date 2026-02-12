@@ -898,12 +898,40 @@ function updateWeatherParticles() {
 }
 
 // クロマキー対応デプスマテリアル（影用：クロマキーで除去した部分の影を出さない）
+// ノート用カスタムDepthMaterial（透明度に応じてディザリングで影を薄くする）
+function createNoteShadowDepthMaterial(opacity) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      opacity: { value: opacity },
+    },
+    vertexShader: `
+      void main() {
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      #include <packing>
+      uniform float opacity;
+      // ディザリング用ハッシュ
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+      void main() {
+        if (hash(gl_FragCoord.xy) > opacity) discard;
+        gl_FragColor = packDepthToRGBA(gl_FragCoord.z);
+      }
+    `,
+    side: THREE.DoubleSide,
+  });
+}
+
 function createChromaKeyDepthMaterial() {
   return new THREE.ShaderMaterial({
     uniforms: {
       map: { value: null },
       chromaKeyColor: { value: new THREE.Color(0x00ff00) },
       chromaKeyThreshold: { value: 0 },
+      opacity: { value: 1.0 },
     },
     vertexShader: `
       varying vec2 vUv;
@@ -917,11 +945,16 @@ function createChromaKeyDepthMaterial() {
       uniform sampler2D map;
       uniform vec3 chromaKeyColor;
       uniform float chromaKeyThreshold;
+      uniform float opacity;
       varying vec2 vUv;
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+      }
       void main() {
         vec4 texColor = texture2D(map, vUv);
         float dist = distance(texColor.rgb, chromaKeyColor);
         if (dist < chromaKeyThreshold) discard;
+        if (hash(gl_FragCoord.xy) > opacity) discard;
         gl_FragColor = packDepthToRGBA(gl_FragCoord.z);
       }
     `,
@@ -937,6 +970,9 @@ function syncDepthMaterialUniforms(plane) {
   depth.uniforms.map.value = main.uniforms.map.value;
   depth.uniforms.chromaKeyColor.value.copy(main.uniforms.chromaKeyColor.value);
   depth.uniforms.chromaKeyThreshold.value = main.uniforms.chromaKeyThreshold.value;
+  if (depth.uniforms.opacity && main.uniforms.opacity) {
+    depth.uniforms.opacity.value = main.uniforms.opacity.value;
+  }
 }
 
 function generateFlareTexture() {
@@ -1119,7 +1155,7 @@ function setupThreeJS() {
   controls.screenSpacePanning = true;
   controls.minDistance = 10;           // 最小ズーム
   controls.maxDistance = 500;          // 最大ズーム
-  controls.maxPolarAngle = Math.PI;    // 上下回転の制限
+  controls.maxPolarAngle = Math.PI / 2; // 床の下に回り込めないよう制限
   // タッチデバイスは感度を下げる
   if ('ontouchstart' in window) {
     controls.rotateSpeed = 0.5;
@@ -1227,6 +1263,7 @@ function setupThreeJS() {
   // 床画像用平面（初期は非表示）- セグメント分割で曲面対応
   const floorGeometry = new THREE.PlaneGeometry(300, 300, 64, 64);
   const floorMaterial = createChromaKeyMaterial(0.8);
+  floorMaterial.side = THREE.FrontSide; // 裏面を非表示
   floorPlane = new THREE.Mesh(floorGeometry, floorMaterial);
   floorPlane.rotation.x = -Math.PI / 2; // 水平に寝かせる
   floorPlane.position.y = -50; // グリッドと同じ高さ
@@ -1300,8 +1337,8 @@ function setupThreeJS() {
   backWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(backWallPlane);
 
-  // 影受け用ShadowMaterialプレーン（床の直上に配置）
-  const shadowGeom = new THREE.PlaneGeometry(3000, 3000);
+  // 影受け用ShadowMaterialプレーン（床の直上に配置）- セグメント分割で曲面対応
+  const shadowGeom = new THREE.PlaneGeometry(3000, 3000, 64, 64);
   const shadowMat = new THREE.ShadowMaterial({
     opacity: 0.3,
     depthWrite: false,
@@ -1976,6 +2013,14 @@ function setupEventListeners() {
     });
   }
 
+  // カメラ下限角度
+  document.getElementById('cameraFloorLimit')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('cameraFloorLimitValue').textContent = value;
+    // 0 = フリー(Math.PI), 100 = 水平まで(Math.PI/2)
+    controls.maxPolarAngle = Math.PI - (value / 100) * (Math.PI / 2);
+  });
+
   // === エフェクト設定（統合版）===
 
   // バスドラ専用: 幕フラッシュ
@@ -2310,6 +2355,11 @@ function setupEventListeners() {
     document.getElementById('shadowOpacityValue').textContent = v;
     if (shadowPlane) shadowPlane.material.opacity = v;
   });
+  // ノートの影
+  document.getElementById('noteShadowEnabled')?.addEventListener('change', (e) => {
+    const enabled = e.target.checked;
+    state.noteObjects.forEach(mesh => { mesh.castShadow = enabled; });
+  });
   // 天候エフェクト
   document.getElementById('weatherType')?.addEventListener('change', (e) => {
     weatherType = e.target.value;
@@ -2470,6 +2520,7 @@ function setupEventListeners() {
     floorImageOpacityValue.textContent = value;
     if (floorPlane) {
       floorPlane.material.uniforms.opacity.value = value;
+      syncDepthMaterialUniforms(floorPlane);
     }
   });
 
@@ -2560,6 +2611,7 @@ function setupEventListeners() {
     leftWallImageOpacityValue.textContent = value;
     if (leftWallPlane) {
       leftWallPlane.material.uniforms.opacity.value = value;
+      syncDepthMaterialUniforms(leftWallPlane);
     }
   });
 
@@ -2638,6 +2690,7 @@ function setupEventListeners() {
     centerWallImageOpacityValue.textContent = value;
     if (centerWallPlane) {
       centerWallPlane.material.uniforms.opacity.value = value;
+      syncDepthMaterialUniforms(centerWallPlane);
     }
   });
 
@@ -2714,6 +2767,7 @@ function setupEventListeners() {
     rightWallImageOpacityValue.textContent = value;
     if (rightWallPlane) {
       rightWallPlane.material.uniforms.opacity.value = value;
+      syncDepthMaterialUniforms(rightWallPlane);
     }
   });
 
@@ -2797,6 +2851,7 @@ function setupEventListeners() {
     backWallImageOpacityValue.textContent = value;
     if (backWallPlane) {
       backWallPlane.material.uniforms.opacity.value = value;
+      syncDepthMaterialUniforms(backWallPlane);
     }
   });
 
@@ -3047,6 +3102,7 @@ function setupEventListeners() {
       const colorInput = document.getElementById(`${prefix}ChromaColor`);
       const thresholdInput = document.getElementById(`${prefix}ChromaThreshold`);
       const thresholdValueSpan = document.getElementById(`${prefix}ChromaThresholdValue`);
+      if (!colorInput || !thresholdInput) return;
       colorInput.addEventListener('input', (e) => {
         const p = plane();
         if (p) {
@@ -3056,7 +3112,7 @@ function setupEventListeners() {
       });
       thresholdInput.addEventListener('input', (e) => {
         const value = parseFloat(e.target.value);
-        thresholdValueSpan.textContent = value;
+        if (thresholdValueSpan) thresholdValueSpan.textContent = value;
         const p = plane();
         if (p) {
           p.material.uniforms.chromaKeyThreshold.value = value;
@@ -3599,6 +3655,8 @@ function createNoteObjects() {
       });
 
       const mesh = new THREE.Mesh(geometry, material);
+      mesh.castShadow = !!document.getElementById('noteShadowEnabled')?.checked;
+      mesh.customDepthMaterial = createNoteShadowDepthMaterial(CONFIG.noteOpacity);
       const originalX = x + width / 2;
       mesh.position.set(originalX, y, zPosition);
 
@@ -4580,6 +4638,9 @@ function rebuildNotes() {
 function updateNoteOpacity(opacity) {
   state.noteObjects.forEach(mesh => {
     mesh.material.opacity = opacity;
+    if (mesh.customDepthMaterial && mesh.customDepthMaterial.uniforms.opacity) {
+      mesh.customDepthMaterial.uniforms.opacity.value = opacity;
+    }
   });
 }
 
@@ -4912,6 +4973,11 @@ function updateFloorImageSize(size) {
     cloudShadowPlane.geometry.dispose();
     cloudShadowPlane.geometry = new THREE.PlaneGeometry(width, height, 256, 256);
   }
+  // 影受けプレーンも床サイズに合わせてリサイズ
+  if (shadowPlane) {
+    shadowPlane.geometry.dispose();
+    shadowPlane.geometry = new THREE.PlaneGeometry(width, height, 64, 64);
+  }
   // 曲率を再適用
   applyFloorCurvature();
 }
@@ -4932,7 +4998,23 @@ function applyFloorCurvature() {
   }
   pos.needsUpdate = true;
   geom.computeVertexNormals();
+  applyShadowPlaneCurvature();
   applyCloudShadowCurvature();
+}
+
+// 影受けプレーンに床の曲率を反映
+function applyShadowPlaneCurvature() {
+  if (!shadowPlane) return;
+  const geom = shadowPlane.geometry;
+  const pos = geom.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = -floorCurvature * (x * x + y * y);
+    pos.setZ(i, z);
+  }
+  pos.needsUpdate = true;
+  geom.computeVertexNormals();
 }
 
 // 雲の影メッシュに床の曲率を反映（床の範囲内で同じ曲率、範囲外はフラット）
