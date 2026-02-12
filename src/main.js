@@ -39,6 +39,10 @@ let skyDome;            // スカイドーム（背景球体）
 let skyDomeTexture;     // スカイドームテクスチャ
 let skyDomeVideo;       // スカイドーム動画要素
 let skyDomeIsVideo = false; // スカイドームが動画かどうか
+let innerSkyDome;       // 近景スカイドーム
+let innerSkyTexture;    // 近景スカイドームテクスチャ
+let innerSkyVideo;      // 近景スカイドーム動画要素
+let innerSkyIsVideo = false;
 let floorAspect = 1;    // 床画像のアスペクト比（幅/高さ）
 let leftWallAspect = 1; // 左側面画像のアスペクト比
 let rightWallAspect = 1; // 右側面画像のアスペクト比
@@ -59,7 +63,7 @@ let fadeOutDuration = 0.1; // フェードアウト秒数（0.1〜1.0）
 let overlapAudio = null;  // オーバーラップ用の先行再生Audio
 
 // プリセット用メディア参照
-window.currentMediaRefs = { midi: null, audio: null, skyDome: null, floor: null, leftWall: null, rightWall: null, centerWall: null, backWall: null };
+window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, leftWall: null, rightWall: null, centerWall: null, backWall: null };
 
 // 床・壁面の動画対応
 let floorVideo = null, floorIsVideo = false;
@@ -702,7 +706,9 @@ function createChromaKeyMaterial(opacity = 0.8) {
         float lum = dot(col, vec3(0.299, 0.587, 0.114));
         col += col * warmTint * 0.4 * (0.5 + lum);
         col = min(col, 1.0);
-        gl_FragColor = vec4(col, opacity);
+        float alpha = texColor.a * opacity;
+        if (alpha < 0.01) discard;
+        gl_FragColor = vec4(col, alpha);
       }
     `,
     transparent: true,
@@ -952,9 +958,10 @@ function createChromaKeyDepthMaterial() {
       }
       void main() {
         vec4 texColor = texture2D(map, vUv);
+        if (texColor.a < 0.01) discard;
         float dist = distance(texColor.rgb, chromaKeyColor);
         if (dist < chromaKeyThreshold) discard;
-        if (hash(gl_FragCoord.xy) > opacity) discard;
+        if (hash(gl_FragCoord.xy) > opacity * texColor.a) discard;
         gl_FragColor = packDepthToRGBA(gl_FragCoord.z);
       }
     `,
@@ -1111,6 +1118,7 @@ function setupThreeJS() {
   camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 10000);
   camera.position.set(-150, 150, 200);
   camera.lookAt(0, 0, 0);
+  window.appCamera = camera;
 
   // レンダラー
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -1150,6 +1158,7 @@ function setupThreeJS() {
 
   // カメラ操作（OrbitControls）
   controls = new THREE.OrbitControls(camera, renderer.domElement);
+  window.appControls = controls;
   controls.enableDamping = true;       // 滑らかな動き
   controls.dampingFactor = 0.05;
   controls.screenSpacePanning = true;
@@ -1232,17 +1241,23 @@ function setupThreeJS() {
   // スカイドーム（背景半球）- 前方180度のみ、初期は非表示
   // SphereGeometry(radius, widthSegments, heightSegments, phiStart, phiLength)
   const skyDomeGeometry = new THREE.SphereGeometry(2000, 64, 32, Math.PI / 2, Math.PI);
-  const skyDomeMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    side: THREE.BackSide, // 内側からテクスチャを見る
-    transparent: true,
-    opacity: 1,
-    depthWrite: false, // 他のオブジェクトに影響を与えない
-  });
+  const skyDomeMaterial = createChromaKeyMaterial(1.0);
+  skyDomeMaterial.side = THREE.BackSide; // 内側からテクスチャを見る
   skyDome = new THREE.Mesh(skyDomeGeometry, skyDomeMaterial);
   skyDome.renderOrder = -1000; // 最初に描画
   skyDome.visible = false;
+  skyDome.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(skyDome);
+
+  // 近景スカイドーム（内側、デフォルト半径500）
+  const innerSkyGeometry = new THREE.SphereGeometry(500, 64, 32, Math.PI / 2, Math.PI);
+  const innerSkyMaterial = createChromaKeyMaterial(1.0);
+  innerSkyMaterial.side = THREE.BackSide;
+  innerSkyDome = new THREE.Mesh(innerSkyGeometry, innerSkyMaterial);
+  innerSkyDome.renderOrder = -999; // 遠景の手前に描画
+  innerSkyDome.visible = false;
+  innerSkyDome.customDepthMaterial = createChromaKeyDepthMaterial();
+  scene.add(innerSkyDome);
 
   // グリッド（床 / 地面）
   const gridColor = new THREE.Color(settings.gridColor);
@@ -1518,6 +1533,7 @@ function setupEventListeners() {
       document.getElementById('midiClearBtn').style.display = '';
       if (window.presetManager) window.presetManager.handleFileUpload(file, 'midi');
       await loadMidi(file);
+      e.target.value = '';
     }
   });
 
@@ -1730,6 +1746,7 @@ function setupEventListeners() {
       if (window.presetManager) window.presetManager.handleFileUpload(file, 'audio');
       loadAudio(file);
     }
+    e.target.value = '';
   });
 
   // 音源クリアボタン
@@ -2012,6 +2029,18 @@ function setupEventListeners() {
       }
     });
   }
+
+  // カメラ状態の復元関数（presetManagerから呼ばれる）
+  window.restoreCameraState = function(posX, posY, posZ, targetX, targetY, targetZ, sliderX, sliderY, sliderZ) {
+    if (!camera || !controls) return;
+    controls.target.set(targetX, targetY, targetZ);
+    camera.position.set(posX, posY, posZ);
+    // スライダーUIとlastOffset変数を同期（スライダー値=オフセット）
+    if (cameraTargetXInput) { cameraTargetXInput.value = sliderX; cameraTargetXValue.textContent = sliderX; lastXOffset = sliderX; }
+    if (cameraTargetYInput) { cameraTargetYInput.value = sliderY; cameraTargetYValue.textContent = sliderY; lastYOffset = sliderY; }
+    if (cameraTargetZInput) { cameraTargetZInput.value = sliderZ; cameraTargetZValue.textContent = sliderZ; lastZOffset = sliderZ; }
+    controls.update();
+  };
 
   // カメラ下限角度
   document.getElementById('cameraFloorLimit')?.addEventListener('input', (e) => {
@@ -2416,6 +2445,7 @@ function setupEventListeners() {
       if (window.presetManager) window.presetManager.handleFileUpload(file, 'skyDome');
       loadSkyDomeImage(file);
     }
+    e.target.value = '';
   });
 
   // スカイドーム透明度
@@ -2425,7 +2455,8 @@ function setupEventListeners() {
     const value = parseFloat(e.target.value);
     skyDomeOpacityValue.textContent = value;
     if (skyDome) {
-      skyDome.material.opacity = value;
+      skyDome.material.uniforms.opacity.value = value;
+      syncDepthMaterialUniforms(skyDome);
     }
   });
 
@@ -2460,6 +2491,12 @@ function setupEventListeners() {
     }
   });
 
+  document.getElementById('skyDomeOffsetY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('skyDomeOffsetYValue').textContent = value;
+    if (skyDome) skyDome.position.y = value;
+  });
+
   // スカイドーム画像クリア
   const skyDomeImageClearBtn = document.getElementById('skyDomeImageClear');
   skyDomeImageClearBtn.addEventListener('click', () => {
@@ -2486,6 +2523,79 @@ function setupEventListeners() {
   setupDropZone(skyDomeDropZone, loadSkyDomeImage, true, 'skyDome'); // 動画も許可
 
   // ============================================
+  // 近景スカイドームのイベントリスナー
+  // ============================================
+
+  document.getElementById('innerSkyImageInput')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'innerSky');
+      loadInnerSkyImage(file);
+    }
+    e.target.value = '';
+  });
+
+  document.getElementById('innerSkyOpacity')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('innerSkyOpacityValue').textContent = value;
+    if (innerSkyDome) {
+      innerSkyDome.material.uniforms.opacity.value = value;
+      syncDepthMaterialUniforms(innerSkyDome);
+    }
+  });
+
+  document.getElementById('innerSkyRange')?.addEventListener('input', (e) => {
+    const degrees = parseFloat(e.target.value);
+    document.getElementById('innerSkyRangeValue').textContent = degrees;
+    if (innerSkyDome) {
+      innerSkyDome.geometry.dispose();
+      const phiLength = (degrees / 180) * Math.PI;
+      const phiStart = Math.PI - phiLength / 2;
+      const radius = parseFloat(document.getElementById('innerSkyRadius').value);
+      innerSkyDome.geometry = new THREE.SphereGeometry(radius, 64, 32, phiStart, phiLength);
+    }
+  });
+
+  document.getElementById('innerSkyRadius')?.addEventListener('input', (e) => {
+    const radius = parseFloat(e.target.value);
+    document.getElementById('innerSkyRadiusValue').textContent = radius;
+    if (innerSkyDome) {
+      innerSkyDome.geometry.dispose();
+      const degrees = parseFloat(document.getElementById('innerSkyRange').value);
+      const phiLength = (degrees / 180) * Math.PI;
+      const phiStart = Math.PI - phiLength / 2;
+      innerSkyDome.geometry = new THREE.SphereGeometry(radius, 64, 32, phiStart, phiLength);
+    }
+  });
+
+  document.getElementById('innerSkyOffsetY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('innerSkyOffsetYValue').textContent = value;
+    if (innerSkyDome) innerSkyDome.position.y = value;
+  });
+
+  document.getElementById('innerSkyImageClear')?.addEventListener('click', () => {
+    clearInnerSkyImage();
+  });
+
+  document.getElementById('innerSkyVideoPause')?.addEventListener('click', () => {
+    if (innerSkyVideo) {
+      if (innerSkyVideo.paused) {
+        innerSkyVideo.play();
+        document.getElementById('innerSkyVideoPreview')?.play();
+        document.getElementById('innerSkyVideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        innerSkyVideo.pause();
+        document.getElementById('innerSkyVideoPreview')?.pause();
+        document.getElementById('innerSkyVideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
+  });
+
+  const innerSkyDropZone = document.getElementById('innerSkyDropZone');
+  if (innerSkyDropZone) setupDropZone(innerSkyDropZone, loadInnerSkyImage, true, 'innerSky');
+
+  // ============================================
   // 床画像のイベントリスナー
   // ============================================
 
@@ -2501,6 +2611,7 @@ function setupEventListeners() {
       if (window.presetManager) window.presetManager.handleFileUpload(file, 'floor');
       loadFloorImage(file);
     }
+    e.target.value = '';
   });
 
   // 床画像サイズ
@@ -2585,6 +2696,7 @@ function setupEventListeners() {
       if (window.presetManager) window.presetManager.handleFileUpload(file, 'leftWall');
       loadLeftWallImage(file);
     }
+    e.target.value = '';
   });
 
   // 左側面画像サイズ
@@ -2664,6 +2776,7 @@ function setupEventListeners() {
       if (window.presetManager) window.presetManager.handleFileUpload(file, 'centerWall');
       loadCenterWallImage(file);
     }
+    e.target.value = '';
   });
 
   // センター画像サイズ
@@ -2741,6 +2854,7 @@ function setupEventListeners() {
       if (window.presetManager) window.presetManager.handleFileUpload(file, 'rightWall');
       loadRightWallImage(file);
     }
+    e.target.value = '';
   });
 
   // 右側面画像サイズ
@@ -2820,6 +2934,7 @@ function setupEventListeners() {
       if (window.presetManager) window.presetManager.handleFileUpload(file, 'backWall');
       loadBackWallImage(file);
     }
+    e.target.value = '';
   });
 
   // 奥側画像サイズ
@@ -2903,6 +3018,7 @@ function setupEventListeners() {
     midi: loadMidi,
     audio: loadAudio,
     skyDome: loadSkyDomeImage,
+    innerSky: loadInnerSkyImage,
     floor: loadFloorImage,
     leftWall: loadLeftWallImage,
     centerWall: loadCenterWallImage,
@@ -3092,6 +3208,8 @@ function setupEventListeners() {
   // ============================================
   if (document.getElementById('floorChromaColor')) {
     const chromaKeyFaces = [
+      { prefix: 'skyDome', plane: () => skyDome },
+      { prefix: 'innerSky', plane: () => innerSkyDome },
       { prefix: 'floor', plane: () => floorPlane },
       { prefix: 'leftWall', plane: () => leftWallPlane },
       { prefix: 'centerWall', plane: () => centerWallPlane },
@@ -4723,12 +4841,10 @@ function loadSkyDomeImageFile(file) {
       skyDomeTexture.needsUpdate = true;
 
       // マテリアルにテクスチャを適用
-      skyDome.material.map = skyDomeTexture;
-      skyDome.material.needsUpdate = true;
+      skyDome.material.uniforms.map.value = skyDomeTexture;
+      syncDepthMaterialUniforms(skyDome);
       skyDome.visible = true;
       skyDomeIsVideo = false;
-
-      // ユーザーの背景色を維持（スカイドーム透過時に背景が見える）
 
       // ドロップゾーンにプレビューを表示
       const imagePreview = document.getElementById('skyDomeImagePreview');
@@ -4764,15 +4880,13 @@ function loadSkyDomeVideo(file) {
     skyDomeTexture.magFilter = THREE.LinearFilter;
 
     // マテリアルにテクスチャを適用
-    skyDome.material.map = skyDomeTexture;
-    skyDome.material.needsUpdate = true;
+    skyDome.material.uniforms.map.value = skyDomeTexture;
+    syncDepthMaterialUniforms(skyDome);
     skyDome.visible = true;
     skyDomeIsVideo = true;
 
     // 動画を再生
     skyDomeVideo.play();
-
-    // ユーザーの背景色を維持（スカイドーム透過時に背景が見える）
 
     // ドロップゾーンにプレビューを表示
     const imagePreview = document.getElementById('skyDomeImagePreview');
@@ -4816,8 +4930,7 @@ function clearSkyDomeImage() {
   // メディアを破棄
   clearSkyDomeMedia();
 
-  skyDome.material.map = null;
-  skyDome.material.needsUpdate = true;
+  skyDome.material.uniforms.map.value = null;
   skyDome.visible = false;
 
   // 背景グラデーションを元に戻す
@@ -4841,6 +4954,109 @@ function clearSkyDomeImage() {
   if (pauseBtn) pauseBtn.style.display = 'none';
 
   console.log('Sky dome cleared');
+}
+
+// ============================================
+// 近景スカイドーム関連関数
+// ============================================
+
+function loadInnerSkyImage(file) {
+  clearInnerSkyMedia();
+  if (file.type.startsWith('video/')) {
+    loadInnerSkyVideo(file);
+  } else {
+    loadInnerSkyImageFile(file);
+  }
+}
+
+function loadInnerSkyImageFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      innerSkyTexture = new THREE.Texture(img);
+      innerSkyTexture.needsUpdate = true;
+      innerSkyDome.material.uniforms.map.value = innerSkyTexture;
+      syncDepthMaterialUniforms(innerSkyDome);
+      innerSkyDome.visible = true;
+      innerSkyIsVideo = false;
+
+      const imagePreview = document.getElementById('innerSkyImagePreview');
+      const videoPreview = document.getElementById('innerSkyVideoPreview');
+      const text = document.getElementById('innerSkyDropZoneText');
+      if (imagePreview) { imagePreview.src = e.target.result; imagePreview.style.display = 'block'; }
+      if (videoPreview) videoPreview.style.display = 'none';
+      if (text) text.style.display = 'none';
+
+      console.log('Inner sky image loaded:', file.name);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadInnerSkyVideo(file) {
+  const url = URL.createObjectURL(file);
+  innerSkyVideo = document.createElement('video');
+  innerSkyVideo.src = url;
+  innerSkyVideo.loop = true;
+  innerSkyVideo.muted = true;
+  innerSkyVideo.playsInline = true;
+
+  innerSkyVideo.onloadeddata = () => {
+    innerSkyTexture = new THREE.VideoTexture(innerSkyVideo);
+    innerSkyTexture.minFilter = THREE.LinearFilter;
+    innerSkyTexture.magFilter = THREE.LinearFilter;
+    innerSkyDome.material.uniforms.map.value = innerSkyTexture;
+    syncDepthMaterialUniforms(innerSkyDome);
+    innerSkyDome.visible = true;
+    innerSkyIsVideo = true;
+    innerSkyVideo.play();
+
+    const imagePreview = document.getElementById('innerSkyImagePreview');
+    const videoPreview = document.getElementById('innerSkyVideoPreview');
+    const text = document.getElementById('innerSkyDropZoneText');
+    if (videoPreview) { videoPreview.src = url; videoPreview.play(); videoPreview.style.display = 'block'; }
+    if (imagePreview) imagePreview.style.display = 'none';
+    if (text) text.style.display = 'none';
+
+    const pauseBtn = document.getElementById('innerSkyVideoPause');
+    if (pauseBtn) { pauseBtn.style.display = ''; pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>'; }
+
+    console.log('Inner sky video loaded:', file.name);
+  };
+  innerSkyVideo.load();
+}
+
+function clearInnerSkyMedia() {
+  if (innerSkyTexture) { innerSkyTexture.dispose(); innerSkyTexture = null; }
+  if (innerSkyVideo) {
+    innerSkyVideo.pause();
+    const src = innerSkyVideo.src;
+    innerSkyVideo.src = '';
+    if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+    innerSkyVideo = null;
+  }
+  innerSkyIsVideo = false;
+}
+
+function clearInnerSkyImage() {
+  window.currentMediaRefs.innerSky = null;
+  clearInnerSkyMedia();
+  innerSkyDome.material.uniforms.map.value = null;
+  innerSkyDome.visible = false;
+
+  const input = document.getElementById('innerSkyImageInput');
+  if (input) input.value = '';
+  const imagePreview = document.getElementById('innerSkyImagePreview');
+  const videoPreview = document.getElementById('innerSkyVideoPreview');
+  const text = document.getElementById('innerSkyDropZoneText');
+  if (imagePreview) { imagePreview.style.display = 'none'; imagePreview.src = ''; }
+  if (videoPreview) { videoPreview.style.display = 'none'; videoPreview.pause(); videoPreview.src = ''; }
+  if (text) text.style.display = 'block';
+  const pauseBtn = document.getElementById('innerSkyVideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
+  console.log('Inner sky cleared');
 }
 
 // ============================================
@@ -6688,8 +6904,8 @@ window.CONFIG = CONFIG;
 // プリセット復元用に関数を公開
 window.appFunctions = {
   loadMidi, loadAudio, clearMidi, clearAudio,
-  loadSkyDomeImage, loadFloorImage, loadLeftWallImage, loadCenterWallImage, loadRightWallImage, loadBackWallImage,
-  clearSkyDomeImage, clearFloorImage, clearLeftWallImage, clearCenterWallImage, clearRightWallImage, clearBackWallImage,
+  loadSkyDomeImage, loadInnerSkyImage, loadFloorImage, loadLeftWallImage, loadCenterWallImage, loadRightWallImage, loadBackWallImage,
+  clearSkyDomeImage, clearInnerSkyImage, clearFloorImage, clearLeftWallImage, clearCenterWallImage, clearRightWallImage, clearBackWallImage,
   updateTrackPanel, debouncedRebuildNotes,
 };
 

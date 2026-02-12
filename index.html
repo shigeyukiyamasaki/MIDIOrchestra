@@ -478,8 +478,33 @@
             <div class="control-row"><label>透明度</label><input type="range" id="skyDomeOpacity" min="0.1" max="1" step="0.05" value="1"><span id="skyDomeOpacityValue">1</span></div>
             <div class="control-row"><label>範囲(度)</label><input type="range" id="skyDomeRange" min="60" max="360" step="10" value="180"><span id="skyDomeRangeValue">180</span></div>
             <div class="control-row"><label>距離</label><input type="range" id="skyDomeRadius" min="100" max="3000" step="50" value="2000"><span id="skyDomeRadiusValue">2000</span></div>
+            <div class="control-row"><label>Yオフセット</label><input type="range" id="skyDomeOffsetY" min="-1000" max="1000" step="10" value="0"><span id="skyDomeOffsetYValue">0</span></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="skyDomeChromaColor" value="#00ff00"><input type="range" id="skyDomeChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="skyDomeChromaThresholdValue">0</span></div>
             <button id="skyDomeVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
             <button id="skyDomeImageClear" class="clear-btn-small">クリア</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 近景スカイドーム -->
+      <div class="image-section">
+        <div class="setting-category">近景</div>
+        <div class="image-row">
+          <div class="drop-zone" id="innerSkyDropZone">
+            <img id="innerSkyImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="innerSkyVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+            <span class="drop-zone-text" id="innerSkyDropZoneText">ドラッグ&ドロップ<br>または</span>
+            <button class="library-btn" data-slot="innerSky">ライブラリ</button>
+            <input type="file" id="innerSkyImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
+          </div>
+          <div class="image-controls">
+            <div class="control-row"><label>透明度</label><input type="range" id="innerSkyOpacity" min="0.1" max="1" step="0.05" value="1"><span id="innerSkyOpacityValue">1</span></div>
+            <div class="control-row"><label>範囲(度)</label><input type="range" id="innerSkyRange" min="60" max="360" step="10" value="180"><span id="innerSkyRangeValue">180</span></div>
+            <div class="control-row"><label>距離</label><input type="range" id="innerSkyRadius" min="50" max="2000" step="50" value="500"><span id="innerSkyRadiusValue">500</span></div>
+            <div class="control-row"><label>Yオフセット</label><input type="range" id="innerSkyOffsetY" min="-1000" max="1000" step="10" value="0"><span id="innerSkyOffsetYValue">0</span></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="innerSkyChromaColor" value="#00ff00"><input type="range" id="innerSkyChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="innerSkyChromaThresholdValue">0</span></div>
+            <button id="innerSkyVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
+            <button id="innerSkyImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
       </div>

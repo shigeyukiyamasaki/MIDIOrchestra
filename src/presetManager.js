@@ -280,7 +280,17 @@ function collectCurrentSettings() {
     return checked ? checked.value : undefined;
   };
 
-  // カメラ
+  // カメラ位置・ターゲット
+  if (window.appCamera) {
+    s.cameraPosX = window.appCamera.position.x;
+    s.cameraPosY = window.appCamera.position.y;
+    s.cameraPosZ = window.appCamera.position.z;
+  }
+  if (window.appControls) {
+    s.cameraTargetActualX = window.appControls.target.x;
+    s.cameraTargetActualY = window.appControls.target.y;
+    s.cameraTargetActualZ = window.appControls.target.z;
+  }
   s.cameraTargetX = getRangeValue('cameraTargetX');
   s.cameraTargetY = getRangeValue('cameraTargetY');
   s.cameraTargetZ = getRangeValue('cameraTargetZ');
@@ -470,15 +480,23 @@ function applySettings(s) {
     btSlider._dualRange.setRange(s.bloomThresholdMin, s.bloomThresholdMax);
   }
 
-  // カメラ
-  setRangeValue('cameraTargetX', s.cameraTargetX);
-  setRangeValue('cameraTargetY', s.cameraTargetY);
-  setRangeValue('cameraTargetZ', s.cameraTargetZ);
-  // イベント発火でカメラを実際に移動
-  ['cameraTargetX', 'cameraTargetY', 'cameraTargetZ'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.dispatchEvent(new Event('input'));
-  });
+  // カメラ位置・ターゲット復元
+  if (window.restoreCameraState && s.cameraPosX !== undefined && s.cameraTargetActualX !== undefined) {
+    window.restoreCameraState(
+      s.cameraPosX, s.cameraPosY, s.cameraPosZ,
+      s.cameraTargetActualX, s.cameraTargetActualY, s.cameraTargetActualZ,
+      s.cameraTargetX || 0, s.cameraTargetY || 0, s.cameraTargetZ || 0
+    );
+  } else {
+    // フォールバック: スライダー経由
+    setRangeValue('cameraTargetX', s.cameraTargetX);
+    setRangeValue('cameraTargetY', s.cameraTargetY);
+    setRangeValue('cameraTargetZ', s.cameraTargetZ);
+    ['cameraTargetX', 'cameraTargetY', 'cameraTargetZ'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.dispatchEvent(new Event('input'));
+    });
+  }
   setCheckbox('autoCameraEnabled', s.autoCameraEnabled);
   setRangeValue('autoCameraInterval', s.autoCameraInterval);
   setSelectValue('autoCameraMode', s.autoCameraMode);
@@ -703,6 +721,7 @@ async function loadPreset(presetId) {
     window.currentMediaRefs.midi = media.midi || null;
     window.currentMediaRefs.audio = media.audio || null;
     window.currentMediaRefs.skyDome = media.skyDome || null;
+    window.currentMediaRefs.innerSky = media.innerSky || null;
     window.currentMediaRefs.floor = media.floor || null;
     window.currentMediaRefs.leftWall = media.leftWall || null;
     window.currentMediaRefs.centerWall = media.centerWall || null;
@@ -734,6 +753,9 @@ async function loadPreset(presetId) {
   }
   if (media.skyDome) {
     await restoreMediaSlot(media.skyDome, app.loadSkyDomeImage, null);
+  }
+  if (media.innerSky) {
+    await restoreMediaSlot(media.innerSky, app.loadInnerSkyImage, null);
   }
   if (media.floor) {
     await restoreMediaSlot(media.floor, app.loadFloorImage, null);
