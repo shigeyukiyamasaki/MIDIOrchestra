@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Orchestra Visualizer</title>
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=20260213a">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
@@ -54,9 +54,11 @@
         <label><span id="currentTime">0:00</span> <span id="editorDuration">/ 0:00</span></label>
         <div class="seek-bar-container">
           <input type="range" id="editorSeek" min="0" max="100" step="0.1" value="0">
+          <input type="range" id="loopStartSeek" min="0" max="1000" step="1" value="0" class="loop-start-range">
           <input type="range" id="loopEndSeek" min="0" max="1000" step="1" value="1000" class="loop-end-range">
         </div>
         <div class="loop-end-block">
+          <label class="loop-end-label"><input type="checkbox" id="loopStartEnabled"> 始点 <span id="loopStartTime">-:--.--</span> <span class="loop-end-btns"><button id="loopStartUp" class="loop-end-btn">▲</button><button id="loopStartDown" class="loop-end-btn">▼</button></span></label>
           <label class="loop-end-label"><input type="checkbox" id="loopEndEnabled"> 終点 <span id="loopEndTime">-:--.--</span> <span class="loop-end-btns"><button id="loopEndUp" class="loop-end-btn">▲</button><button id="loopEndDown" class="loop-end-btn">▼</button></span></label>
           <label class="loop-end-label">FO <input type="range" id="fadeOutDuration" min="1" max="10" step="1" value="1" style="width:60px;vertical-align:middle;"> <span id="fadeOutValue">0.1s</span></label>
         </div>
@@ -501,7 +503,7 @@
             <div class="control-row"><label>透明度</label><input type="range" id="innerSkyOpacity" min="0.1" max="1" step="0.05" value="1"><span id="innerSkyOpacityValue">1</span></div>
             <div class="control-row"><label>範囲(度)</label><input type="range" id="innerSkyRange" min="60" max="360" step="10" value="180"><span id="innerSkyRangeValue">180</span></div>
             <div class="control-row"><label>距離</label><input type="range" id="innerSkyRadius" min="50" max="2000" step="50" value="500"><span id="innerSkyRadiusValue">500</span></div>
-            <div class="control-row"><label>Yオフセット</label><input type="range" id="innerSkyOffsetY" min="-1000" max="1000" step="10" value="0"><span id="innerSkyOffsetYValue">0</span></div>
+            <div class="control-row"><label>Yオフセット <input type="checkbox" id="innerSkyFollowCameraY" title="カメラY連動"> 連動</label><input type="range" id="innerSkyOffsetY" min="-1000" max="1000" step="10" value="0"><span id="innerSkyOffsetYValue">0</span></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="innerSkyChromaColor" value="#00ff00"><input type="range" id="innerSkyChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="innerSkyChromaThresholdValue">0</span></div>
             <button id="innerSkyVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
             <button id="innerSkyImageClear" class="clear-btn-small">クリア</button>
@@ -862,9 +864,9 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
 
-  <script src="src/presetManager.js?v=20260212l"></script>
-  <script src="src/viewerExport.js?v=20260212l"></script>
-  <script type="module" src="src/main.js?v=20260212l"></script>
-  <script src="src/export360.js?v=20260212l"></script>
+  <script src="src/presetManager.js?v=20260212m"></script>
+  <script src="src/viewerExport.js?v=20260212m"></script>
+  <script type="module" src="src/main.js?v=20260212m"></script>
+  <script src="src/export360.js?v=20260212m"></script>
 </body>
 </html>

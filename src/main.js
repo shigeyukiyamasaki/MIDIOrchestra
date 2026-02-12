@@ -19,6 +19,8 @@ const state = {
   cameraInitialized: false, // カメラ初期化済みフラグ
   loopEndEnabled: false, // 終点ループ有効
   loopEndTime: 0,       // 終点時刻（秒）
+  loopStartEnabled: false, // 始点ループ有効（2周目以降の開始位置）
+  loopStartTime: 0,       // 始点時刻（秒）
 };
 
 // Three.js オブジェクト
@@ -1504,7 +1506,9 @@ function updateCreditsPosition() {
   const canvasLeft = canvas.offsetLeft;
   const canvasBottom = container.clientHeight - (canvas.offsetTop + canvas.clientHeight);
   overlay.style.left = (canvasLeft + 20) + 'px';
-  overlay.style.bottom = (canvasBottom + 20) + 'px';
+  const isMobileLandscape = window.innerHeight < 500 && window.innerWidth > window.innerHeight;
+  const extraBottom = isMobileLandscape ? 40 : 0;
+  overlay.style.bottom = (canvasBottom + 20 + extraBottom) + 'px';
 }
 
 // ============================================
@@ -1693,6 +1697,59 @@ function setupEventListeners() {
       if (state.duration > 0) {
         state.loopEndTime = Math.min(state.duration, state.loopEndTime + 0.1);
         updateLoopEndDisplay();
+      }
+    });
+  }
+
+  // ループ始点（2周目以降の開始位置）
+  const loopStartSeek = document.getElementById('loopStartSeek');
+  const loopStartEnabled = document.getElementById('loopStartEnabled');
+  const loopStartTime = document.getElementById('loopStartTime');
+
+  function updateLoopStartDisplay() {
+    const m = Math.floor(state.loopStartTime / 60);
+    const sec = (state.loopStartTime % 60).toFixed(1);
+    if (loopStartTime) loopStartTime.textContent = `${m}:${sec.padStart(4, '0')}`;
+    if (loopStartSeek && state.duration > 0) {
+      loopStartSeek.value = (state.loopStartTime / state.duration) * 1000;
+    }
+  }
+
+  if (loopStartSeek) {
+    loopStartSeek.addEventListener('input', () => {
+      if (state.duration > 0) {
+        state.loopStartTime = (parseFloat(loopStartSeek.value) / 1000) * state.duration;
+        updateLoopStartDisplay();
+      }
+    });
+  }
+  if (loopStartEnabled) {
+    loopStartEnabled.addEventListener('change', () => {
+      state.loopStartEnabled = loopStartEnabled.checked;
+      if (loopStartEnabled.checked && state.duration > 0) {
+        state.loopStartTime = (parseFloat(loopStartSeek.value) / 1000) * state.duration;
+        updateLoopStartDisplay();
+      } else {
+        if (loopStartTime) loopStartTime.textContent = '-:--.--';
+      }
+    });
+  }
+
+  const loopStartDown = document.getElementById('loopStartDown');
+  const loopStartUp = document.getElementById('loopStartUp');
+  if (loopStartDown) {
+    loopStartDown.addEventListener('click', () => {
+      if (state.duration > 0) {
+        state.loopStartTime = Math.max(0, state.loopStartTime - 0.1);
+        updateLoopStartDisplay();
+      }
+    });
+  }
+  if (loopStartUp) {
+    loopStartUp.addEventListener('click', () => {
+      if (state.duration > 0) {
+        state.loopStartTime = Math.min(state.duration, state.loopStartTime + 0.1);
+        updateLoopStartDisplay();
       }
     });
   }
@@ -6547,6 +6604,16 @@ function animate() {
     updateBeatEffects();
   }
 
+  // 動画テクスチャの再生チェック（5秒ごと）
+  if (!window._lastVideoCheck) window._lastVideoCheck = 0;
+  const now0 = performance.now();
+  if (now0 - window._lastVideoCheck > 5000) {
+    window._lastVideoCheck = now0;
+    [skyDomeVideo, innerSkyVideo, floorVideo, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo].forEach(v => {
+      if (v && v.paused && v.readyState >= 2) v.play().catch(() => {});
+    });
+  }
+
   // カメラ位置スライダーの更新（スライダー操作中でない場合）
   updateCameraPositionSliders();
 
@@ -6591,15 +6658,17 @@ function animate() {
       if (timeToLoop <= fadeOutDuration && timeToLoop > 0 && !overlapAudio && audioSrcUrl) {
         overlapAudio = new Audio(audioSrcUrl);
         overlapAudio.volume = 1;
-        overlapAudio.currentTime = 0;
+        overlapAudio.currentTime = (state.loopStartEnabled && state.loopStartTime > 0) ? state.loopStartTime : 0;
         overlapAudio.play();
       }
     }
 
     if (state.currentTime >= loopPoint) {
-      state.currentTime = 0; // ループ
+      // ループ始点が設定されていれば2周目以降はそこから
+      const loopStartSec = (state.loopStartEnabled && state.loopStartTime > 0) ? state.loopStartTime : 0;
+      state.currentTime = loopStartSec;
       state.triggeredNotes.clear();
-      // ループ時に音源も最初から（audioDelay考慮）
+      // ループ時に音源も始点から（audioDelay考慮）
       if (audioElement) {
         if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
         crossfadeStartTime = -1;
@@ -6613,7 +6682,7 @@ function animate() {
           audioElement.volume = 1;
           if (syncConfig.audioDelay > 0) {
             audioElement.pause();
-            audioElement.currentTime = 0;
+            audioElement.currentTime = loopStartSec;
             audioDelayTimer = setTimeout(() => {
               if (state.isPlaying && audioElement) {
                 audioElement.play();
@@ -6621,7 +6690,7 @@ function animate() {
               audioDelayTimer = null;
             }, syncConfig.audioDelay * 1000);
           } else {
-            audioElement.currentTime = 0;
+            audioElement.currentTime = loopStartSec;
           }
         }
       }
@@ -6652,12 +6721,21 @@ function animate() {
   // カメラコントロール更新（遷移中はスキップ）
   if (controls && !cameraTransition) {
     controls.update();
-    // 中心点が床の下に行かないよう制限（カメラも同量補正）
-    if (controls.target.y < floorY) {
-      const correction = floorY - controls.target.y;
-      controls.target.y = floorY;
-      camera.position.y += correction;
-    }
+  }
+
+  // 近景カメラY連動
+  if (innerSkyDome && document.getElementById('innerSkyFollowCameraY')?.checked) {
+    const baseY = parseFloat(document.getElementById('innerSkyOffsetY')?.value || 0);
+    const polarAngle = controls.getPolarAngle(); // 0=真上, π/2=水平, π=真下
+    const offsetFromHorizon = (Math.PI / 2 - polarAngle) * 150; // 水平基準で上向き=正
+    innerSkyDome.position.y = baseY + offsetFromHorizon;
+  }
+
+  // 中心点が床の下に行かないよう制限（常時適用：手動・自動操縦とも）
+  if (controls && controls.target.y < floorY) {
+    const correction = floorY - controls.target.y;
+    controls.target.y = floorY;
+    camera.position.y += correction;
   }
 
   // シェイクオフセットを計算して適用（controls.update後、render前）
@@ -6958,6 +7036,12 @@ async function loadViewerData() {
     if (data.settings.loopEndTime !== undefined) {
       state.loopEndTime = data.settings.loopEndTime;
     }
+    if (data.settings.loopStartEnabled !== undefined) {
+      state.loopStartEnabled = data.settings.loopStartEnabled;
+    }
+    if (data.settings.loopStartTime !== undefined) {
+      state.loopStartTime = data.settings.loopStartTime;
+    }
     if (data.settings.fadeOutDuration !== undefined) {
       fadeOutDuration = parseInt(data.settings.fadeOutDuration) / 10;
     }
@@ -7094,8 +7178,9 @@ async function loadViewerData() {
     seekBar.addEventListener('mousedown', () => { isSeeking = true; });
     seekBar.addEventListener('touchstart', () => { isSeeking = true; });
     seekBar.addEventListener('input', () => {
-      if (state.duration > 0) {
-        const targetTime = (parseFloat(seekBar.value) / 100) * state.duration;
+      const effectiveDuration = (state.loopEndEnabled && state.loopEndTime > 0) ? state.loopEndTime : state.duration;
+      if (effectiveDuration > 0) {
+        const targetTime = (parseFloat(seekBar.value) / 100) * effectiveDuration;
         seekTo(targetTime);
       }
     });
@@ -7104,20 +7189,25 @@ async function loadViewerData() {
   }
 
   // 時間・シークバー表示を更新するループ
-  if (durationSpan) {
-    const dm = Math.floor(state.duration / 60);
-    const ds = Math.floor(state.duration % 60);
-    durationSpan.textContent = `/ ${dm}:${ds.toString().padStart(2, '0')}`;
+  function updateViewerDuration() {
+    if (durationSpan) {
+      const effectiveDuration = (state.loopEndEnabled && state.loopEndTime > 0) ? state.loopEndTime : state.duration;
+      const dm = Math.floor(effectiveDuration / 60);
+      const ds = Math.floor(effectiveDuration % 60);
+      durationSpan.textContent = `/ ${dm}:${ds.toString().padStart(2, '0')}`;
+    }
   }
+  updateViewerDuration();
 
   function updateViewerTime() {
+    const effectiveDuration = (state.loopEndEnabled && state.loopEndTime > 0) ? state.loopEndTime : state.duration;
     if (timeSpan) {
       const minutes = Math.floor(state.currentTime / 60);
       const seconds = Math.floor(state.currentTime % 60);
       timeSpan.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     }
-    if (seekBar && !isSeeking && state.duration > 0) {
-      seekBar.value = (state.currentTime / state.duration) * 100;
+    if (seekBar && !isSeeking && effectiveDuration > 0) {
+      seekBar.value = (state.currentTime / effectiveDuration) * 100;
     }
     requestAnimationFrame(updateViewerTime);
   }
@@ -7139,6 +7229,9 @@ async function loadViewerData() {
 
   // ビューアー ノート・レイアウトスライダー → 隠しスライダーに連動
   const viewerDisplayMappings = [
+    { viewer: 'viewerBounceScale', hidden: 'bounceScale' },
+    { viewer: 'viewerBounceDuration', hidden: 'bounceDuration' },
+    { viewer: 'viewerPopIconScale', hidden: 'popIconScale' },
     { viewer: 'viewerNoteHeight', hidden: 'noteHeight' },
     { viewer: 'viewerNoteDepth', hidden: 'noteDepth' },
     { viewer: 'viewerNoteOpacity', hidden: 'noteOpacity' },

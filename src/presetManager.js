@@ -361,7 +361,9 @@ function collectCurrentSettings() {
   s.midiDelay = getRangeValue('midiDelay');
   s.audioDelay = getRangeValue('audioDelay');
 
-  // 終点ループ
+  // ループ始点・終点
+  s.loopStartEnabled = getCheckbox('loopStartEnabled');
+  s.loopStartTime = window.state ? window.state.loopStartTime : 0;
   s.loopEndEnabled = getCheckbox('loopEndEnabled');
   s.loopEndTime = window.state ? window.state.loopEndTime : 0;
   s.fadeOutDuration = getRangeValue('fadeOutDuration');
@@ -586,9 +588,12 @@ function applySettings(s) {
   setRangeValue('midiDelay', s.midiDelay);
   setRangeValue('audioDelay', s.audioDelay);
 
-  // 終点ループ
+  // ループ始点・終点
+  setCheckbox('loopStartEnabled', s.loopStartEnabled);
   setCheckbox('loopEndEnabled', s.loopEndEnabled);
   if (window.state) {
+    if (s.loopStartEnabled !== undefined) window.state.loopStartEnabled = s.loopStartEnabled;
+    if (s.loopStartTime !== undefined) window.state.loopStartTime = s.loopStartTime;
     if (s.loopEndEnabled !== undefined) window.state.loopEndEnabled = s.loopEndEnabled;
     if (s.loopEndTime !== undefined) window.state.loopEndTime = s.loopEndTime;
   }
@@ -654,7 +659,7 @@ function applySettings(s) {
     'creditsLine1','creditsLine2','creditsLine3','creditsLine4',
     'creditsSize1','creditsSize2','creditsSize3','creditsSize4','creditsColor','creditsOpacity',
     'gridOpacity','gridSize','gridColor','aspectRatioSelect',
-    'midiDelay','audioDelay','loopEndEnabled','loopEndTime','fadeOutDuration','shadowEnvironment','weatherType',
+    'midiDelay','audioDelay','loopStartEnabled','loopStartTime','loopEndEnabled','loopEndTime','fadeOutDuration','shadowEnvironment','weatherType',
     'skyDomeOpacity','skyDomeRange','skyDomeRadius',
     'floorImageSize','floorImageOpacity','floorImageFlip','floorChromaColor','floorChromaThreshold','floorCurvature',
     'leftWallImageSize','leftWallImageOpacity','leftWallImageFlip','leftWallChromaColor','leftWallChromaThreshold',
@@ -770,7 +775,20 @@ async function loadPreset(presetId) {
     await restoreMediaSlot(media.midi, app.loadMidi, 'midiFileName');
   }
 
-  // MIDI読み込み後に終点ループUIを更新（durationが確定した後）
+  // MIDI読み込み後にループUIを更新（durationが確定した後）
+  if (preset.settings.loopStartTime !== undefined && window.state && window.state.duration > 0) {
+    window.state.loopStartTime = preset.settings.loopStartTime;
+    const loopStartSeek = document.getElementById('loopStartSeek');
+    const loopStartTimeEl = document.getElementById('loopStartTime');
+    if (loopStartSeek) {
+      loopStartSeek.value = (window.state.loopStartTime / window.state.duration) * 1000;
+    }
+    if (loopStartTimeEl && preset.settings.loopStartEnabled) {
+      const m = Math.floor(window.state.loopStartTime / 60);
+      const sec = (window.state.loopStartTime % 60).toFixed(1);
+      loopStartTimeEl.textContent = `${m}:${sec.padStart(4, '0')}`;
+    }
+  }
   if (preset.settings.loopEndTime !== undefined && window.state && window.state.duration > 0) {
     window.state.loopEndTime = preset.settings.loopEndTime;
     const loopEndSeek = document.getElementById('loopEndSeek');
