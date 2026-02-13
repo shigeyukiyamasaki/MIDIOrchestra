@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>MIDI Orchestra Viewer</title>
-  <link rel="stylesheet" href="style.css?v=20260213a">
+  <link rel="stylesheet" href="style.css?v=20260213b">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     /* ビューアーモード: 編集パネルを非表示、キャンバスを全画面化 */
@@ -21,6 +21,13 @@
       bottom: 0 !important;
       width: 100vw !important;
       height: 100vh !important;
+    }
+    @media (max-width: 768px) and (orientation: landscape) {
+      #canvas-container {
+        left: 140px !important;
+        right: 0 !important;
+        width: calc(100vw - 140px) !important;
+      }
     }
     #presetModal { display: none !important; }
     #viewer-loading-blur {
@@ -333,43 +340,6 @@
           <span id="effectGlitchValue">0</span>
         </div>
 
-        <!-- スペクトラム -->
-        <div class="setting-category">スペクトラム</div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="audioVisualizerEnabled">
-            ON/OFF
-          </label>
-        </div>
-        <div class="setting-item">
-          <label>スタイル</label>
-          <select id="audioVisualizerStyle">
-            <option value="bar">バー</option>
-            <option value="wave">ウェーブ</option>
-            <option value="dot">ドット</option>
-            <option value="mirror">ミラー</option>
-          </select>
-        </div>
-        <div class="setting-item">
-          <label>スケール</label>
-          <input type="range" id="audioVisualizerScale" min="0.1" max="3" step="0.1" value="1">
-          <span id="audioVisualizerScaleValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>半径</label>
-          <input type="range" id="audioVisualizerRadius" min="10" max="80" step="1" value="18">
-          <span id="audioVisualizerRadiusValue">18</span>
-        </div>
-        <div class="setting-item">
-          <label>本数</label>
-          <input type="range" id="audioVisualizerBars" min="16" max="128" step="1" value="64">
-          <span id="audioVisualizerBarsValue">64</span>
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="audioVisualizerOpacity" min="0" max="1" step="0.05" value="0.9">
-          <span id="audioVisualizerOpacityValue">0.9</span>
-        </div>
       </div>
     </div>
   </div>
@@ -686,6 +656,18 @@
     <input type="range" id="loopEndSeek" min="0" max="1000" step="1" value="1000">
     <span id="loopEndTime">-:--.--</span>
     <input type="range" id="fadeOutDuration" min="0" max="50" step="1" value="0"><span id="fadeOutValue">0</span>
+    <!-- スペクトラム -->
+    <input type="checkbox" id="audioVisualizerEnabled">
+    <select id="audioVisualizerStyle">
+      <option value="bar">バー</option>
+      <option value="wave">ウェーブ</option>
+      <option value="dot">ドット</option>
+      <option value="mirror">ミラー</option>
+    </select>
+    <input type="range" id="audioVisualizerScale" min="0.1" max="3" step="0.1" value="1"><span id="audioVisualizerScaleValue">1</span>
+    <input type="range" id="audioVisualizerRadius" min="10" max="200" step="1" value="18"><span id="audioVisualizerRadiusValue">18</span>
+    <input type="range" id="audioVisualizerBars" min="16" max="128" step="1" value="64"><span id="audioVisualizerBarsValue">64</span>
+    <input type="range" id="audioVisualizerOpacity" min="0" max="1" step="0.05" value="0.9"><span id="audioVisualizerOpacityValue">0.9</span>
     <!-- クレジット -->
     <input type="text" id="creditsLine1">
     <input type="text" id="creditsLine2">

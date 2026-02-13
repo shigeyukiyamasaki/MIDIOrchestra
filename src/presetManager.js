@@ -409,6 +409,12 @@ function collectCurrentSettings() {
   s.backWallChromaColor = getColorValue('backWallChromaColor');
   s.backWallChromaThreshold = getRangeValue('backWallChromaThreshold');
 
+  // 音域フィルター（トラック別pitchMin/pitchMax）
+  const pitchRaw = localStorage.getItem('midiOrchestra_pitchFilters');
+  if (pitchRaw) {
+    try { s.pitchFilters = JSON.parse(pitchRaw); } catch(e) {}
+  }
+
   // 自動収集: 各パネル内のid付きinput/selectで未収集のものを自動追加
   ['controls', 'settings-container', 'image-panel'].forEach(containerId => {
     const container = document.getElementById(containerId);
@@ -667,7 +673,7 @@ function applySettings(s) {
     'backWallImageSize','backWallImageX','backWallImageOpacity','backWallImageFlip','backWallChromaColor','backWallChromaThreshold',
   ]);
   Object.keys(s).forEach(key => {
-    if (handled.has(key) || key.startsWith('cameraRange') || key.startsWith('bloomThreshold')) return;
+    if (handled.has(key) || key.startsWith('cameraRange') || key.startsWith('bloomThreshold') || key === 'pitchFilters') return;
     if (s[key] === undefined) return;
     const el = document.getElementById(key);
     if (!el) return;
@@ -681,6 +687,20 @@ function applySettings(s) {
       setRangeValue(key, s[key]);
     }
   });
+
+  // 音域フィルター復元（localStorageに書き込み → state.tracksに反映）
+  if (s.pitchFilters && typeof s.pitchFilters === 'object') {
+    localStorage.setItem('midiOrchestra_pitchFilters', JSON.stringify(s.pitchFilters));
+    if (window.state && window.state.tracks) {
+      window.state.tracks.forEach(track => {
+        const f = s.pitchFilters[track.name];
+        if (f) {
+          track.pitchMin = f.pitchMin;
+          track.pitchMax = f.pitchMax;
+        }
+      });
+    }
+  }
 }
 
 // ============================================
@@ -730,27 +750,18 @@ async function loadPreset(presetId) {
     document.getElementById('stopBtn').click();
   }
 
-  // 全面クリア
+  // 全素材クリア（画像・動画）
   app.clearSkyDomeImage();
+  app.clearInnerSkyImage();
   app.clearFloorImage();
   app.clearLeftWallImage();
+  app.clearCenterWallImage();
   app.clearRightWallImage();
   app.clearBackWallImage();
 
-  // MIDI/Audio解放
-  if (window.state) {
-    window.state.midi = null;
-    window.state.tracks = [];
-    window.state.groupedTracks = [];
-    window.state.duration = 0;
-    // ノートオブジェクトは再構築で自動クリアされる
-  }
-  document.getElementById('midiFileName').textContent = '未選択（ドロップ可）';
-  document.getElementById('audioFileName').textContent = '未選択（ドロップ可）';
-  const midiClearBtn = document.getElementById('midiClearBtn');
-  const audioClearBtn = document.getElementById('audioClearBtn');
-  if (midiClearBtn) midiClearBtn.style.display = 'none';
-  if (audioClearBtn) audioClearBtn.style.display = 'none';
+  // MIDI/Audioクリア
+  app.clearMidi();
+  app.clearAudio();
 
   // 設定適用
   applySettings(preset.settings);

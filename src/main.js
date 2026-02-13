@@ -302,17 +302,15 @@ let weatherWindDir = 0;  // 風向(度) 0=+Z方向
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
-let rebuildTimeout = null;
+let rebuildRafId = null;
 
-// デバウンス付きでノート再構築
+// rAFデバウンスでノート再構築（次フレームで1回だけ実行）
 function debouncedRebuildNotes() {
-  if (rebuildTimeout) {
-    clearTimeout(rebuildTimeout);
-  }
-  rebuildTimeout = setTimeout(() => {
+  if (rebuildRafId) return;
+  rebuildRafId = requestAnimationFrame(() => {
     rebuildNotes();
-    rebuildTimeout = null;
-  }, 150); // 150ms後に実行
+    rebuildRafId = null;
+  });
 }
 
 // 設定
@@ -1383,7 +1381,7 @@ function setupThreeJS() {
   // 床基準でY位置を設定（下端が床に接する）
   const initialWallSize = 300;
   leftWallPlane.position.set(0, floorY + initialWallSize / 2, -150); // 手前側に配置
-  leftWallPlane.renderOrder = 3;
+  leftWallPlane.renderOrder = 10;
   leftWallPlane.visible = false;
   leftWallPlane.castShadow = true;
   leftWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
@@ -1394,7 +1392,7 @@ function setupThreeJS() {
   const rightWallMaterial = createChromaKeyMaterial(0.8);
   rightWallPlane = new THREE.Mesh(rightWallGeometry, rightWallMaterial);
   rightWallPlane.position.set(0, floorY + initialWallSize / 2, 150); // 奥側に配置
-  rightWallPlane.renderOrder = 3;
+  rightWallPlane.renderOrder = 10;
   rightWallPlane.visible = false;
   rightWallPlane.castShadow = true;
   rightWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
@@ -1405,7 +1403,7 @@ function setupThreeJS() {
   const centerWallMaterial = createChromaKeyMaterial(0.8);
   centerWallPlane = new THREE.Mesh(centerWallGeometry, centerWallMaterial);
   centerWallPlane.position.set(0, floorY + initialWallSize / 2, 0); // センターに配置
-  centerWallPlane.renderOrder = 3;
+  centerWallPlane.renderOrder = 10;
   centerWallPlane.visible = false;
   centerWallPlane.castShadow = true;
   centerWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
@@ -1417,7 +1415,7 @@ function setupThreeJS() {
   backWallPlane = new THREE.Mesh(backWallGeometry, backWallMaterial);
   backWallPlane.rotation.y = Math.PI / 2; // 幕と同じ向きに回転
   backWallPlane.position.set(250, floorY + initialWallSize / 2, 0); // グリッドの端に配置
-  backWallPlane.renderOrder = 3;
+  backWallPlane.renderOrder = 10;
   backWallPlane.visible = false;
   backWallPlane.castShadow = true;
   backWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
@@ -3689,8 +3687,7 @@ function setupAudioVisualizer() {
   const style = document.getElementById('audioVisualizerStyle')?.value || 'bar';
   const barCount = parseInt(document.getElementById('audioVisualizerBars')?.value || 64);
   const baseRadius = parseInt(document.getElementById('audioVisualizerRadius')?.value || 18);
-  const curtainH = timelinePlane ? timelinePlane.geometry.parameters.height : 150;
-  const centerY = curtainH / 2;
+  const centerY = 0; // グループ自体がタイムライン中心に配置されるため内部オフセット不要
 
   vizBarsGroup = new THREE.Group();
   vizBarsGroup._vizStyle = style;
@@ -3821,18 +3818,19 @@ function setupAudioVisualizer() {
 
   }
 
-  // 全メッシュ: フラスタムカリング無効化 + 床より前面に描画
+  // 全メッシュ: フラスタムカリング無効化、床に遮蔽されないようdepthTest無効
   vizBarsGroup.traverse(child => {
     if (child.isMesh) {
       child.frustumCulled = false;
-      child.renderOrder = 10;
+      child.renderOrder = 5;
       child.material.depthTest = false;
     }
   });
 
-  // グループ位置
+  // グループ位置（タイムライン幕の中心に配置）
   const tlOffset = document.getElementById('timelineX')?.value || 0;
-  vizBarsGroup.position.set(parseInt(tlOffset), floorY, 0);
+  const groupY = timelinePlane ? timelinePlane.position.y : floorY + 75;
+  vizBarsGroup.position.set(parseInt(tlOffset), groupY, 0);
   scene.add(vizBarsGroup);
   vizPrevValues.fill(0);
   console.log('Audio visualizer initialized: ' + style);
@@ -3855,6 +3853,11 @@ function updateAudioVisualizer() {
 
   const tlOffset = document.getElementById('timelineX')?.value || 0;
   vizBarsGroup.position.x = parseInt(tlOffset);
+
+  // タイムライン幕の中心に追従
+  if (timelinePlane) {
+    vizBarsGroup.position.y = timelinePlane.position.y;
+  }
 
   const scaleVal = parseFloat(document.getElementById('audioVisualizerScale')?.value || 1);
   const maxHeight = 100 * scaleVal;
