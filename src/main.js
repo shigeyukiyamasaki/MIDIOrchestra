@@ -59,6 +59,15 @@ let backWallX = 500;    // 奥側画像のX位置（共有用）
 let audioElement = null; // 音源再生用オーディオ要素
 let audioSrcUrl = null;  // 音源のBlob URL（オーバーラップ用）
 
+// スペクトラム
+let audioContext = null;
+let analyser = null;
+let audioSource = null;
+let vizConnectedElement = null; // AnalyserNode接続中のaudioElement参照
+let vizBarsGroup = null;         // THREE.Group for visualizer bars
+let vizFrequencyData = null;     // Uint8Array for frequency data
+let vizPrevValues = new Float32Array(64); // smoothing用前フレーム値
+
 // フェードアウト（終点ループ用）
 let crossfadeStartTime = -1;
 let fadeOutDuration = 0.1; // フェードアウト秒数（0.1〜1.0）
@@ -2358,6 +2367,48 @@ function setupEventListeners() {
     syncSelectableEffect('glitch');
   });
 
+  // スペクトラム スタイル変更 → 再構築
+  document.getElementById('audioVisualizerStyle')?.addEventListener('change', () => {
+    if (analyser) setupAudioVisualizer();
+  });
+
+  // スペクトラム スケール値表示
+  document.getElementById('audioVisualizerScale')?.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    const span = document.getElementById('audioVisualizerScaleValue');
+    if (span) span.textContent = val;
+  });
+
+  // スペクトラム 半径値表示
+  document.getElementById('audioVisualizerRadius')?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    const span = document.getElementById('audioVisualizerRadiusValue');
+    if (span) span.textContent = val;
+  });
+
+  // スペクトラム 本数変更 → 再構築
+  document.getElementById('audioVisualizerBars')?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    const span = document.getElementById('audioVisualizerBarsValue');
+    if (span) span.textContent = val;
+    if (analyser) {
+      vizPrevValues = new Float32Array(val);
+      setupAudioVisualizer();
+    }
+  });
+
+  // スペクトラム 透明度変更
+  document.getElementById('audioVisualizerOpacity')?.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    const span = document.getElementById('audioVisualizerOpacityValue');
+    if (span) span.textContent = val;
+    if (vizBarsGroup) {
+      vizBarsGroup.traverse(child => {
+        if (child.isMesh) child.material.opacity = val;
+      });
+    }
+  });
+
   // 自動カメラ切り替え
   const autoCameraEnabledInput = document.getElementById('autoCameraEnabled');
   autoCameraEnabledInput.addEventListener('change', (e) => {
@@ -3583,14 +3634,315 @@ function loadAudio(file) {
     audioElement.src = '';
     audioElement = null;
   }
+  // MediaElementSourceは再利用不可なのでリセット
+  audioSource = null;
 
   // 新しいオーディオ要素を作成
   audioElement = new Audio();
+  audioElement.crossOrigin = 'anonymous';
   audioSrcUrl = URL.createObjectURL(file);
   audioElement.src = audioSrcUrl;
   audioElement.load();
 
+  // ビジュアライザー接続
+  setupAudioVisualizer();
+
   console.log(`Audio loaded: ${file.name}`);
+}
+
+// ============================================
+// スペクトラム
+// ============================================
+function setupAudioVisualizer() {
+  if (!audioElement || !scene) return;
+
+  // AudioContext接続（audioElementが差し替わったら再接続）
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (!analyser) {
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.4;
+    analyser.minDecibels = -70;
+    analyser.maxDecibels = -10;
+    analyser.connect(audioContext.destination);
+  }
+  if (vizConnectedElement !== audioElement) {
+    // 前のソースを切断
+    if (audioSource) { try { audioSource.disconnect(); } catch(e) {} }
+    audioSource = audioContext.createMediaElementSource(audioElement);
+    audioSource.connect(analyser);
+    vizConnectedElement = audioElement;
+    vizFrequencyData = new Uint8Array(analyser.frequencyBinCount);
+  }
+
+  // 既存を削除
+  if (vizBarsGroup) {
+    scene.remove(vizBarsGroup);
+    vizBarsGroup.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    });
+  }
+
+  const style = document.getElementById('audioVisualizerStyle')?.value || 'bar';
+  const barCount = parseInt(document.getElementById('audioVisualizerBars')?.value || 64);
+  const baseRadius = parseInt(document.getElementById('audioVisualizerRadius')?.value || 18);
+  const curtainH = timelinePlane ? timelinePlane.geometry.parameters.height : 150;
+  const centerY = curtainH / 2;
+
+  vizBarsGroup = new THREE.Group();
+  vizBarsGroup._vizStyle = style;
+  vizBarsGroup._vizBarCount = barCount;
+  vizPrevValues = new Float32Array(barCount);
+
+  // --- グローテクスチャ（バー系スタイル用） ---
+  const glowCanvas = document.createElement('canvas');
+  glowCanvas.width = 128; glowCanvas.height = 4;
+  const ctx = glowCanvas.getContext('2d');
+  const imgData = ctx.createImageData(128, 4);
+  for (let x = 0; x < 128; x++) {
+    const t = (x - 63.5) / 63.5;
+    const core = Math.exp(-t * t * 80);
+    const glow = Math.exp(-t * t * 5);
+    const a = Math.min(1, core + glow * 0.5);
+    const w = Math.min(255, core * 255 + glow * 80);
+    for (let y = 0; y < 4; y++) {
+      const idx = (y * 128 + x) * 4;
+      imgData.data[idx] = imgData.data[idx+1] = imgData.data[idx+2] = w;
+      imgData.data[idx+3] = a * 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  const glowTexture = new THREE.CanvasTexture(glowCanvas);
+
+  // --- ドットテクスチャ（円形放射グロー） ---
+  const dotCanvas = document.createElement('canvas');
+  dotCanvas.width = 64; dotCanvas.height = 64;
+  const dctx = dotCanvas.getContext('2d');
+  const dGrad = dctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  dGrad.addColorStop(0, 'rgba(255,255,255,1)');
+  dGrad.addColorStop(0.15, 'rgba(255,255,255,0.7)');
+  dGrad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+  dGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  dctx.fillStyle = dGrad;
+  dctx.fillRect(0, 0, 64, 64);
+  const dotTexture = new THREE.CanvasTexture(dotCanvas);
+
+  const outerRadius = baseRadius + 60;
+  const planeW = (2 * Math.PI * outerRadius / barCount) * 1.8;
+  const vizOpacity = parseFloat(document.getElementById('audioVisualizerOpacity')?.value ?? 0.9);
+  const additiveMat = () => new THREE.MeshBasicMaterial({
+    map: glowTexture, color: 0xffffff, transparent: true, opacity: vizOpacity,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  });
+
+  // ========== スタイル別ジオメトリ生成 ==========
+  if (style === 'bar' || style === 'mirror' || style === 'dot') {
+    // --- ピボット方式 ---
+    for (let i = 0; i < barCount; i++) {
+      const angle = (i / barCount) * Math.PI * 2;
+      const pivot = new THREE.Group();
+      pivot.position.set(0, centerY, 0);
+      pivot.rotation.x = -angle;
+
+      if (style === 'bar') {
+        const geo = new THREE.PlaneGeometry(planeW, 1);
+        const bar = new THREE.Mesh(geo, additiveMat());
+        bar.rotation.y = Math.PI / 2;
+        bar.position.y = baseRadius + 0.5;
+        pivot.add(bar);
+      } else if (style === 'mirror') {
+        // 外向き
+        const geoOut = new THREE.PlaneGeometry(planeW, 1);
+        const barOut = new THREE.Mesh(geoOut, additiveMat());
+        barOut.rotation.y = Math.PI / 2;
+        barOut.position.y = baseRadius + 0.5;
+        pivot.add(barOut);
+        // 内向き
+        const geoIn = new THREE.PlaneGeometry(planeW * 0.7, 1);
+        const barIn = new THREE.Mesh(geoIn, additiveMat());
+        barIn.rotation.y = Math.PI / 2;
+        barIn.position.y = baseRadius - 0.5;
+        pivot.add(barIn);
+      } else if (style === 'dot') {
+        // 連続ドットで棒状に（baseRadiusから外側に等間隔配置）
+        const dotsPerBar = 20;
+        const dotSpacing = 8;
+        const dotSize = dotSpacing * 0.65;
+        const dotGeo = new THREE.PlaneGeometry(dotSize, dotSize);
+        const dotMat = new THREE.MeshBasicMaterial({
+          map: dotTexture, color: 0xffffff, transparent: true, opacity: vizOpacity,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+        });
+        for (let d = 0; d < dotsPerBar; d++) {
+          const dot = new THREE.Mesh(dotGeo, dotMat);
+          dot.rotation.y = Math.PI / 2;
+          dot.position.y = baseRadius + dotSpacing * (d + 0.5);
+          dot.visible = false;
+          pivot.add(dot);
+        }
+      }
+      vizBarsGroup.add(pivot);
+    }
+
+  } else if (style === 'wave') {
+    // --- 複数同心リボン（baseRadiusから振幅まで埋める） ---
+    const ringCount = 6;
+    const segCount = barCount;
+    for (let r = 0; r < ringCount; r++) {
+      const vertCount = (segCount + 1) * 2;
+      const positions = new Float32Array(vertCount * 3);
+      const uvs = new Float32Array(vertCount * 2);
+      const indices = [];
+      for (let i = 0; i <= segCount; i++) {
+        const vi = i * 2;
+        uvs[vi * 2] = 0;     uvs[vi * 2 + 1] = i / segCount;
+        uvs[(vi+1) * 2] = 1; uvs[(vi+1) * 2 + 1] = i / segCount;
+        if (i < segCount) {
+          const a = vi, b = vi+1, c = vi+2, d = vi+3;
+          indices.push(a, c, b, b, c, d);
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      geo.setIndex(indices);
+      const ringOpacity = (0.5 + (r / (ringCount - 1)) * 0.4) * vizOpacity; // 内側薄め→外側濃め × 透明度
+      const mat = new THREE.MeshBasicMaterial({
+        map: glowTexture, color: 0xffffff, transparent: true, opacity: ringOpacity,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(0, centerY, 0);
+      vizBarsGroup.add(mesh);
+    }
+
+  }
+
+  // 全メッシュ: フラスタムカリング無効化 + 床より前面に描画
+  vizBarsGroup.traverse(child => {
+    if (child.isMesh) {
+      child.frustumCulled = false;
+      child.renderOrder = 10;
+      child.material.depthTest = false;
+    }
+  });
+
+  // グループ位置
+  const tlOffset = document.getElementById('timelineX')?.value || 0;
+  vizBarsGroup.position.set(parseInt(tlOffset), floorY, 0);
+  scene.add(vizBarsGroup);
+  vizPrevValues.fill(0);
+  console.log('Audio visualizer initialized: ' + style);
+}
+
+function updateAudioVisualizer() {
+  if (!vizBarsGroup || !analyser || !vizFrequencyData) return;
+
+  // audioElementが差し替わっていたら再接続（ループ時のオーバーラップ切替対応）
+  if (audioElement && vizConnectedElement !== audioElement && audioContext) {
+    if (audioSource) { try { audioSource.disconnect(); } catch(e) {} }
+    audioSource = audioContext.createMediaElementSource(audioElement);
+    audioSource.connect(analyser);
+    vizConnectedElement = audioElement;
+  }
+
+  const enabled = document.getElementById('audioVisualizerEnabled')?.checked;
+  if (!enabled) { vizBarsGroup.visible = false; return; }
+  vizBarsGroup.visible = true;
+
+  const tlOffset = document.getElementById('timelineX')?.value || 0;
+  vizBarsGroup.position.x = parseInt(tlOffset);
+
+  const scaleVal = parseFloat(document.getElementById('audioVisualizerScale')?.value || 1);
+  const maxHeight = 100 * scaleVal;
+  const radius = parseInt(document.getElementById('audioVisualizerRadius')?.value || 18);
+  const style = vizBarsGroup._vizStyle;
+  const barCount = vizBarsGroup._vizBarCount;
+
+  analyser.getByteFrequencyData(vizFrequencyData);
+
+  // --- 対数マッピングで全バーの値を計算 ---
+  const binCount = analyser.frequencyBinCount;
+  const freqPerBin = audioContext.sampleRate / analyser.fftSize;
+  const minFreq = 50, maxFreq = 16000;
+  const values = new Float32Array(barCount);
+  for (let i = 0; i < barCount; i++) {
+    const f0 = minFreq * Math.pow(maxFreq / minFreq, i / barCount);
+    const f1 = minFreq * Math.pow(maxFreq / minFreq, (i + 1) / barCount);
+    const bin0 = Math.max(0, Math.floor(f0 / freqPerBin));
+    const bin1 = Math.min(binCount - 1, Math.ceil(f1 / freqPerBin));
+    let sum = 0, cnt = 0;
+    for (let b = bin0; b <= bin1; b++) { sum += vizFrequencyData[b]; cnt++; }
+    const raw = cnt > 0 ? (sum / cnt) / 255 : 0;
+    const smoothed = vizPrevValues[i] * 0.35 + raw * 0.65;
+    vizPrevValues[i] = smoothed;
+    values[i] = smoothed;
+  }
+
+  // ========== スタイル別更新 ==========
+  const minTick = 2; // 無音時の最小目盛サイズ
+
+  if (style === 'bar') {
+    const pivots = vizBarsGroup.children;
+    for (let i = 0; i < pivots.length; i++) {
+      const bar = pivots[i].children[0];
+      const h = Math.max(minTick, values[i] * maxHeight);
+      bar.scale.y = h;
+      bar.position.y = radius + h / 2;
+    }
+
+  } else if (style === 'mirror') {
+    const pivots = vizBarsGroup.children;
+    for (let i = 0; i < pivots.length; i++) {
+      const h = Math.max(minTick, values[i] * maxHeight);
+      const hIn = Math.min(Math.max(minTick * 0.7, values[i] * maxHeight * 0.5), radius - 2);
+      const barOut = pivots[i].children[0];
+      barOut.scale.y = h;
+      barOut.position.y = radius + h / 2;
+      const barIn = pivots[i].children[1];
+      barIn.scale.y = hIn;
+      barIn.position.y = radius - hIn / 2;
+    }
+
+  } else if (style === 'dot') {
+    // 連続ドット: 振幅に応じてドットのvisibilityを切り替え（最低1個は常時表示）
+    const pivots = vizBarsGroup.children;
+    const dotSpacing = 8;
+    for (let i = 0; i < pivots.length; i++) {
+      const h = values[i] * maxHeight;
+      const dots = pivots[i].children;
+      for (let d = 0; d < dots.length; d++) {
+        const dotDist = dotSpacing * (d + 0.5);
+        dots[d].visible = d === 0 || dotDist <= h;
+        dots[d].position.y = radius + dotDist; // 半径スライダー追従
+      }
+    }
+
+  } else if (style === 'wave') {
+    // 複数同心リング: 各リングがbaseRadius→振幅の間を分担（最小半径オフセットで目盛表示）
+    const ringCount = vizBarsGroup.children.length;
+    const ribbonW = 1.5 + scaleVal;
+    for (let r = 0; r < ringCount; r++) {
+      const mesh = vizBarsGroup.children[r];
+      const pos = mesh.geometry.attributes.position.array;
+      const fraction = (r + 1) / ringCount; // 0.167, 0.333, ... 1.0
+      for (let i = 0; i <= barCount; i++) {
+        const idx = i % barCount;
+        const angle = (idx / barCount) * Math.PI * 2;
+        const rr = radius + Math.max(minTick, values[idx] * maxHeight * fraction);
+        const cosA = Math.cos(angle), sinA = Math.sin(angle);
+        const vi = i * 2;
+        pos[vi*3] = 0;     pos[vi*3+1] = (rr - ribbonW) * cosA; pos[vi*3+2] = (rr - ribbonW) * sinA;
+        pos[(vi+1)*3] = 0; pos[(vi+1)*3+1] = (rr + ribbonW) * cosA; pos[(vi+1)*3+2] = (rr + ribbonW) * sinA;
+      }
+      mesh.geometry.attributes.position.needsUpdate = true;
+      mesh.geometry.computeBoundingSphere();
+    }
+
+  }
 }
 
 // ============================================
@@ -6120,6 +6472,10 @@ function play() {
   document.getElementById('playBtn').innerHTML = '<i class="fa-solid fa-pause"></i>';
   const vp = document.getElementById('viewerPlayBtn');
   if (vp) vp.innerHTML = '<i class="fa-solid fa-pause"></i>';
+  // AudioContext resume（ブラウザのユーザージェスチャー要件）
+  if (audioContext && audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
   // 音源を再生（audioDelay適用）
   if (audioElement) {
     if (audioDelayTimer) clearTimeout(audioDelayTimer);
@@ -6777,6 +7133,9 @@ function animate() {
   }
   const btSlider = document.getElementById('bloomThresholdRange');
   if (btSlider?._updateCurrentMarker) btSlider._updateCurrentMarker(bloomThresholdCurrent);
+
+  // スペクトラム更新
+  updateAudioVisualizer();
 
   if (composer && bloomPass && bloomEnabled && bloomPass.strength > 0) {
     composer.render();
