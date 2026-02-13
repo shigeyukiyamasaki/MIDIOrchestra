@@ -6594,6 +6594,8 @@ function stopAutoCamera() {
     autoCameraTimer = null;
   }
   cameraTransition = null;
+  // OrbitControlsの内部状態を現在のカメラ位置に再同期（maxPolarAngle制約を復元）
+  if (controls) controls.update();
 }
 
 function generateRandomCameraPosition() {
@@ -6655,6 +6657,7 @@ function updateCameraTransition() {
     // 遷移完了
     if (progress >= 1) {
       cameraTransition = null;
+      controls.update(); // 内部状態を再同期（maxPolarAngle制約を維持）
     }
   } else {
     // カットモード: クロスフェード（ディゾルブ）効果
@@ -6686,6 +6689,7 @@ function updateCameraTransition() {
         fadeOverlay.style.opacity = 0;
       }
       cameraTransition = null;
+      controls.update(); // 内部状態を再同期（maxPolarAngle制約を維持）
     }
   }
 }
@@ -7090,11 +7094,16 @@ function animate() {
     innerSkyDome.position.y = baseY + offsetFromHorizon;
   }
 
-  // 中心点が床の下に行かないよう制限（常時適用：手動・自動操縦とも）
-  if (controls && controls.target.y < floorY) {
-    const correction = floorY - controls.target.y;
-    controls.target.y = floorY;
-    camera.position.y += correction;
+  // 中心点・カメラが床の下に行かないよう制限（常時適用：手動・自動操縦とも）
+  if (controls) {
+    if (controls.target.y < floorY) {
+      const correction = floorY - controls.target.y;
+      controls.target.y = floorY;
+      camera.position.y += correction;
+    }
+    if (camera.position.y < floorY) {
+      camera.position.y = floorY;
+    }
   }
 
   // シェイクオフセットを計算して適用（controls.update後、render前）
@@ -7639,6 +7648,22 @@ async function loadViewerData() {
         updateTogglePos();
       }
     });
+  }
+
+  // 和英切り替えボタン
+  const langJP = document.getElementById('viewerLangJP');
+  const langEN = document.getElementById('viewerLangEN');
+  if (langJP && langEN) {
+    const switchLang = (toEn) => {
+      langJP.classList.toggle('active', !toEn);
+      langEN.classList.toggle('active', toEn);
+      document.querySelectorAll('.viewer-side-controls [data-en]').forEach(el => {
+        if (!el.dataset.ja) el.dataset.ja = el.textContent;
+        el.textContent = toEn ? el.dataset.en : el.dataset.ja;
+      });
+    };
+    langJP.addEventListener('click', () => switchLang(false));
+    langEN.addEventListener('click', () => switchLang(true));
   }
 
   // ローディング表示を消す
