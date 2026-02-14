@@ -648,6 +648,8 @@ async function init() {
   // ビューアーモード: データ自動読み込み
   if (window.VIEWER_MODE && window.VIEWER_DATA) {
     await loadViewerData();
+    // レイアウト確定後にリサイズ（横向きロード対応・複数回で確実に）
+    onWindowResize();
   }
 
   // ビューアーエクスポートボタン
@@ -1456,6 +1458,15 @@ function setupThreeJS() {
 
   // ウィンドウリサイズ対応
   window.addEventListener('resize', onWindowResize);
+  // 画面回転時はCSSメディアクエリ反映後にリサイズ
+  window.addEventListener('orientationchange', () => {
+    setTimeout(onWindowResize, 200);
+  });
+  // ページロード完了時にもレイアウト更新（横向きリロード対応）
+  window.addEventListener('load', () => {
+    updateViewerSideControlsWidth();
+    setTimeout(updateViewerSideControlsWidth, 500);
+  });
 }
 
 // アスペクト比に基づいてキャンバスサイズを計算
@@ -1501,6 +1512,33 @@ function onWindowResize() {
   renderer.setSize(width, height);
   if (composer) composer.setSize(width, height);
   updateCreditsPosition();
+  updateViewerSideControlsWidth();
+}
+
+// モバイル横向き: スライダーパネルを動画の左端まで伸ばす
+function updateViewerSideControlsWidth() {
+  const sideControls = document.querySelector('.viewer-side-controls');
+  if (!sideControls) return;
+  const isMobileLandscape = window.matchMedia('(max-width: 768px) and (orientation: landscape)').matches;
+  if (!isMobileLandscape) {
+    sideControls.style.width = '';
+    return;
+  }
+  // DOM・レンダラーに依存せず、画面サイズとアスペクト比から計算
+  const baseLeft = 140;
+  const barHeight = 40;
+  const containerWidth = window.innerWidth - baseLeft;
+  const containerHeight = window.innerHeight - barHeight;
+  let canvasWidth = containerWidth;
+  if (aspectRatioMode === '16:9' || aspectRatioMode === '9:16') {
+    const targetAspect = aspectRatioMode === '16:9' ? 16 / 9 : 9 / 16;
+    const containerAspect = containerWidth / containerHeight;
+    if (containerAspect > targetAspect) {
+      canvasWidth = containerHeight * targetAspect;
+    }
+  }
+  const videoLeft = baseLeft + (containerWidth - canvasWidth);
+  sideControls.style.width = Math.max(baseLeft, videoLeft) + 'px';
 }
 
 // クレジットオーバーレイを描画エリア（canvas）の左下に合わせる

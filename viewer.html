@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>MIDI Orchestra Viewer</title>
-  <link rel="stylesheet" href="style.css?v=20260213b">
+  <link rel="stylesheet" href="style.css?v=20260213c">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     /* ビューアーモード: 編集パネルを非表示、キャンバスを全画面化 */
@@ -27,6 +27,12 @@
         left: 140px !important;
         right: 0 !important;
         width: calc(100vw - 140px) !important;
+        top: 0 !important;
+        bottom: auto !important;
+        height: calc(100dvh - 40px) !important;
+        align-items: flex-start !important;
+        justify-content: flex-end !important;
+        overflow: hidden !important;
       }
     }
     #presetModal { display: none !important; }
@@ -230,7 +236,7 @@
           <span id="bounceDurationValue">0.2</span>
         </div>
         <div class="setting-item">
-          <label>アイコン (0=OFF)</label>
+          <label>楽器アイコン (0=OFF)</label>
           <input type="range" id="popIconScale" min="0" max="10" step="0.1" value="3">
           <span id="popIconScaleValue">3</span>
         </div>
@@ -717,7 +723,7 @@
       <label data-en="Effect">エフェクト</label>
       <div><span data-en="Bounce">バウンス</span><input type="range" id="viewerBounceScale" min="0" max="5" step="0.5" value="1"></div>
       <div><span data-en="Duration">バウンス時間</span><input type="range" id="viewerBounceDuration" min="0.1" max="0.5" step="0.05" value="0.2"></div>
-      <div><span data-en="Icon">アイコン</span><input type="range" id="viewerPopIconScale" min="0" max="10" step="0.1" value="3"></div>
+      <div><span data-en="Icon">楽器アイコン</span><input type="range" id="viewerPopIconScale" min="0" max="10" step="0.1" value="3"></div>
     </div>
     <div class="viewer-control-group">
       <label data-en="Layout">レイアウト</label>
@@ -749,7 +755,7 @@
       document.write('<script src="viewer-data.js"><\/script>');
     }
   </script>
-  <script src="src/presetManager.js?v=20260212m"></script>
-  <script type="module" src="src/main.js?v=20260212m"></script>
+  <script src="src/presetManager.js?v=20260213c"></script>
+  <script type="module" src="src/main.js?v=20260213c"></script>
 </body>
 </html>

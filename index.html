@@ -210,7 +210,7 @@
           <span id="bounceDurationValue">0.2</span>
         </div>
         <div class="setting-item">
-          <label>アイコン (0=OFF)</label>
+          <label>楽器アイコン (0=OFF)</label>
           <input type="range" id="popIconScale" min="0" max="10" step="0.1" value="3">
           <span id="popIconScaleValue">3</span>
         </div>
@@ -326,43 +326,6 @@
           <span id="effectGlitchValue">0</span>
         </div>
 
-        <!-- スペクトラム -->
-        <div class="setting-category">スペクトラム</div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="audioVisualizerEnabled">
-            ON/OFF
-          </label>
-        </div>
-        <div class="setting-item">
-          <label>スタイル</label>
-          <select id="audioVisualizerStyle">
-            <option value="bar">バー</option>
-            <option value="wave">ウェーブ</option>
-            <option value="dot">ドット</option>
-            <option value="mirror">ミラー</option>
-          </select>
-        </div>
-        <div class="setting-item">
-          <label>スケール</label>
-          <input type="range" id="audioVisualizerScale" min="0.1" max="3" step="0.1" value="1">
-          <span id="audioVisualizerScaleValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>半径</label>
-          <input type="range" id="audioVisualizerRadius" min="10" max="80" step="1" value="18">
-          <span id="audioVisualizerRadiusValue">18</span>
-        </div>
-        <div class="setting-item">
-          <label>本数</label>
-          <input type="range" id="audioVisualizerBars" min="16" max="128" step="1" value="64">
-          <span id="audioVisualizerBarsValue">64</span>
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="audioVisualizerOpacity" min="0" max="1" step="0.05" value="0.9">
-          <span id="audioVisualizerOpacityValue">0.9</span>
-        </div>
       </div>
     </div>
     <!-- 天候エフェクトパネル（右列） -->
@@ -757,19 +720,41 @@
       </div>
     </div>
     <div class="display-section">
-      <div class="setting-category">クレジット</div>
-      <div class="setting-item credits-row"><label>1行目</label><input type="text" id="creditsLine1" class="credits-input" placeholder="曲名"><input type="number" id="creditsSize1" class="credits-size-input" min="8" max="72" value="16"></div>
-      <div class="setting-item credits-row"><label>2行目</label><input type="text" id="creditsLine2" class="credits-input" placeholder="作曲"><input type="number" id="creditsSize2" class="credits-size-input" min="8" max="72" value="16"></div>
-      <div class="setting-item credits-row"><label>3行目</label><input type="text" id="creditsLine3" class="credits-input" placeholder="編曲"><input type="number" id="creditsSize3" class="credits-size-input" min="8" max="72" value="16"></div>
-      <div class="setting-item credits-row"><label>4行目</label><span style="color:#888;font-size:11px;">Arr. Romashige（固定）</span><input type="number" id="creditsSize4" class="credits-size-input" min="8" max="72" value="16"></div>
+      <div class="setting-category">スペクトラム</div>
       <div class="setting-item">
-        <label>色</label>
-        <input type="color" id="creditsColor" value="#ffffff">
+        <label>
+          <input type="checkbox" id="audioVisualizerEnabled">
+          ON/OFF
+        </label>
+      </div>
+      <div class="setting-item">
+        <label>スタイル</label>
+        <select id="audioVisualizerStyle">
+          <option value="bar">バー</option>
+          <option value="wave">ウェーブ</option>
+          <option value="dot">ドット</option>
+          <option value="mirror">ミラー</option>
+        </select>
+      </div>
+      <div class="setting-item">
+        <label>スケール</label>
+        <input type="range" id="audioVisualizerScale" min="0.1" max="3" step="0.1" value="1">
+        <span id="audioVisualizerScaleValue">1</span>
+      </div>
+      <div class="setting-item">
+        <label>半径</label>
+        <input type="range" id="audioVisualizerRadius" min="10" max="200" step="1" value="18">
+        <span id="audioVisualizerRadiusValue">18</span>
+      </div>
+      <div class="setting-item">
+        <label>本数</label>
+        <input type="range" id="audioVisualizerBars" min="16" max="128" step="1" value="64">
+        <span id="audioVisualizerBarsValue">64</span>
       </div>
       <div class="setting-item">
         <label>透明度</label>
-        <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8">
-        <span id="creditsOpacityValue">0.8</span>
+        <input type="range" id="audioVisualizerOpacity" min="0" max="1" step="0.05" value="0.9">
+        <span id="audioVisualizerOpacityValue">0.9</span>
       </div>
     </div>
     <div class="display-section">
@@ -787,6 +772,22 @@
       <div class="setting-item">
         <label>色</label>
         <input type="color" id="gridColor" value="#444444">
+      </div>
+    </div>
+    <div class="display-section">
+      <div class="setting-category">クレジット</div>
+      <div class="setting-item credits-row"><label>1行目</label><input type="text" id="creditsLine1" class="credits-input" placeholder="曲名"><input type="number" id="creditsSize1" class="credits-size-input" min="8" max="72" value="16"></div>
+      <div class="setting-item credits-row"><label>2行目</label><input type="text" id="creditsLine2" class="credits-input" placeholder="作曲"><input type="number" id="creditsSize2" class="credits-size-input" min="8" max="72" value="16"></div>
+      <div class="setting-item credits-row"><label>3行目</label><input type="text" id="creditsLine3" class="credits-input" placeholder="編曲"><input type="number" id="creditsSize3" class="credits-size-input" min="8" max="72" value="16"></div>
+      <div class="setting-item credits-row"><label>4行目</label><span style="color:#888;font-size:11px;">Arr. Romashige（固定）</span><input type="number" id="creditsSize4" class="credits-size-input" min="8" max="72" value="16"></div>
+      <div class="setting-item">
+        <label>色</label>
+        <input type="color" id="creditsColor" value="#ffffff">
+      </div>
+      <div class="setting-item">
+        <label>透明度</label>
+        <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8">
+        <span id="creditsOpacityValue">0.8</span>
       </div>
     </div>
     </div>

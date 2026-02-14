@@ -37,3 +37,13 @@ document.getElementById('someControl').addEventListener('input', (e) => { ... })
 - ファイル名例: `SongName_floor.mp4` → `SongName_floor_mobile.mp4`
 - ffmpegコマンド例: `ffmpeg -i original.mp4 -vf "scale=720:720" -r 30 -c:v libx264 -crf 28 -an -movflags +faststart mobile.mp4`
 - モバイル版がない場合はオリジナルにフォールバック（4Kは再生失敗する）
+
+### モバイルでは `100vh` ではなく `100dvh` を使うこと
+
+モバイルブラウザ（Chrome・Safari共通）では `100vh` はURLバーが隠れた状態の最大ビューポート高さを返す。
+URLバーが表示されている通常の状態では、実際の表示領域より大きい値になる。
+
+- `100vh`: 最大ビューポート高さ（URLバー非表示時）→ 実際の画面よりはみ出す
+- `100dvh`: 動的ビューポート高さ（現在の実際の表示領域）→ 正確
+
+モバイル向けのレイアウトでビューポート高さを参照する場合は、必ず `dvh` を使うこと。

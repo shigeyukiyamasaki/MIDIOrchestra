@@ -674,7 +674,7 @@ button:disabled {
   top: 420px;
   left: 310px;
   right: 540px;
-  bottom: 260px;
+  bottom: 330px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -745,7 +745,7 @@ button:disabled {
   bottom: 0;
   left: 310px;
   right: 540px;
-  height: auto;
+  max-height: 330px;
   background: rgba(0, 0, 0, 0.8);
   display: flex;
   flex-direction: column;
@@ -753,6 +753,7 @@ button:disabled {
   z-index: 40;
   border-top: 1px solid #333;
   border-left: 1px solid #333;
+  overflow-y: auto;
 }
 
 #display-settings-panel h3 {
@@ -1433,7 +1434,7 @@ button:disabled {
   gap: 8px;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.4);
   padding: 10px 15px;
   border-radius: 8px;
 }
@@ -1478,8 +1479,22 @@ button:disabled {
 #viewerSeek {
   width: 85%;
   height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #333;
+  border-radius: 3px;
+  outline: none;
   cursor: pointer;
-  accent-color: #4fc3f7;
+}
+
+#viewerSeek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #4fc3f7;
+  border-radius: 50%;
+  cursor: pointer;
 }
 
 /* 設定トグルボタン（モバイルのみ表示） */
@@ -1512,17 +1527,20 @@ button:disabled {
   left: 10px;
   z-index: 200;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   gap: 10px;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 10px 15px;
+  width: 140px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 10px;
   border-radius: 8px;
   font-size: 11px;
+  overflow-y: auto;
+  max-height: calc(100vh - 20px);
 }
 
 .viewer-lang-toggle {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 4px;
   align-self: flex-start;
   flex-shrink: 0;
@@ -1550,8 +1568,8 @@ button:disabled {
 }
 
 .viewer-control-group + .viewer-control-group {
-  border-left: 1px solid rgba(255, 255, 255, 0.15);
-  padding-left: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  padding-top: 8px;
 }
 
 .viewer-side-controls label {
@@ -1559,6 +1577,11 @@ button:disabled {
   font-size: 11px;
   white-space: nowrap;
   margin-bottom: 2px;
+}
+
+.viewer-control-group > label {
+  color: #90caf9;
+  font-weight: bold;
 }
 
 .viewer-control-group > div {
@@ -1582,7 +1605,22 @@ button:disabled {
 .viewer-side-controls input[type="range"] {
   width: 120px;
   height: 4px;
-  accent-color: #4fc3f7;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #333;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.viewer-side-controls input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #4fc3f7;
+  border-radius: 50%;
   cursor: pointer;
 }
 
@@ -1605,27 +1643,18 @@ button:disabled {
     font-size: 10px;
   }
 
+  .viewer-side-controls input[type="range"] {
+    height: 6px;
+  }
+
+  .viewer-side-controls input[type="range"]::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
   #credits-overlay {
     transform: scale(0.5);
     transform-origin: bottom left;
-  }
-
-  .viewer-overlay {
-    gap: 5px;
-    padding: 6px 10px;
-  }
-
-  .viewer-overlay button {
-    padding: 5px 8px;
-    font-size: 11px;
-  }
-
-  .viewer-overlay span {
-    font-size: 11px;
-  }
-
-  #viewerSeek {
-    height: 4px;
   }
 }
 
@@ -1636,18 +1665,19 @@ button:disabled {
     left: 0;
     right: 0;
     bottom: auto;
+    width: auto;
     border-radius: 0 0 8px 8px;
-    padding: 25px 10px 12px;
-    background: rgba(0, 0, 0, 0.5);
+    padding: 35px 10px 35px;
+    background: rgba(0, 0, 0, 0.4);
     flex-direction: row;
     gap: 10px;
     overflow-x: auto;
+    overflow-y: visible;
   }
 
   .viewer-control-group {
-    flex: 1;
-    min-width: 0;
-    grid-template-columns: auto 1fr;
+    flex: 0 0 auto;
+    min-width: 120px;
   }
 
   .viewer-control-group + .viewer-control-group {
@@ -1658,9 +1688,20 @@ button:disabled {
   }
 
   .viewer-side-controls input[type="range"] {
+    width: 100px;
+  }
+
+  .viewer-lang-toggle {
+    flex-direction: column;
+  }
+
+  .viewer-overlay {
+    left: 10px;
+    right: 10px;
     width: auto;
-    flex-shrink: 1;
-    min-width: 0;
+    transform: none;
+    border-radius: 8px;
+    padding-bottom: 20px;
   }
 
   #viewerSeek {
@@ -1668,45 +1709,17 @@ button:disabled {
   }
 }
 
-/* モバイル横向き：左サイドバー（キャンバスをずらす） */
+/* モバイル横向き */
 @media (max-width: 768px) and (orientation: landscape) {
-  .viewer-lang-toggle {
-    flex-direction: row;
-  }
-
   .viewer-side-controls {
-    top: 0;
     left: 0;
-    bottom: 0;
-    right: auto;
-    width: 140px;
-    flex-direction: column;
-    overflow-y: auto;
+    top: 0;
     border-radius: 0 8px 8px 0;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.5);
-  }
-
-  .viewer-control-group + .viewer-control-group {
-    border-left: none;
-    padding-left: 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    padding-top: 8px;
+    gap: 14px;
   }
 
   .viewer-control-group {
-    grid-template-columns: auto 1fr;
-  }
-
-  .viewer-side-controls input[type="range"] {
-    width: auto;
-  }
-
-  #canvas-container {
-    left: 140px !important;
-    width: calc(100vw - 140px) !important;
-    align-items: flex-start !important;
-    justify-content: flex-end !important;
+    gap: 6px;
   }
 
   .viewer-overlay {
@@ -1716,18 +1729,18 @@ button:disabled {
     transform: none;
     flex-wrap: nowrap;
     border-radius: 0;
-    padding: 6px 10px;
+    padding: 8px 10px;
     gap: 5px;
+    background: rgba(0, 0, 0, 0.4);
+    height: 40px;
+    box-sizing: border-box;
   }
 
   .viewer-overlay button {
-    padding: 4px 8px;
-    font-size: 11px;
     flex-shrink: 0;
   }
 
   .viewer-overlay span {
-    font-size: 10px;
     flex-shrink: 0;
   }
 
