@@ -457,6 +457,46 @@
           <input type="range" id="weatherSpread" min="100" max="1000" step="50" value="400">
           <span id="weatherSpreadValue">400</span>
         </div>
+        <div class="setting-category"><span>水面</span></div>
+        <div class="setting-item">
+          <label><input type="checkbox" id="waterSurfaceEnabled"> ON/OFF</label>
+        </div>
+        <div class="setting-item">
+          <label>スケール</label>
+          <input type="range" id="waterSurfaceScale" min="10" max="100" step="1" value="40">
+          <span id="waterSurfaceScaleValue">40</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="waterSurfaceSpeed" min="0.1" max="3" step="0.1" value="1">
+          <span id="waterSurfaceSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>深色</label>
+          <input type="color" id="waterSurfaceColor" value="#1a3a6a">
+          <label>浅色</label>
+          <input type="color" id="waterSurfaceColor2" value="#4a9eed">
+        </div>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="waterSurfaceOpacity" min="0" max="1" step="0.05" value="0.6">
+          <span id="waterSurfaceOpacityValue">0.6</span>
+        </div>
+        <div class="setting-item">
+          <label>コースティクス</label>
+          <input type="range" id="waterSurfaceCaustic" min="0" max="1" step="0.05" value="0.5">
+          <span id="waterSurfaceCausticValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>波高さ</label>
+          <input type="range" id="waterSurfaceWaveHeight" min="0" max="20" step="0.5" value="3">
+          <span id="waterSurfaceWaveHeightValue">3</span>
+        </div>
+        <div class="setting-item">
+          <label>高度</label>
+          <input type="range" id="waterSurfaceHeight" min="-50" max="50" step="1" value="0">
+          <span id="waterSurfaceHeightValue">0</span>
+        </div>
       </div>
     </div>
   </div>

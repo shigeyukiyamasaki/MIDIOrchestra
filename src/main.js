@@ -299,6 +299,15 @@ let weatherSpeed = 1;
 let weatherSpread = 400;
 let weatherAngle = 0;   // 傾き角度(度) 0=真下, 80=ほぼ横
 let weatherWindDir = 0;  // 風向(度) 0=+Z方向
+let waterSurfacePlane = null;
+let waterSurfaceMaterial = null;
+let waterShadowPlane = null;
+let waterSurfaceEnabled = false;
+let waterSurfaceScale = 40;
+let waterSurfaceSpeed = 1;
+let waterSurfaceColor = '#1a3a6a';
+let waterSurfaceOpacity = 0.6;
+let waterSurfaceCaustic = 0.5;
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
@@ -741,20 +750,104 @@ async function init() {
   console.log('MIDI Orchestra Visualizer initialized');
 }
 
-// クロマキー対応ShaderMaterial生成
-function createChromaKeyMaterial(opacity = 0.8) {
+// 水面の波計算GLSL（vertex/fragment共通）
+const waterWaveGLSL = `
+  vec2 wRot(vec2 p, float a) {
+    float c = cos(a), s = sin(a);
+    return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+  }
+  float calcWave(vec2 uv, float time, float scale) {
+    uv *= scale;
+    vec2 uv1 = wRot(uv, 0.4);
+    vec2 uv2 = wRot(uv, 1.2);
+    vec2 uv3 = wRot(uv, 2.5);
+    vec2 uv4 = wRot(uv, 3.7);
+    vec2 uv5 = wRot(uv, 5.0);
+    float w1 = sin(uv1.x * 0.8 + time * 1.2) * sin(uv1.y * 0.7 + time * 0.8);
+    float w2 = sin(uv2.x * 1.3 - time * 0.9) * sin(uv2.y * 0.9 + time * 1.1) * 0.8;
+    float w3 = sin(uv3.x * 0.6 + time * 1.4) * sin(uv3.y * 1.1 - time * 0.7) * 0.6;
+    float w4 = sin(uv4.x * 1.7 + time * 0.5) * sin(uv4.y * 0.5 + time * 1.3) * 0.5;
+    float w5 = sin(uv5.x * 1.0 - time * 1.0) * sin(uv5.y * 1.4 + time * 0.6) * 0.4;
+    return clamp((w1 + w2 + w3 + w4 + w5) * 0.2 + 0.5, 0.0, 1.0);
+  }
+`;
+
+// 水面シェーダーマテリアル生成
+function createWaterSurfaceMaterial() {
   return new THREE.ShaderMaterial({
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
     uniforms: {
-      map: { value: null },
-      chromaKeyColor: { value: new THREE.Color(0x00ff00) },
-      chromaKeyThreshold: { value: 0 },
-      opacity: { value: opacity },
-      warmTint: { value: 0.0 },
+      time: { value: 0 },
+      scale: { value: waterSurfaceScale },
+      waveHeight: { value: 3.0 },
+      colorDeep: { value: new THREE.Color(waterSurfaceColor) },
+      colorShallow: { value: new THREE.Color('#4a9eed') },
+      opacity: { value: waterSurfaceOpacity },
+      causticIntensity: { value: waterSurfaceCaustic },
     },
     vertexShader: `
+      uniform float time;
+      uniform float scale;
+      uniform float waveHeight;
       varying vec2 vUv;
+      varying float vWave;
+      ${waterWaveGLSL}
       void main() {
         vUv = uv;
+        vWave = calcWave(uv, time, scale);
+        vec3 pos = position;
+        pos.z += (vWave - 0.5) * waveHeight;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 colorDeep;
+      uniform vec3 colorShallow;
+      uniform float opacity;
+      uniform float causticIntensity;
+      varying vec2 vUv;
+      varying float vWave;
+
+      void main() {
+        float combined = vWave;
+
+        // 波の深浅で2色を混合
+        vec3 color = mix(colorDeep, colorShallow, combined);
+
+        // コースティクス（光の集光パターン）
+        float caustic = pow(combined, 3.0 + (1.0 - causticIntensity) * 5.0);
+        color += vec3(caustic * causticIntensity * 2.0);
+
+        gl_FragColor = vec4(color, opacity);
+      }
+    `
+  });
+}
+
+// クロマキー対応ShaderMaterial生成
+function createChromaKeyMaterial(opacity = 0.8) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.lights,
+      {
+        map: { value: null },
+        chromaKeyColor: { value: new THREE.Color(0x00ff00) },
+        chromaKeyThreshold: { value: 0 },
+        opacity: { value: opacity },
+        warmTint: { value: 0.0 },
+        receiveShadowFlag: { value: 0.0 },
+      }
+    ]),
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec4 vShadowCoord;
+      uniform mat4 directionalShadowMatrix[1];
+      void main() {
+        vUv = uv;
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vShadowCoord = directionalShadowMatrix[0] * worldPos;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
@@ -764,7 +857,20 @@ function createChromaKeyMaterial(opacity = 0.8) {
       uniform float chromaKeyThreshold;
       uniform float opacity;
       uniform float warmTint;
+      uniform float receiveShadowFlag;
+      uniform sampler2D directionalShadowMap[1];
       varying vec2 vUv;
+      varying vec4 vShadowCoord;
+
+      float getShadow() {
+        vec3 coord = vShadowCoord.xyz / vShadowCoord.w;
+        coord = coord * 0.5 + 0.5;
+        if (coord.x < 0.0 || coord.x > 1.0 || coord.y < 0.0 || coord.y > 1.0 || coord.z > 1.0) return 1.0;
+        float depth = texture2D(directionalShadowMap[0], coord.xy).r;
+        float bias = 0.003;
+        return (coord.z - bias > depth) ? 0.5 : 1.0;
+      }
+
       void main() {
         vec4 texColor = texture2D(map, vUv);
         float dist = distance(texColor.rgb, chromaKeyColor);
@@ -777,6 +883,10 @@ function createChromaKeyMaterial(opacity = 0.8) {
         float lum = dot(col, vec3(0.299, 0.587, 0.114));
         col += col * warmTint * 0.4 * (0.5 + lum);
         col = min(col, 1.0);
+        // 影の適用
+        if (receiveShadowFlag > 0.5) {
+          col *= getShadow();
+        }
         float alpha = texColor.a * opacity;
         if (alpha < 0.01) discard;
         gl_FragColor = vec4(col, alpha);
@@ -785,7 +895,9 @@ function createChromaKeyMaterial(opacity = 0.8) {
     transparent: true,
     side: THREE.DoubleSide,
     depthWrite: false,
+    lights: true,
   });
+  return mat;
 }
 
 // 天候パーティクルシステムの構築・再構築
@@ -1199,8 +1311,13 @@ function setupThreeJS() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
-  // EffectComposer（ブルーム用）
-  composer = new THREE.EffectComposer(renderer);
+  // EffectComposer（ブルーム用） - ステンシルバッファ付きレンダーターゲット
+  const composerRT = new THREE.WebGLRenderTarget(
+    width * renderer.getPixelRatio(),
+    height * renderer.getPixelRatio(),
+    { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, stencilBuffer: true }
+  );
+  composer = new THREE.EffectComposer(renderer, composerRT);
   const renderPass = new THREE.RenderPass(scene, camera);
   composer.addPass(renderPass);
   bloomPass = new THREE.UnrealBloomPass(
@@ -1350,12 +1467,42 @@ function setupThreeJS() {
   const floorGeometry = new THREE.PlaneGeometry(300, 300, 64, 64);
   const floorMaterial = createChromaKeyMaterial(0.8);
   floorMaterial.side = THREE.FrontSide; // 裏面を非表示
+  floorMaterial.shadowSide = THREE.DoubleSide; // 影パスでは両面描画
+  // ステンシル: 不透明ピクセル（discard されない箇所）にステンシル=1を書く
+  floorMaterial.stencilWrite = true;
+  floorMaterial.stencilRef = 1;
+  floorMaterial.stencilFunc = THREE.AlwaysStencilFunc;
+  floorMaterial.stencilZPass = THREE.ReplaceStencilOp;
   floorPlane = new THREE.Mesh(floorGeometry, floorMaterial);
   floorPlane.rotation.x = -Math.PI / 2; // 水平に寝かせる
   floorPlane.position.y = -50; // グリッドと同じ高さ
   floorPlane.renderOrder = 0;
   floorPlane.visible = false; // 画像がロードされるまで非表示
+  floorPlane.castShadow = true;
+  floorPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(floorPlane);
+
+  // 水面プレーン（floorPlaneの少し上に配置）
+  waterSurfaceMaterial = createWaterSurfaceMaterial();
+  waterSurfacePlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(500, 500, 128, 128),
+    waterSurfaceMaterial
+  );
+  waterSurfacePlane.rotation.x = -Math.PI / 2;
+  waterSurfacePlane.position.y = -49.5;
+  waterSurfacePlane.visible = false;
+  scene.add(waterSurfacePlane);
+
+  // 水面用の影受けプレーン（既存shadowPlaneとは独立、影パネルと連動）
+  waterShadowPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(500, 500),
+    new THREE.ShadowMaterial({ opacity: 0.3, depthWrite: false })
+  );
+  waterShadowPlane.rotation.x = -Math.PI / 2;
+  waterShadowPlane.position.y = -49.4;
+  waterShadowPlane.receiveShadow = true;
+  waterShadowPlane.visible = false;
+  scene.add(waterShadowPlane);
 
   // 雲の影メッシュ（床面max10000対応、曲率用256x256セグメント）
   const cloudGeom = new THREE.PlaneGeometry(10000, 10000, 256, 256);
@@ -1431,6 +1578,15 @@ function setupThreeJS() {
     polygonOffset: true,
     polygonOffsetFactor: -6,
     polygonOffsetUnit: -6,
+    // ステンシル: 床の不透明部分（ステンシル=1）のみ影を描画
+    // stencilWrite=true でテストを有効化、writeMask=0x00 で書き込みは防止
+    stencilWrite: true,
+    stencilWriteMask: 0x00,
+    stencilRef: 1,
+    stencilFunc: THREE.EqualStencilFunc,
+    stencilFail: THREE.KeepStencilOp,
+    stencilZFail: THREE.KeepStencilOp,
+    stencilZPass: THREE.KeepStencilOp,
   });
   shadowPlane = new THREE.Mesh(shadowGeom, shadowMat);
   shadowPlane.rotation.x = -Math.PI / 2;
@@ -2615,16 +2771,14 @@ function setupEventListeners() {
   document.getElementById('shadowEnabled')?.addEventListener('change', (e) => {
     shadowEnabled = e.target.checked;
     if (shadowPlane) shadowPlane.visible = shadowEnabled;
+    if (waterShadowPlane) waterShadowPlane.visible = shadowEnabled && waterSurfaceEnabled;
   });
   // 影の環境（屋内/屋外）
   document.querySelectorAll('input[name="shadowEnvironment"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
-      if (!shadowPlane) return;
-      if (e.target.value === 'outdoor') {
-        shadowPlane.material.color.setRGB(20 / 255, 30 / 255, 70 / 255);
-      } else {
-        shadowPlane.material.color.setRGB(0, 0, 0);
-      }
+      const rgb = e.target.value === 'outdoor' ? [20 / 255, 30 / 255, 70 / 255] : [0, 0, 0];
+      if (shadowPlane) shadowPlane.material.color.setRGB(...rgb);
+      if (waterShadowPlane) waterShadowPlane.material.color.setRGB(...rgb);
     });
   });
   // 影の濃さ
@@ -2632,6 +2786,7 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('shadowOpacityValue').textContent = v;
     if (shadowPlane) shadowPlane.material.opacity = v;
+    if (waterShadowPlane) waterShadowPlane.material.opacity = v;
   });
   // ノートの影
   document.getElementById('noteShadowEnabled')?.addEventListener('change', (e) => {
@@ -2671,6 +2826,54 @@ function setupEventListeners() {
     document.getElementById('weatherSpreadValue').textContent = v;
     weatherSpread = v;
     buildWeatherParticles();
+  });
+
+  // 水面パラメータ
+  document.getElementById('waterSurfaceEnabled')?.addEventListener('change', (e) => {
+    waterSurfaceEnabled = e.target.checked;
+    if (waterSurfacePlane) waterSurfacePlane.visible = waterSurfaceEnabled;
+    if (waterShadowPlane) waterShadowPlane.visible = waterSurfaceEnabled && shadowEnabled;
+  });
+  document.getElementById('waterSurfaceScale')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSurfaceScaleValue').textContent = v;
+    waterSurfaceScale = v;
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.scale.value = v;
+  });
+  document.getElementById('waterSurfaceSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSurfaceSpeedValue').textContent = v;
+    waterSurfaceSpeed = v;
+  });
+  document.getElementById('waterSurfaceColor')?.addEventListener('input', (e) => {
+    waterSurfaceColor = e.target.value;
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.colorDeep.value.set(e.target.value);
+  });
+  document.getElementById('waterSurfaceColor2')?.addEventListener('input', (e) => {
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.colorShallow.value.set(e.target.value);
+  });
+  document.getElementById('waterSurfaceOpacity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSurfaceOpacityValue').textContent = v;
+    waterSurfaceOpacity = v;
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.opacity.value = v;
+  });
+  document.getElementById('waterSurfaceCaustic')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSurfaceCausticValue').textContent = v;
+    waterSurfaceCaustic = v;
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.causticIntensity.value = v;
+  });
+  document.getElementById('waterSurfaceWaveHeight')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSurfaceWaveHeightValue').textContent = v;
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.waveHeight.value = v;
+  });
+  document.getElementById('waterSurfaceHeight')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSurfaceHeightValue').textContent = v;
+    if (waterSurfacePlane) waterSurfacePlane.position.y = -50 + v;
+    if (waterShadowPlane) waterShadowPlane.position.y = -50 + v + 0.1;
   });
 
   // ============================================
@@ -5645,6 +5848,7 @@ function loadFloorImageFile(file) {
 
       // ShaderMaterialのuniformsにテクスチャを適用
       floorPlane.material.uniforms.map.value = floorTexture;
+      syncDepthMaterialUniforms(floorPlane);
       floorPlane.visible = true;
       floorIsVideo = false;
 
@@ -5687,6 +5891,7 @@ function loadFloorVideo(file) {
     floorAspect = floorVideo.videoWidth / floorVideo.videoHeight;
 
     floorPlane.material.uniforms.map.value = floorTexture;
+    syncDepthMaterialUniforms(floorPlane);
     floorPlane.visible = true;
     floorIsVideo = true;
 
@@ -5817,6 +6022,7 @@ function clearFloorImage() {
   clearFloorMedia();
 
   floorPlane.material.uniforms.map.value = null;
+  syncDepthMaterialUniforms(floorPlane);
   floorPlane.visible = false;
 
   // アスペクト比をリセット
@@ -7151,6 +7357,11 @@ function animate() {
   // 天候パーティクル更新
   updateWeatherParticles();
 
+  // 水面アニメーション更新
+  if (waterSurfacePlane && waterSurfacePlane.visible) {
+    waterSurfaceMaterial.uniforms.time.value += 0.016 * waterSurfaceSpeed;
+  }
+
   // 雲の影UVスクロール
   if (cloudShadowPlane && cloudShadowEnabled && cloudShadowIntensity > 0) {
     cloudShadowPlane.visible = true;
@@ -7749,6 +7960,9 @@ window.exportHelpers = {
     updateRipples(dt);
     updatePopIcons(dt);
     updateWeatherParticles();
+    if (waterSurfacePlane && waterSurfacePlane.visible) {
+      waterSurfaceMaterial.uniforms.time.value += 0.016 * waterSurfaceSpeed;
+    }
     if (cloudShadowPlane && cloudShadowEnabled && cloudShadowIntensity > 0) {
       cloudShadowPlane.visible = true;
       cloudShadowPlane.material.opacity = cloudShadowIntensity;

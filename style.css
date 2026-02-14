@@ -1528,11 +1528,9 @@ button:disabled {
   z-index: 200;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   width: 140px;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 10px;
-  border-radius: 8px;
+  padding: 0;
   font-size: 11px;
   overflow-y: auto;
   max-height: calc(100vh - 20px);
@@ -1544,6 +1542,9 @@ button:disabled {
   gap: 4px;
   align-self: flex-start;
   flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 8px;
+  border-radius: 6px;
 }
 
 .viewer-lang-toggle span {
@@ -1565,11 +1566,13 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 8px;
+  border-radius: 6px;
 }
 
 .viewer-control-group + .viewer-control-group {
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  padding-top: 8px;
+  border-top: none;
 }
 
 .viewer-side-controls label {
@@ -1678,6 +1681,9 @@ button:disabled {
   .viewer-control-group {
     flex: 0 0 auto;
     min-width: 120px;
+    background: none;
+    padding: 0;
+    border-radius: 0;
   }
 
   .viewer-control-group + .viewer-control-group {
@@ -1685,6 +1691,11 @@ button:disabled {
     border-left: 1px solid rgba(255, 255, 255, 0.15);
     padding-top: 0;
     padding-left: 10px;
+  }
+
+  .viewer-lang-toggle {
+    background: none;
+    padding: 0;
   }
 
   .viewer-side-controls input[type="range"] {
@@ -1716,10 +1727,20 @@ button:disabled {
     top: 0;
     border-radius: 0 8px 8px 0;
     gap: 14px;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 10px;
   }
 
   .viewer-control-group {
     gap: 6px;
+    background: none;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  .viewer-lang-toggle {
+    background: none;
+    padding: 0;
   }
 
   .viewer-overlay {
