@@ -368,7 +368,7 @@ button:disabled {
   position: fixed;
   top: 100px;
   right: 0;
-  width: 540px;
+  width: 750px;
   bottom: 0;
   display: flex;
   z-index: 50;
@@ -378,7 +378,8 @@ button:disabled {
 
 /* 設定パネル共通（列） */
 .settings-column {
-  width: 180px;
+  flex: 1;
+  min-width: 0;
   height: 100%;
   background: rgba(0, 0, 0, 0.7);
   padding: 15px;
@@ -391,7 +392,7 @@ button:disabled {
   position: fixed;
   top: 100px;
   left: 310px;
-  right: 540px;
+  right: 750px;
   height: 320px;
   background: rgba(0, 0, 0, 0.8);
   z-index: 40;
@@ -673,7 +674,7 @@ button:disabled {
   position: fixed;
   top: 420px;
   left: 310px;
-  right: 540px;
+  right: 750px;
   bottom: 330px;
   display: flex;
   align-items: center;
@@ -744,7 +745,7 @@ button:disabled {
   position: fixed;
   bottom: 0;
   left: 310px;
-  right: 540px;
+  right: 750px;
   max-height: 330px;
   background: rgba(0, 0, 0, 0.8);
   display: flex;

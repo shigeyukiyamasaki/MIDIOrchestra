@@ -357,6 +357,45 @@
             <span id="bloomThresholdMaxVal">0.8</span>
           </div>
         </div>
+        <div class="setting-category"><span>光源</span></div>
+        <div class="setting-item">
+          <label>X</label>
+          <input type="range" id="sunPosX" min="-200" max="200" step="5" value="50">
+          <span id="sunPosXValue">50</span>
+        </div>
+        <div class="setting-item">
+          <label>Y</label>
+          <input type="range" id="sunPosY" min="0" max="300" step="5" value="100">
+          <span id="sunPosYValue">100</span>
+        </div>
+        <div class="setting-item">
+          <label>Z</label>
+          <input type="range" id="sunPosZ" min="-200" max="200" step="5" value="50">
+          <span id="sunPosZValue">50</span>
+        </div>
+        <div class="setting-item">
+          <label><input type="checkbox" id="sunLightColorEnabled"> 色</label>
+          <input type="color" id="sunLightColor" value="#ffffff">
+        </div>
+        <div class="setting-item">
+          <label>強度</label>
+          <input type="range" id="sunLightIntensity" min="0" max="3" step="0.05" value="1">
+          <span id="sunLightIntensityValue">1</span>
+        </div>
+        <div class="setting-category"><span>影</span><input type="checkbox" id="shadowEnabled"></div>
+        <div class="setting-item">
+          <label>環境</label>
+          <label><input type="radio" name="shadowEnvironment" value="indoor" checked> 屋内</label>
+          <label><input type="radio" name="shadowEnvironment" value="outdoor"> 屋外</label>
+        </div>
+        <div class="setting-item">
+          <label>濃さ</label>
+          <input type="range" id="shadowOpacity" min="0" max="1" step="0.05" value="0.3">
+          <span id="shadowOpacityValue">0.3</span>
+        </div>
+        <div class="setting-item">
+          <label><input type="checkbox" id="noteShadowEnabled"> ノートの影</label>
+        </div>
         <div class="setting-category"><span>レンズフレア</span><input type="checkbox" id="flareEnabled" checked></div>
         <div class="setting-item">
           <label>強度</label>
@@ -367,21 +406,6 @@
           <label>にじみ</label>
           <input type="range" id="lensFlareBlur" min="0" max="3" step="0.05" value="0">
           <span id="lensFlareBlurValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>X位置</label>
-          <input type="range" id="sunPosX" min="-200" max="200" step="5" value="50">
-          <span id="sunPosXValue">50</span>
-        </div>
-        <div class="setting-item">
-          <label>Y位置</label>
-          <input type="range" id="sunPosY" min="0" max="300" step="5" value="100">
-          <span id="sunPosYValue">100</span>
-        </div>
-        <div class="setting-item">
-          <label>Z位置</label>
-          <input type="range" id="sunPosZ" min="-200" max="200" step="5" value="50">
-          <span id="sunPosZValue">50</span>
         </div>
         <div class="setting-category"><span>雲の影</span><input type="checkbox" id="cloudShadowEnabled" checked></div>
         <div class="setting-item">
@@ -408,20 +432,6 @@
           <label>日向コントラスト</label>
           <input type="range" id="cloudShadowContrast" min="0" max="3" step="0.05" value="0">
           <span id="cloudShadowContrastValue">0</span>
-        </div>
-        <div class="setting-category"><span>影</span><input type="checkbox" id="shadowEnabled"></div>
-        <div class="setting-item">
-          <label>環境</label>
-          <label><input type="radio" name="shadowEnvironment" value="indoor" checked> 屋内</label>
-          <label><input type="radio" name="shadowEnvironment" value="outdoor"> 屋外</label>
-        </div>
-        <div class="setting-item">
-          <label>濃さ</label>
-          <input type="range" id="shadowOpacity" min="0" max="1" step="0.05" value="0.3">
-          <span id="shadowOpacityValue">0.3</span>
-        </div>
-        <div class="setting-item">
-          <label><input type="checkbox" id="noteShadowEnabled"> ノートの影</label>
         </div>
         <div class="setting-category"><span>天候</span></div>
         <div class="setting-item">
@@ -457,6 +467,12 @@
           <input type="range" id="weatherSpread" min="100" max="1000" step="50" value="400">
           <span id="weatherSpreadValue">400</span>
         </div>
+      </div>
+    </div>
+    <!-- 地形エフェクトパネル（右列） -->
+    <div id="terrain-panel" class="settings-column">
+      <h3>地形エフェクト</h3>
+      <div id="terrain-list">
         <div class="setting-category"><span>水面</span></div>
         <div class="setting-item">
           <label><input type="checkbox" id="waterSurfaceEnabled"> ON/OFF</label>

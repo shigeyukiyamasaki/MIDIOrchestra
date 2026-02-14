@@ -646,6 +646,7 @@ function guessInstrument(trackName) {
 async function init() {
   setupThreeJS();
   setupEventListeners();
+  initColorPickerHueFix();
   await preloadCustomIcons(); // カスタムアイコンを事前読み込み
   animate();
 
@@ -786,6 +787,7 @@ function createWaterSurfaceMaterial() {
       colorShallow: { value: new THREE.Color('#4a9eed') },
       opacity: { value: waterSurfaceOpacity },
       causticIntensity: { value: waterSurfaceCaustic },
+      lightColor: { value: new THREE.Color(0xffffff) },
     },
     vertexShader: `
       uniform float time;
@@ -807,6 +809,7 @@ function createWaterSurfaceMaterial() {
       uniform vec3 colorShallow;
       uniform float opacity;
       uniform float causticIntensity;
+      uniform vec3 lightColor;
       varying vec2 vUv;
       varying float vWave;
 
@@ -819,6 +822,9 @@ function createWaterSurfaceMaterial() {
         // コースティクス（光の集光パターン）
         float caustic = pow(combined, 3.0 + (1.0 - causticIntensity) * 5.0);
         color += vec3(caustic * causticIntensity * 2.0);
+
+        // 光源色の適用
+        color *= lightColor;
 
         gl_FragColor = vec4(color, opacity);
       }
@@ -838,6 +844,7 @@ function createChromaKeyMaterial(opacity = 0.8) {
         opacity: { value: opacity },
         warmTint: { value: 0.0 },
         receiveShadowFlag: { value: 0.0 },
+        lightColor: { value: new THREE.Color(0xffffff) },
       }
     ]),
     vertexShader: `
@@ -858,6 +865,7 @@ function createChromaKeyMaterial(opacity = 0.8) {
       uniform float opacity;
       uniform float warmTint;
       uniform float receiveShadowFlag;
+      uniform vec3 lightColor;
       uniform sampler2D directionalShadowMap[1];
       varying vec2 vUv;
       varying vec4 vShadowCoord;
@@ -887,6 +895,8 @@ function createChromaKeyMaterial(opacity = 0.8) {
         if (receiveShadowFlag > 0.5) {
           col *= getShadow();
         }
+        // 光源色の適用
+        col *= lightColor;
         float alpha = texColor.a * opacity;
         if (alpha < 0.01) discard;
         gl_FragColor = vec4(col, alpha);
@@ -1018,6 +1028,13 @@ function buildWeatherParticles() {
   }
 
   weatherParticles.frustumCulled = false;
+  // 現在の光源色・強度を反映
+  if (sunLight && weatherParticles.material.color) {
+    const scale = sunLight.intensity;
+    const tint = new THREE.Color().copy(sunLight.color).multiplyScalar(scale);
+    const base = weatherParticles.geometry._isRain ? new THREE.Color(0xaaccff) : new THREE.Color(0xffffff);
+    weatherParticles.material.color.copy(base).multiply(tint);
+  }
   scene.add(weatherParticles);
 }
 
@@ -1364,7 +1381,7 @@ function setupThreeJS() {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
   scene.add(ambientLight);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
   directionalLight.position.set(50, 100, 50);
   scene.add(directionalLight);
   sunLight = directionalLight;
@@ -1710,6 +1727,52 @@ function updateCreditsPosition() {
   const isMobileLandscape = window.innerHeight < 500 && window.innerWidth > window.innerHeight;
   const extraBottom = isMobileLandscape ? 40 : 0;
   overlay.style.bottom = (canvasBottom + 20 + extraBottom) + 'px';
+}
+
+// ============================================
+// カラーピッカー色相保持（白で色相が失われる問題の回避）
+// ============================================
+function initColorPickerHueFix() {
+  function hexToHSL(hex) {
+    const r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
+    const max = Math.max(r,g,b), min = Math.min(r,g,b);
+    let h = 0, s = 0, l = (max+min)/2;
+    if (max !== min) {
+      const d = max-min;
+      s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+      if (max===r) h = ((g-b)/d+(g<b?6:0))/6;
+      else if (max===g) h = ((b-r)/d+2)/6;
+      else h = ((r-g)/d+4)/6;
+    }
+    return { h: h*360, s: s*100, l: l*100 };
+  }
+  function hslToHex(h, s, l) {
+    s /= 100; l /= 100;
+    const a = s * Math.min(l, 1-l);
+    const f = n => {
+      const k = (n + h/30) % 12;
+      const c = l - a * Math.max(Math.min(k-3, 9-k, 1), -1);
+      return Math.round(255*c).toString(16).padStart(2, '0');
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+  }
+  document.querySelectorAll('input[type="color"]').forEach(input => {
+    // 初期値から色相を取得
+    const initHSL = hexToHSL(input.value);
+    input._lastHue = initHSL.s > 1 ? initHSL.h : 0;
+    // 色変更時に色相を記憶
+    input.addEventListener('input', () => {
+      const { h, s } = hexToHSL(input.value);
+      if (s > 1) input._lastHue = h;
+    });
+    // ピッカーを開く前に白を近似白+色相に置換
+    input.addEventListener('click', function() {
+      const { s, l } = hexToHSL(this.value);
+      if (s < 1 && l > 99) {
+        this.value = hslToHex(this._lastHue, 2, 99);
+      }
+    });
+  });
 }
 
 // ============================================
@@ -2766,6 +2829,48 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('sunPosZValue').textContent = v;
     if (sunLight) sunLight.position.z = v;
+  });
+  // 光源色・強度をShaderMaterial/パーティクルに一括反映
+  let _sunLightColorValue = '#ffffff'; // カラーピッカーの値を保持
+  function syncLightToMaterials() {
+    if (!sunLight) return;
+    const colorEnabled = document.getElementById('sunLightColorEnabled')?.checked;
+    const sliderIntensity = parseFloat(document.getElementById('sunLightIntensity')?.value ?? 1);
+    if (colorEnabled) {
+      sunLight.color.set(_sunLightColorValue);
+      sunLight.intensity = sliderIntensity;
+    } else {
+      sunLight.color.set(0xffffff);
+      sunLight.intensity = 1.0;
+    }
+    const tint = new THREE.Color().copy(sunLight.color).multiplyScalar(sunLight.intensity);
+    // chromaKeyMaterial（床・壁・スカイドーム）
+    [floorPlane, leftWallPlane, rightWallPlane, centerWallPlane, backWallPlane, skyDome, innerSkyDome].forEach(p => {
+      if (p?.material?.uniforms?.lightColor) p.material.uniforms.lightColor.value.copy(tint);
+    });
+    // 水面
+    if (waterSurfaceMaterial?.uniforms?.lightColor) waterSurfaceMaterial.uniforms.lightColor.value.copy(tint);
+    // 天候パーティクル
+    if (weatherParticles?.material?.color) {
+      const base = weatherParticles.geometry._isRain ? new THREE.Color(0xaaccff) : new THREE.Color(0xffffff);
+      weatherParticles.material.color.copy(base).multiply(tint);
+    }
+  }
+  // 光源色ON/OFF
+  document.getElementById('sunLightColorEnabled')?.addEventListener('change', () => {
+    syncLightToMaterials();
+  });
+  // 光源色
+  document.getElementById('sunLightColor')?.addEventListener('input', (e) => {
+    _sunLightColorValue = e.target.value;
+    syncLightToMaterials();
+  });
+  // 光源強度
+  document.getElementById('sunLightIntensity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('sunLightIntensityValue').textContent = v;
+    if (sunLight) sunLight.intensity = v;
+    syncLightToMaterials();
   });
   // 影ON/OFF
   document.getElementById('shadowEnabled')?.addEventListener('change', (e) => {
