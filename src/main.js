@@ -301,6 +301,8 @@ let weatherAngle = 0;   // 傾き角度(度) 0=真下, 80=ほぼ横
 let weatherWindDir = 0;  // 風向(度) 0=+Z方向
 let waterSurfacePlane = null;
 let waterSurfaceMaterial = null;
+let waterTintPlane = null;
+let waterTintMaterial = null;
 let waterShadowPlane = null;
 let waterSurfaceEnabled = false;
 let waterSurfaceScale = 40;
@@ -773,152 +775,212 @@ const waterWaveGLSL = `
   }
 `;
 
-// 水面シェーダーマテリアル生成
+// 水面エフェクト共通フラグメントシェーダーコード
+const waterEffectsGLSL = `
+  // スパークル用ハッシュ関数
+  float hash(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
+
+  // コースティクス計算
+  float calcCaustic(float combined, float causticIntensity, vec3 lightColor) {
+    float caustic = pow(combined, 3.0 + (1.0 - causticIntensity) * 5.0);
+    return caustic * causticIntensity * 2.0;
+  }
+
+  // サンパス・スパークル計算（返り値: 加算する明るさ色）
+  vec3 calcSunEffects(vec2 vUv, vec3 vWorldPos, float time, float scale, float waveHeight, float planeSize,
+                      vec3 sunPosition, vec3 camPosition, float sunPathIntensity, float sunPathSharpness,
+                      vec3 sunPathColor, float sparkleIntensity, float sparkleRange, vec3 lightColor) {
+    vec3 effects = vec3(0.0);
+    if (sunPathIntensity <= 0.0) return effects;
+
+    float eps = 1.0 / scale;
+    float hL = calcWave(vUv - vec2(eps, 0.0), time, scale);
+    float hR = calcWave(vUv + vec2(eps, 0.0), time, scale);
+    float hD = calcWave(vUv - vec2(0.0, eps), time, scale);
+    float hU = calcWave(vUv + vec2(0.0, eps), time, scale);
+    float worldEps = eps * planeSize;
+    float slopeX = (hR - hL) * waveHeight / (2.0 * worldEps);
+    float slopeZ = (hD - hU) * waveHeight / (2.0 * worldEps);
+    vec3 worldNormal = normalize(vec3(-slopeX, 1.0, -slopeZ));
+
+    vec3 lightDir = normalize(sunPosition);
+    vec3 viewDir = normalize(camPosition - vWorldPos);
+    vec3 halfVec = normalize(lightDir + viewDir);
+    float spec = pow(max(dot(worldNormal, halfVec), 0.0), sunPathSharpness);
+
+    float fresnel = pow(1.0 - max(dot(worldNormal, viewDir), 0.0), 3.0);
+    spec *= (0.3 + 0.7 * fresnel);
+
+    effects += sunPathColor * spec * sunPathIntensity * lightColor;
+
+    // スパークル
+    if (sparkleIntensity > 0.0) {
+      float sparkleSharp = mix(sunPathSharpness, sunPathSharpness * 0.1, sparkleRange);
+      float specArea = pow(max(dot(worldNormal, halfVec), 0.0), sparkleSharp);
+      float sparkleArea = specArea * (0.3 + 0.7 * fresnel);
+
+      vec2 sparkleUv = vUv * scale * 8.0;
+      vec2 cell = floor(sparkleUv);
+      vec2 local = fract(sparkleUv);
+
+      vec2 starPos = vec2(hash(cell), hash(cell + 71.7));
+      vec2 delta = local - starPos;
+      float dist = length(delta);
+      float size = 0.06 + hash(cell + 99.3) * 0.2;
+
+      float angle = atan(delta.y, delta.x) + hash(cell + 42.0) * 6.2832;
+      float rays = pow(abs(cos(angle * 2.0)), 4.0);
+      float starShape = mix(size * 0.3, size, rays);
+      float sparkle = smoothstep(starShape, starShape * 0.15, dist);
+
+      float phase = hash(cell + 13.37) * 6.2832;
+      float speed = 1.5 + hash(cell + 57.1) * 3.0;
+      float twinkle = pow(max(sin(time * speed + phase), 0.0), 4.0);
+
+      sparkle *= twinkle * sparkleArea * sparkleIntensity * 3.0;
+      effects += sunPathColor * sparkle * lightColor;
+    }
+
+    return effects;
+  }
+`;
+
+// 水面共通uniforms生成
+function createWaterUniforms() {
+  return {
+    time: { value: 0 },
+    scale: { value: waterSurfaceScale },
+    waveHeight: { value: 3.0 },
+    colorDeep: { value: new THREE.Color(waterSurfaceColor) },
+    colorShallow: { value: new THREE.Color('#4a9eed') },
+    opacity: { value: waterSurfaceOpacity },
+    causticIntensity: { value: waterSurfaceCaustic },
+    lightColor: { value: new THREE.Color(0xffffff) },
+    planeSize: { value: 500.0 },
+    sunPosition: { value: new THREE.Vector3(50, 100, 50) },
+    camPosition: { value: new THREE.Vector3(0, 50, 200) },
+    sunPathIntensity: { value: 0.0 },
+    sunPathSharpness: { value: 32.0 },
+    sunPathColor: { value: new THREE.Color(0xffffff) },
+    sparkleIntensity: { value: 0.0 },
+    sparkleRange: { value: 0.5 },
+  };
+}
+
+// 水面共通頂点シェーダー
+const waterVertexShader = `
+  uniform float time;
+  uniform float scale;
+  uniform float waveHeight;
+  varying vec2 vUv;
+  varying float vWave;
+  varying vec3 vWorldPos;
+  ${waterWaveGLSL}
+  void main() {
+    vUv = uv;
+    vWave = calcWave(uv, time, scale);
+    vec3 pos = position;
+    pos.z += (vWave - 0.5) * waveHeight;
+    vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+    vWorldPos = worldPos.xyz;
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+// 水面共通フラグメントuniform宣言
+const waterFragmentUniforms = `
+  uniform vec3 colorDeep;
+  uniform vec3 colorShallow;
+  uniform float opacity;
+  uniform float causticIntensity;
+  uniform vec3 lightColor;
+  uniform vec3 sunPosition;
+  uniform vec3 camPosition;
+  uniform float sunPathIntensity;
+  uniform float sunPathSharpness;
+  uniform vec3 sunPathColor;
+  uniform float sparkleIntensity;
+  uniform float sparkleRange;
+  uniform float time;
+  uniform float scale;
+  uniform float waveHeight;
+  uniform float planeSize;
+  varying vec2 vUv;
+  varying float vWave;
+  varying vec3 vWorldPos;
+  ${waterWaveGLSL}
+  ${waterEffectsGLSL}
+`;
+
+// 乗算ティントレイヤー: 不透明度が低いとき背景を水色に染める
+function createWaterTintMaterial() {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.DstColorFactor,
+    blendDst: THREE.ZeroFactor,
+    uniforms: createWaterUniforms(),
+    vertexShader: waterVertexShader,
+    fragmentShader: `
+      ${waterFragmentUniforms}
+      void main() {
+        float combined = vWave;
+        vec3 baseColor = mix(colorDeep, colorShallow, combined) * lightColor;
+
+        // opacity=1: 白 → 乗算でも背景に影響なし（サーフェス層が覆う）
+        // opacity=0: baseColor → 背景を水色に染める（透き通った水）
+        vec3 tint = mix(baseColor, vec3(1.0), opacity);
+
+        // コースティクス（不透明度が低いほど見える）
+        float causticVal = calcCaustic(combined, causticIntensity, lightColor);
+        tint += vec3(causticVal) * lightColor * (1.0 - opacity);
+
+        // サンパス・スパークル（不透明度が低いほど見える）
+        vec3 sunEffects = calcSunEffects(vUv, vWorldPos, time, scale, waveHeight, planeSize,
+                                         sunPosition, camPosition, sunPathIntensity, sunPathSharpness,
+                                         sunPathColor, sparkleIntensity, sparkleRange, lightColor);
+        tint += sunEffects * (1.0 - opacity);
+
+        gl_FragColor = vec4(tint, 1.0);
+      }
+    `
+  });
+}
+
+// 水面サーフェスレイヤー: 不透明度が高いとき通常の水面として表示
 function createWaterSurfaceMaterial() {
   return new THREE.ShaderMaterial({
     transparent: true,
     side: THREE.DoubleSide,
     depthWrite: false,
-    uniforms: {
-      time: { value: 0 },
-      scale: { value: waterSurfaceScale },
-      waveHeight: { value: 3.0 },
-      colorDeep: { value: new THREE.Color(waterSurfaceColor) },
-      colorShallow: { value: new THREE.Color('#4a9eed') },
-      opacity: { value: waterSurfaceOpacity },
-      causticIntensity: { value: waterSurfaceCaustic },
-      lightColor: { value: new THREE.Color(0xffffff) },
-      planeSize: { value: 500.0 },
-      sunPosition: { value: new THREE.Vector3(50, 100, 50) },
-      camPosition: { value: new THREE.Vector3(0, 50, 200) },
-      sunPathIntensity: { value: 0.0 },
-      sunPathSharpness: { value: 32.0 },
-      sunPathColor: { value: new THREE.Color(0xffffff) },
-      sparkleIntensity: { value: 0.0 },
-      sparkleRange: { value: 0.5 },
-    },
-    vertexShader: `
-      uniform float time;
-      uniform float scale;
-      uniform float waveHeight;
-      varying vec2 vUv;
-      varying float vWave;
-      varying vec3 vWorldPos;
-      ${waterWaveGLSL}
-      void main() {
-        vUv = uv;
-        vWave = calcWave(uv, time, scale);
-        vec3 pos = position;
-        pos.z += (vWave - 0.5) * waveHeight;
-        vec4 worldPos = modelMatrix * vec4(pos, 1.0);
-        vWorldPos = worldPos.xyz;
-        gl_Position = projectionMatrix * viewMatrix * worldPos;
-      }
-    `,
+    uniforms: createWaterUniforms(),
+    vertexShader: waterVertexShader,
     fragmentShader: `
-      uniform vec3 colorDeep;
-      uniform vec3 colorShallow;
-      uniform float opacity;
-      uniform float causticIntensity;
-      uniform vec3 lightColor;
-      uniform vec3 sunPosition;
-      uniform vec3 camPosition;
-      uniform float sunPathIntensity;
-      uniform float sunPathSharpness;
-      uniform vec3 sunPathColor;
-      uniform float sparkleIntensity;
-      uniform float sparkleRange;
-      uniform float time;
-      uniform float scale;
-      uniform float waveHeight;
-      uniform float planeSize;
-      varying vec2 vUv;
-      varying float vWave;
-      varying vec3 vWorldPos;
-      ${waterWaveGLSL}
-
-      // スパークル用ハッシュ関数
-      float hash(vec2 p) {
-        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-        p3 += dot(p3, p3.yzx + 33.33);
-        return fract((p3.x + p3.y) * p3.z);
-      }
-
+      ${waterFragmentUniforms}
       void main() {
         float combined = vWave;
+        vec3 baseColor = mix(colorDeep, colorShallow, combined) * lightColor;
 
-        // 波の深浅で2色を混合
-        vec3 color = mix(colorDeep, colorShallow, combined);
+        // コースティクス
+        float causticVal = calcCaustic(combined, causticIntensity, lightColor);
+        baseColor += vec3(causticVal) * lightColor;
 
-        // コースティクス（光の集光パターン）
-        float caustic = pow(combined, 3.0 + (1.0 - causticIntensity) * 5.0);
-        color += vec3(caustic * causticIntensity * 2.0);
+        // サンパス・スパークル
+        vec3 sunEffects = calcSunEffects(vUv, vWorldPos, time, scale, waveHeight, planeSize,
+                                         sunPosition, camPosition, sunPathIntensity, sunPathSharpness,
+                                         sunPathColor, sparkleIntensity, sparkleRange, lightColor);
+        baseColor += sunEffects;
 
-        // サンパス（太陽反射の光の道）
-        if (sunPathIntensity > 0.0) {
-          // 波の勾配から法線を計算（waveHeightで実際の傾斜を反映）
-          float eps = 1.0 / scale;
-          float hL = calcWave(vUv - vec2(eps, 0.0), time, scale);
-          float hR = calcWave(vUv + vec2(eps, 0.0), time, scale);
-          float hD = calcWave(vUv - vec2(0.0, eps), time, scale);
-          float hU = calcWave(vUv + vec2(0.0, eps), time, scale);
-          // ワールド空間での勾配（UV v増加=worldZ減少を考慮）
-          float worldEps = eps * planeSize;
-          float slopeX = (hR - hL) * waveHeight / (2.0 * worldEps);
-          float slopeZ = (hD - hU) * waveHeight / (2.0 * worldEps);
-          // ワールド空間法線（平面はXZ、Yが上）
-          vec3 worldNormal = normalize(vec3(-slopeX, 1.0, -slopeZ));
-
-          // DirectionalLight: 太陽方向は平行光線（位置ではなく方向）
-          vec3 lightDir = normalize(sunPosition);
-          vec3 viewDir = normalize(camPosition - vWorldPos);
-          vec3 halfVec = normalize(lightDir + viewDir);
-          float spec = pow(max(dot(worldNormal, halfVec), 0.0), sunPathSharpness);
-
-          // フレネル効果：浅い角度ほど反射が強い（光の道が遠方に伸びる）
-          float fresnel = pow(1.0 - max(dot(worldNormal, viewDir), 0.0), 3.0);
-          spec *= (0.3 + 0.7 * fresnel);
-
-          color += sunPathColor * spec * sunPathIntensity;
-
-          // スパークル（宝石のようなキラキラ粒）
-          if (sparkleIntensity > 0.0) {
-            // sparkleRange: 0=サンパス上のみ、1=広範囲
-            float sparkleSharp = mix(sunPathSharpness, sunPathSharpness * 0.1, sparkleRange);
-            float specArea = pow(max(dot(worldNormal, halfVec), 0.0), sparkleSharp);
-            float sparkleArea = specArea * (0.3 + 0.7 * fresnel);
-
-            // 高周波グリッドでセル分割し、各セルにランダムな輝点を配置
-            vec2 sparkleUv = vUv * scale * 8.0;
-            vec2 cell = floor(sparkleUv);
-            vec2 local = fract(sparkleUv);
-
-            // セルごとのランダムな輝点位置とサイズ
-            vec2 starPos = vec2(hash(cell), hash(cell + 71.7));
-            vec2 delta = local - starPos;
-            float dist = length(delta);
-            float size = 0.06 + hash(cell + 99.3) * 0.2;
-
-            // 星型シェイプ: 4本の光条（角度によって距離を変調）
-            float angle = atan(delta.y, delta.x) + hash(cell + 42.0) * 6.2832;
-            float rays = pow(abs(cos(angle * 2.0)), 4.0);
-            float starShape = mix(size * 0.3, size, rays);
-            float sparkle = smoothstep(starShape, starShape * 0.15, dist);
-
-            // 時間で明滅（セルごとに異なる周期・位相）
-            float phase = hash(cell + 13.37) * 6.2832;
-            float speed = 1.5 + hash(cell + 57.1) * 3.0;
-            float twinkle = pow(max(sin(time * speed + phase), 0.0), 4.0);
-
-            sparkle *= twinkle * sparkleArea * sparkleIntensity * 3.0;
-            color += sunPathColor * sparkle;
-          }
-        }
-
-        // 光源色の適用
-        color *= lightColor;
-
-        gl_FragColor = vec4(color, opacity);
+        // opacity=1: 完全不透明（下が見えない）
+        // opacity=0: 完全透明（ティントレイヤーに任せる）
+        gl_FragColor = vec4(baseColor, opacity);
       }
     `
   });
@@ -1591,14 +1653,24 @@ function setupThreeJS() {
   floorPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(floorPlane);
 
-  // 水面プレーン（floorPlaneの少し上に配置）
+  // 水面プレーン（2層構成: ティント層 + サーフェス層）
+  const waterGeometry = new THREE.PlaneGeometry(500, 500, 128, 128);
+
+  // ティント層（乗算ブレンド: 背景を水色に染める）
+  waterTintMaterial = createWaterTintMaterial();
+  waterTintPlane = new THREE.Mesh(waterGeometry, waterTintMaterial);
+  waterTintPlane.rotation.x = -Math.PI / 2;
+  waterTintPlane.position.y = -49.5;
+  waterTintPlane.renderOrder = 1;
+  waterTintPlane.visible = false;
+  scene.add(waterTintPlane);
+
+  // サーフェス層（通常アルファブレンド: 不透明な水面）
   waterSurfaceMaterial = createWaterSurfaceMaterial();
-  waterSurfacePlane = new THREE.Mesh(
-    new THREE.PlaneGeometry(500, 500, 128, 128),
-    waterSurfaceMaterial
-  );
+  waterSurfacePlane = new THREE.Mesh(waterGeometry, waterSurfaceMaterial);
   waterSurfacePlane.rotation.x = -Math.PI / 2;
   waterSurfacePlane.position.y = -49.5;
+  waterSurfacePlane.renderOrder = 2;
   waterSurfacePlane.visible = false;
   scene.add(waterSurfacePlane);
 
@@ -2940,8 +3012,9 @@ function setupEventListeners() {
     [floorPlane, leftWallPlane, rightWallPlane, centerWallPlane, backWallPlane, skyDome, innerSkyDome].forEach(p => {
       if (p?.material?.uniforms?.lightColor) p.material.uniforms.lightColor.value.copy(tint);
     });
-    // 水面
+    // 水面（両レイヤー）
     if (waterSurfaceMaterial?.uniforms?.lightColor) waterSurfaceMaterial.uniforms.lightColor.value.copy(tint);
+    if (waterTintMaterial?.uniforms?.lightColor) waterTintMaterial.uniforms.lightColor.value.copy(tint);
     // 天候パーティクル
     if (weatherParticles?.material?.color) {
       const base = weatherParticles.geometry._isRain ? new THREE.Color(0xaaccff) : new THREE.Color(0xffffff);
@@ -3026,16 +3099,31 @@ function setupEventListeners() {
   });
 
   // 水面パラメータ
+  // 両水面マテリアルのuniformを同時更新するヘルパー
+  function setWaterUniform(name, value) {
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms[name].value = value;
+    if (waterTintMaterial) waterTintMaterial.uniforms[name].value = value;
+  }
+  function setWaterUniformColor(name, colorStr) {
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms[name].value.set(colorStr);
+    if (waterTintMaterial) waterTintMaterial.uniforms[name].value.set(colorStr);
+  }
+  function copyWaterUniformColor(name, color) {
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms[name].value.copy(color);
+    if (waterTintMaterial) waterTintMaterial.uniforms[name].value.copy(color);
+  }
+
   document.getElementById('waterSurfaceEnabled')?.addEventListener('change', (e) => {
     waterSurfaceEnabled = e.target.checked;
     if (waterSurfacePlane) waterSurfacePlane.visible = waterSurfaceEnabled;
+    if (waterTintPlane) waterTintPlane.visible = waterSurfaceEnabled;
     if (waterShadowPlane) waterShadowPlane.visible = waterSurfaceEnabled && shadowEnabled;
   });
   document.getElementById('waterSurfaceScale')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSurfaceScaleValue').textContent = v;
     waterSurfaceScale = v;
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.scale.value = v;
+    setWaterUniform('scale', v);
   });
   document.getElementById('waterSurfaceSpeed')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
@@ -3044,69 +3132,74 @@ function setupEventListeners() {
   });
   document.getElementById('waterSurfaceColor')?.addEventListener('input', (e) => {
     waterSurfaceColor = e.target.value;
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.colorDeep.value.set(e.target.value);
+    setWaterUniformColor('colorDeep', e.target.value);
   });
   document.getElementById('waterSurfaceColor2')?.addEventListener('input', (e) => {
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.colorShallow.value.set(e.target.value);
+    setWaterUniformColor('colorShallow', e.target.value);
   });
   document.getElementById('waterSurfaceOpacity')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSurfaceOpacityValue').textContent = v;
     waterSurfaceOpacity = v;
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.opacity.value = v;
+    setWaterUniform('opacity', v);
   });
   document.getElementById('waterSurfaceCaustic')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSurfaceCausticValue').textContent = v;
     waterSurfaceCaustic = v;
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.causticIntensity.value = v;
+    setWaterUniform('causticIntensity', v);
   });
   document.getElementById('waterSurfaceWaveHeight')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSurfaceWaveHeightValue').textContent = v;
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.waveHeight.value = v;
+    setWaterUniform('waveHeight', v);
   });
   document.getElementById('waterSurfaceHeight')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSurfaceHeightValue').textContent = v;
     if (waterSurfacePlane) waterSurfacePlane.position.y = -50 + v;
+    if (waterTintPlane) waterTintPlane.position.y = -50 + v;
     if (waterShadowPlane) waterShadowPlane.position.y = -50 + v + 0.1;
   });
   document.getElementById('waterSurfaceSize')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSurfaceSizeValue').textContent = v;
+    const newGeom = new THREE.PlaneGeometry(v, v, 128, 128);
     if (waterSurfacePlane) {
       waterSurfacePlane.geometry.dispose();
-      waterSurfacePlane.geometry = new THREE.PlaneGeometry(v, v, 128, 128);
+      waterSurfacePlane.geometry = newGeom;
+    }
+    if (waterTintPlane) {
+      waterTintPlane.geometry = newGeom;
     }
     if (waterShadowPlane) {
       waterShadowPlane.geometry.dispose();
       waterShadowPlane.geometry = new THREE.PlaneGeometry(v, v);
     }
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.planeSize.value = v;
+    setWaterUniform('planeSize', v);
   });
   document.getElementById('waterSunPathIntensity')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSunPathIntensityValue').textContent = v;
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sunPathIntensity.value = v;
+    setWaterUniform('sunPathIntensity', v);
   });
   document.getElementById('waterSunPathSharpness')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSunPathSharpnessValue').textContent = v;
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sunPathSharpness.value = v;
+    setWaterUniform('sunPathSharpness', v);
   });
   document.getElementById('waterSunPathColor')?.addEventListener('input', (e) => {
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sunPathColor.value.set(e.target.value);
+    setWaterUniformColor('sunPathColor', e.target.value);
   });
   document.getElementById('waterSparkleIntensity')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSparkleIntensityValue').textContent = v;
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sparkleIntensity.value = v;
+    setWaterUniform('sparkleIntensity', v);
   });
   document.getElementById('waterSparkleRange')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('waterSparkleRangeValue').textContent = v;
-    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sparkleRange.value = v;
+    setWaterUniform('sparkleRange', v);
   });
 
   // ============================================
@@ -7590,12 +7683,18 @@ function animate() {
   // 天候パーティクル更新
   updateWeatherParticles();
 
-  // 水面アニメーション更新
+  // 水面アニメーション更新（両レイヤー同期）
   if (waterSurfacePlane && waterSurfacePlane.visible) {
-    waterSurfaceMaterial.uniforms.time.value += 0.016 * waterSurfaceSpeed;
+    const timeDelta = 0.016 * waterSurfaceSpeed;
+    waterSurfaceMaterial.uniforms.time.value += timeDelta;
+    waterTintMaterial.uniforms.time.value = waterSurfaceMaterial.uniforms.time.value;
     // サンパス用: 太陽位置とカメラ位置を毎フレーム更新
-    if (sunLight) waterSurfaceMaterial.uniforms.sunPosition.value.copy(sunLight.position);
+    if (sunLight) {
+      waterSurfaceMaterial.uniforms.sunPosition.value.copy(sunLight.position);
+      waterTintMaterial.uniforms.sunPosition.value.copy(sunLight.position);
+    }
     waterSurfaceMaterial.uniforms.camPosition.value.copy(camera.position);
+    waterTintMaterial.uniforms.camPosition.value.copy(camera.position);
   }
 
   // 雲の影UVスクロール
@@ -8197,7 +8296,9 @@ window.exportHelpers = {
     updatePopIcons(dt);
     updateWeatherParticles();
     if (waterSurfacePlane && waterSurfacePlane.visible) {
-      waterSurfaceMaterial.uniforms.time.value += 0.016 * waterSurfaceSpeed;
+      const timeDelta = 0.016 * waterSurfaceSpeed;
+      waterSurfaceMaterial.uniforms.time.value += timeDelta;
+      if (waterTintMaterial) waterTintMaterial.uniforms.time.value = waterSurfaceMaterial.uniforms.time.value;
     }
     if (cloudShadowPlane && cloudShadowEnabled && cloudShadowIntensity > 0) {
       cloudShadowPlane.visible = true;
