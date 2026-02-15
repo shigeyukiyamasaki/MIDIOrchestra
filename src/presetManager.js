@@ -387,6 +387,15 @@ function collectCurrentSettings() {
   s.floorChromaThreshold = getRangeValue('floorChromaThreshold');
   s.floorCurvature = getRangeValue('floorCurvature');
 
+  // 床2
+  s.floor2ImageSize = getRangeValue('floor2ImageSize');
+  s.floor2Height = getRangeValue('floor2Height');
+  s.floor2ImageOpacity = getRangeValue('floor2ImageOpacity');
+  s.floor2ImageFlip = getCheckbox('floor2ImageFlip');
+  s.floor2ChromaColor = getColorValue('floor2ChromaColor');
+  s.floor2ChromaThreshold = getRangeValue('floor2ChromaThreshold');
+  s.floor2Curvature = getRangeValue('floor2Curvature');
+
   // 左側面
   s.leftWallImageSize = getRangeValue('leftWallImageSize');
   s.leftWallImageOpacity = getRangeValue('leftWallImageOpacity');
@@ -629,6 +638,15 @@ function applySettings(s) {
   setRangeValue('floorChromaThreshold', s.floorChromaThreshold);
   setRangeValue('floorCurvature', s.floorCurvature);
 
+  // 床2
+  setRangeValue('floor2ImageSize', s.floor2ImageSize);
+  setRangeValue('floor2Height', s.floor2Height);
+  setRangeValue('floor2ImageOpacity', s.floor2ImageOpacity);
+  setCheckbox('floor2ImageFlip', s.floor2ImageFlip);
+  setColorValue('floor2ChromaColor', s.floor2ChromaColor);
+  setRangeValue('floor2ChromaThreshold', s.floor2ChromaThreshold);
+  setRangeValue('floor2Curvature', s.floor2Curvature);
+
   // 左側面
   setRangeValue('leftWallImageSize', s.leftWallImageSize);
   setRangeValue('leftWallImageOpacity', s.leftWallImageOpacity);
@@ -651,6 +669,9 @@ function applySettings(s) {
   setColorValue('backWallChromaColor', s.backWallChromaColor);
   setRangeValue('backWallChromaThreshold', s.backWallChromaThreshold);
 
+  // ノートブルーム（旧プリセットにはキーがないため、デフォルトtrueで後方互換）
+  setCheckbox('noteBloomEnabled', s.noteBloomEnabled ?? true);
+
   // 自動復元: 明示的に処理されなかった設定値をDOMに反映
   const handled = new Set([
     'cameraTargetX','cameraTargetY','cameraTargetZ',
@@ -668,9 +689,11 @@ function applySettings(s) {
     'midiDelay','audioDelay','loopStartEnabled','loopStartTime','loopEndEnabled','loopEndTime','fadeOutDuration','shadowEnvironment','weatherType',
     'skyDomeOpacity','skyDomeRange','skyDomeRadius',
     'floorImageSize','floorImageOpacity','floorImageFlip','floorChromaColor','floorChromaThreshold','floorCurvature',
+    'floor2ImageSize','floor2Height','floor2ImageOpacity','floor2ImageFlip','floor2ChromaColor','floor2ChromaThreshold','floor2Curvature',
     'leftWallImageSize','leftWallImageOpacity','leftWallImageFlip','leftWallChromaColor','leftWallChromaThreshold',
     'rightWallImageSize','rightWallImageOpacity','rightWallImageFlip','rightWallChromaColor','rightWallChromaThreshold',
     'backWallImageSize','backWallImageX','backWallImageOpacity','backWallImageFlip','backWallChromaColor','backWallChromaThreshold',
+    'noteBloomEnabled',
   ]);
   Object.keys(s).forEach(key => {
     if (handled.has(key) || key.startsWith('cameraRange') || key.startsWith('bloomThreshold') || key === 'pitchFilters') return;
@@ -754,6 +777,7 @@ async function loadPreset(presetId) {
   app.clearSkyDomeImage();
   app.clearInnerSkyImage();
   app.clearFloorImage();
+  app.clearFloor2Image();
   app.clearLeftWallImage();
   app.clearCenterWallImage();
   app.clearRightWallImage();
@@ -776,6 +800,7 @@ async function loadPreset(presetId) {
     window.currentMediaRefs.skyDome = media.skyDome || null;
     window.currentMediaRefs.innerSky = media.innerSky || null;
     window.currentMediaRefs.floor = media.floor || null;
+    window.currentMediaRefs.floor2 = media.floor2 || null;
     window.currentMediaRefs.leftWall = media.leftWall || null;
     window.currentMediaRefs.centerWall = media.centerWall || null;
     window.currentMediaRefs.rightWall = media.rightWall || null;
@@ -825,6 +850,9 @@ async function loadPreset(presetId) {
   }
   if (media.floor) {
     await restoreMediaSlot(media.floor, app.loadFloorImage, null);
+  }
+  if (media.floor2) {
+    await restoreMediaSlot(media.floor2, app.loadFloor2Image, null);
   }
   if (media.leftWall) {
     await restoreMediaSlot(media.leftWall, app.loadLeftWallImage, null);

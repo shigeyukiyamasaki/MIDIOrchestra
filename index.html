@@ -343,6 +343,9 @@
           <input type="range" id="bloomRadius" min="0" max="1" step="0.01" value="0.4">
           <span id="bloomRadiusValue">0.4</span>
         </div>
+        <div class="setting-item">
+          <label><input type="checkbox" id="noteBloomEnabled" checked>ノート発光</label>
+        </div>
         <div class="setting-item dual-range-container">
           <label>閾値</label>
           <div class="dual-range" id="bloomThresholdRange" data-min="0" data-max="1">
@@ -614,6 +617,31 @@
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floorChromaColor" value="#00ff00"><input type="range" id="floorChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floorChromaThresholdValue">0</span></div>
             <button id="floorVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
             <button id="floorImageClear" class="clear-btn-small">クリア</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 床2画像 -->
+      <div class="image-section">
+        <div class="setting-category">床2</div>
+        <div class="image-row">
+          <div class="drop-zone" id="floor2DropZone">
+            <img id="floor2ImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="floor2VideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+            <span class="drop-zone-text" id="floor2DropZoneText">ドラッグ&ドロップ<br>または</span>
+            <label class="file-label" id="floor2ImageLabel">ファイル選択</label>
+            <button class="library-btn" data-slot="floor2">ライブラリ</button>
+            <input type="file" id="floor2ImageInput" accept="image/*,video/mp4,video/webm">
+          </div>
+          <div class="image-controls">
+            <div class="control-row"><label>サイズ</label><input type="range" id="floor2ImageSize" min="50" max="10000" step="10" value="300"><span id="floor2ImageSizeValue">300</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="floor2Height" min="-200" max="200" step="0.1" value="-49.9"><span id="floor2HeightValue">-49.9</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="floor2ImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="floor2ImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>曲率</label><input type="range" id="floor2Curvature" min="0" max="0.0003" step="0.00001" value="0"><span id="floor2CurvatureValue">0</span></div>
+            <div class="control-row"><label><input type="checkbox" id="floor2ImageFlip">反転</label></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floor2ChromaColor" value="#00ff00"><input type="range" id="floor2ChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floor2ChromaThresholdValue">0</span></div>
+            <button id="floor2VideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
+            <button id="floor2ImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
       </div>

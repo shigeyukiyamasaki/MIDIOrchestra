@@ -29,6 +29,8 @@ let timelinePlane;      // 現在位置を示す平面
 let gridHelper;         // グリッド
 let floorPlane;         // 床画像用平面
 let floorTexture;       // 床テクスチャ
+let floor2Plane;        // 床2画像用平面
+let floor2Texture;      // 床2テクスチャ
 let leftWallPlane;      // 左側面画像用平面
 let leftWallTexture;    // 左側面テクスチャ
 let rightWallPlane;     // 右側面画像用平面
@@ -46,12 +48,14 @@ let innerSkyTexture;    // 近景スカイドームテクスチャ
 let innerSkyVideo;      // 近景スカイドーム動画要素
 let innerSkyIsVideo = false;
 let floorAspect = 1;    // 床画像のアスペクト比（幅/高さ）
+let floor2Aspect = 1;   // 床2画像のアスペクト比
 let leftWallAspect = 1; // 左側面画像のアスペクト比
 let rightWallAspect = 1; // 右側面画像のアスペクト比
 let centerWallAspect = 1; // センター画像のアスペクト比
 let backWallAspect = 1; // 奥側画像のアスペクト比
 let floorY = -50;
 let floorCurvature = 0; // 床の曲率（0=フラット）       // 床のY位置（共有用、グリッドと同じ）
+let floor2Curvature = 0; // 床2の曲率
 let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用）
 let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
 let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
@@ -74,10 +78,11 @@ let fadeOutDuration = 0.1; // フェードアウト秒数（0.1〜1.0）
 let overlapAudio = null;  // オーバーラップ用の先行再生Audio
 
 // プリセット用メディア参照
-window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, leftWall: null, rightWall: null, centerWall: null, backWall: null };
+window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, floor2: null, leftWall: null, rightWall: null, centerWall: null, backWall: null };
 
 // 床・壁面の動画対応
 let floorVideo = null, floorIsVideo = false;
+let floor2Video = null, floor2IsVideo = false;
 let leftWallVideo = null, leftWallIsVideo = false;
 let rightWallVideo = null, rightWallIsVideo = false;
 let centerWallVideo = null, centerWallIsVideo = false;
@@ -89,6 +94,7 @@ window.getLoadedMediaBlob = async function(slot) {
     skyDome:    { video: () => skyDomeVideo,    plane: () => skyDome,        isVideo: () => typeof skyDomeIsVideo !== 'undefined' && skyDomeIsVideo },
     innerSky:   { video: () => innerSkyVideo,   plane: () => innerSkyDome,   isVideo: () => typeof innerSkyIsVideo !== 'undefined' && innerSkyIsVideo },
     floor:      { video: () => floorVideo,      plane: () => floorPlane,     isVideo: () => floorIsVideo },
+    floor2:     { video: () => floor2Video,     plane: () => floor2Plane,    isVideo: () => floor2IsVideo },
     leftWall:   { video: () => leftWallVideo,   plane: () => leftWallPlane,  isVideo: () => leftWallIsVideo },
     centerWall: { video: () => centerWallVideo, plane: () => centerWallPlane,isVideo: () => centerWallIsVideo },
     rightWall:  { video: () => rightWallVideo,  plane: () => rightWallPlane, isVideo: () => rightWallIsVideo },
@@ -283,6 +289,7 @@ let cloudShadowSpeed = 1;
 let cloudShadowScale = 2;
 let cloudShadowDirection = 45;
 let bloomEnabled = true;
+let noteBloomEnabled = true; // ノートにブルームを適用するか
 let bloomThresholdRange = { min: 0.8, max: 0.8 };
 let bloomThresholdTarget = 0.8;
 let bloomThresholdCurrent = 0.8;
@@ -823,14 +830,14 @@ const waterEffectsGLSL = `
       float specArea = pow(max(dot(worldNormal, halfVec), 0.0), sparkleSharp);
       float sparkleArea = specArea * (0.3 + 0.7 * fresnel);
 
-      vec2 sparkleUv = vUv * scale * 8.0;
+      vec2 sparkleUv = vUv * scale * 1.5;
       vec2 cell = floor(sparkleUv);
       vec2 local = fract(sparkleUv);
 
       vec2 starPos = vec2(hash(cell), hash(cell + 71.7));
       vec2 delta = local - starPos;
       float dist = length(delta);
-      float size = 0.06 + hash(cell + 99.3) * 0.2;
+      float size = 0.25 + hash(cell + 99.3) * 0.6;
 
       float angle = atan(delta.y, delta.x) + hash(cell + 42.0) * 6.2832;
       float rays = pow(abs(cos(angle * 2.0)), 4.0);
@@ -1472,6 +1479,7 @@ function setupThreeJS() {
   camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 10000);
   camera.position.set(-150, 150, 200);
   camera.lookAt(0, 0, 0);
+  camera.layers.enable(1); // ノートレイヤーも描画対象に
   window.appCamera = camera;
 
   // レンダラー
@@ -1533,9 +1541,11 @@ function setupThreeJS() {
 
   // 照明
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  ambientLight.layers.enableAll(); // 全レイヤーで有効（ノートレイヤー含む）
   scene.add(ambientLight);
 
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  directionalLight.layers.enableAll();
   directionalLight.position.set(50, 100, 50);
   scene.add(directionalLight);
   sunLight = directionalLight;
@@ -1639,6 +1649,7 @@ function setupThreeJS() {
   const floorMaterial = createChromaKeyMaterial(0.8);
   floorMaterial.side = THREE.FrontSide; // 裏面を非表示
   floorMaterial.shadowSide = THREE.DoubleSide; // 影パスでは両面描画
+  floorMaterial.depthWrite = true; // 水面が床の下にあるとき正しく隠れるように
   // ステンシル: 不透明ピクセル（discard されない箇所）にステンシル=1を書く
   floorMaterial.stencilWrite = true;
   floorMaterial.stencilRef = 1;
@@ -1652,6 +1663,25 @@ function setupThreeJS() {
   floorPlane.castShadow = true;
   floorPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(floorPlane);
+
+  // 床2画像用平面（床の少し上に配置）
+  const floor2Geometry = new THREE.PlaneGeometry(300, 300, 64, 64);
+  const floor2Material = createChromaKeyMaterial(0.8);
+  floor2Material.side = THREE.FrontSide;
+  floor2Material.shadowSide = THREE.DoubleSide;
+  floor2Material.depthWrite = true;
+  floor2Material.stencilWrite = true;
+  floor2Material.stencilRef = 1;
+  floor2Material.stencilFunc = THREE.AlwaysStencilFunc;
+  floor2Material.stencilZPass = THREE.ReplaceStencilOp;
+  floor2Plane = new THREE.Mesh(floor2Geometry, floor2Material);
+  floor2Plane.rotation.x = -Math.PI / 2;
+  floor2Plane.position.y = -49.9;
+  floor2Plane.renderOrder = 0;
+  floor2Plane.visible = false;
+  floor2Plane.castShadow = true;
+  floor2Plane.customDepthMaterial = createChromaKeyDepthMaterial();
+  scene.add(floor2Plane);
 
   // 水面プレーン（2層構成: ティント層 + サーフェス層）
   const waterGeometry = new THREE.PlaneGeometry(500, 500, 128, 128);
@@ -2941,6 +2971,10 @@ function setupEventListeners() {
     document.getElementById('bloomRadiusValue').textContent = v;
     if (bloomPass) bloomPass.radius = v;
   });
+  // ノートブルーム on/off
+  document.getElementById('noteBloomEnabled')?.addEventListener('change', (e) => {
+    noteBloomEnabled = e.target.checked;
+  });
   // ブルーム閾値（デュアルレンジスライダー）
   initBloomThresholdRange();
   // レンズフレア強度
@@ -3009,7 +3043,7 @@ function setupEventListeners() {
     }
     const tint = new THREE.Color().copy(sunLight.color).multiplyScalar(sunLight.intensity);
     // chromaKeyMaterial（床・壁・スカイドーム）
-    [floorPlane, leftWallPlane, rightWallPlane, centerWallPlane, backWallPlane, skyDome, innerSkyDome].forEach(p => {
+    [floorPlane, floor2Plane, leftWallPlane, rightWallPlane, centerWallPlane, backWallPlane, skyDome, innerSkyDome].forEach(p => {
       if (p?.material?.uniforms?.lightColor) p.material.uniforms.lightColor.value.copy(tint);
     });
     // 水面（両レイヤー）
@@ -3457,6 +3491,104 @@ function setupEventListeners() {
       floorPlane.scale.x = e.target.checked ? -1 : 1;
     }
   });
+
+  // ============================================
+  // 床2画像のイベントリスナー
+  // ============================================
+
+  const floor2ImageLabel = document.getElementById('floor2ImageLabel');
+  const floor2ImageInput = document.getElementById('floor2ImageInput');
+  if (floor2ImageLabel && floor2ImageInput) {
+    floor2ImageLabel.addEventListener('click', () => floor2ImageInput.click());
+  }
+
+  if (floor2ImageInput) {
+    floor2ImageInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        if (window.presetManager) window.presetManager.handleFileUpload(file, 'floor2');
+        loadFloor2Image(file);
+      }
+      e.target.value = '';
+    });
+  }
+
+  const floor2ImageSizeInput = document.getElementById('floor2ImageSize');
+  const floor2ImageSizeValue = document.getElementById('floor2ImageSizeValue');
+  if (floor2ImageSizeInput) {
+    floor2ImageSizeInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      floor2ImageSizeValue.textContent = value;
+      updateFloor2ImageSize(value);
+    });
+  }
+
+  const floor2HeightInput = document.getElementById('floor2Height');
+  const floor2HeightValue = document.getElementById('floor2HeightValue');
+  if (floor2HeightInput) {
+    floor2HeightInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      floor2HeightValue.textContent = value;
+      if (floor2Plane) floor2Plane.position.y = value;
+    });
+  }
+
+  const floor2ImageOpacityInput = document.getElementById('floor2ImageOpacity');
+  const floor2ImageOpacityValue = document.getElementById('floor2ImageOpacityValue');
+  if (floor2ImageOpacityInput) {
+    floor2ImageOpacityInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      floor2ImageOpacityValue.textContent = value;
+      if (floor2Plane) {
+        floor2Plane.material.uniforms.opacity.value = value;
+        syncDepthMaterialUniforms(floor2Plane);
+      }
+    });
+  }
+
+  const floor2ImageClearBtn = document.getElementById('floor2ImageClear');
+  if (floor2ImageClearBtn) {
+    floor2ImageClearBtn.addEventListener('click', () => {
+      clearFloor2Image();
+    });
+  }
+
+  document.getElementById('floor2VideoPause')?.addEventListener('click', () => {
+    if (floor2Video) {
+      if (floor2Video.paused) {
+        floor2Video.play();
+        document.getElementById('floor2VideoPreview')?.play();
+        document.getElementById('floor2VideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        floor2Video.pause();
+        document.getElementById('floor2VideoPreview')?.pause();
+        document.getElementById('floor2VideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
+  });
+
+  const floor2DropZone = document.getElementById('floor2DropZone');
+  if (floor2DropZone) setupDropZone(floor2DropZone, loadFloor2Image, true, 'floor2');
+
+  const floor2CurvatureInput = document.getElementById('floor2Curvature');
+  const floor2CurvatureValueEl = document.getElementById('floor2CurvatureValue');
+  if (floor2CurvatureInput) {
+    floor2CurvatureInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      floor2CurvatureValueEl.textContent = value;
+      floor2Curvature = value;
+      applyFloor2Curvature();
+    });
+  }
+
+  const floor2ImageFlipInput = document.getElementById('floor2ImageFlip');
+  if (floor2ImageFlipInput) {
+    floor2ImageFlipInput.addEventListener('change', (e) => {
+      if (floor2Plane) {
+        floor2Plane.scale.x = e.target.checked ? -1 : 1;
+      }
+    });
+  }
 
   // ============================================
   // 左側面画像のイベントリスナー
@@ -3989,6 +4121,7 @@ function setupEventListeners() {
       { prefix: 'skyDome', plane: () => skyDome },
       { prefix: 'innerSky', plane: () => innerSkyDome },
       { prefix: 'floor', plane: () => floorPlane },
+      { prefix: 'floor2', plane: () => floor2Plane },
       { prefix: 'leftWall', plane: () => leftWallPlane },
       { prefix: 'centerWall', plane: () => centerWallPlane },
       { prefix: 'rightWall', plane: () => rightWallPlane },
@@ -4857,6 +4990,7 @@ function createNoteObjects() {
       });
 
       const mesh = new THREE.Mesh(geometry, material);
+      mesh.layers.set(1); // ノートはレイヤー1のみ（ブルーム選択制御用）
       mesh.castShadow = !!document.getElementById('noteShadowEnabled')?.checked;
       mesh.customDepthMaterial = createNoteShadowDepthMaterial(CONFIG.noteOpacity);
       const originalX = x + width / 2;
@@ -6375,6 +6509,142 @@ function clearFloorImage() {
 }
 
 // ============================================
+// 床2画像関連関数
+// ============================================
+
+function loadFloor2Image(file) {
+  clearFloor2Media();
+  if (file.type.startsWith('video/')) {
+    loadFloor2Video(file);
+  } else {
+    loadFloor2ImageFile(file);
+  }
+}
+
+function loadFloor2ImageFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      floor2Texture = new THREE.Texture(img);
+      floor2Texture.needsUpdate = true;
+      floor2Aspect = img.width / img.height;
+      floor2Plane.material.uniforms.map.value = floor2Texture;
+      syncDepthMaterialUniforms(floor2Plane);
+      floor2Plane.visible = true;
+      floor2IsVideo = false;
+      const currentSize = parseFloat(document.getElementById('floor2ImageSize')?.value || 300);
+      updateFloor2ImageSize(currentSize);
+      const imagePreview = document.getElementById('floor2ImagePreview');
+      const videoPreview = document.getElementById('floor2VideoPreview');
+      const text = document.getElementById('floor2DropZoneText');
+      if (imagePreview) { imagePreview.src = e.target.result; imagePreview.style.display = 'block'; }
+      if (videoPreview) videoPreview.style.display = 'none';
+      if (text) text.style.display = 'none';
+      console.log('Floor2 image loaded:', file.name, 'aspect:', floor2Aspect);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadFloor2Video(file) {
+  const url = URL.createObjectURL(file);
+  floor2Video = document.createElement('video');
+  floor2Video.src = url;
+  floor2Video.loop = true;
+  floor2Video.muted = true;
+  floor2Video.playsInline = true;
+  floor2Video.setAttribute('playsinline', '');
+  floor2Video.setAttribute('webkit-playsinline', '');
+  floor2Video.onloadeddata = () => {
+    floor2Texture = new THREE.VideoTexture(floor2Video);
+    floor2Texture.minFilter = THREE.LinearFilter;
+    floor2Texture.magFilter = THREE.LinearFilter;
+    floor2Aspect = floor2Video.videoWidth / floor2Video.videoHeight;
+    floor2Plane.material.uniforms.map.value = floor2Texture;
+    syncDepthMaterialUniforms(floor2Plane);
+    floor2Plane.visible = true;
+    floor2IsVideo = true;
+    floor2Video.play().catch(e => console.warn('Floor2 video autoplay blocked:', e));
+    const currentSize = parseFloat(document.getElementById('floor2ImageSize')?.value || 300);
+    updateFloor2ImageSize(currentSize);
+    const imagePreview = document.getElementById('floor2ImagePreview');
+    const videoPreview = document.getElementById('floor2VideoPreview');
+    const text = document.getElementById('floor2DropZoneText');
+    if (videoPreview) { videoPreview.src = url; videoPreview.play(); }
+    if (imagePreview) imagePreview.style.display = 'none';
+    if (videoPreview) videoPreview.style.display = 'block';
+    if (text) text.style.display = 'none';
+    const pauseBtn = document.getElementById('floor2VideoPause');
+    if (pauseBtn) {
+      pauseBtn.style.display = '';
+      pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
+    console.log('Floor2 video loaded:', file.name, 'aspect:', floor2Aspect);
+  };
+  floor2Video.load();
+}
+
+function clearFloor2Media() {
+  if (floor2Texture) {
+    floor2Texture.dispose();
+    floor2Texture = null;
+  }
+  if (floor2Video) {
+    floor2Video.pause();
+    const src = floor2Video.src;
+    floor2Video.src = '';
+    if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+    floor2Video = null;
+  }
+  floor2IsVideo = false;
+}
+
+function updateFloor2ImageSize(size) {
+  if (!floor2Plane) return;
+  const width = size * floor2Aspect;
+  const height = size;
+  floor2Plane.geometry.dispose();
+  floor2Plane.geometry = new THREE.PlaneGeometry(width, height, 64, 64);
+  applyFloor2Curvature();
+}
+
+function applyFloor2Curvature() {
+  if (!floor2Plane) return;
+  const geom = floor2Plane.geometry;
+  const pos = geom.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = -floor2Curvature * (x * x + y * y);
+    pos.setZ(i, z);
+  }
+  pos.needsUpdate = true;
+  geom.computeVertexNormals();
+}
+
+function clearFloor2Image() {
+  window.currentMediaRefs.floor2 = null;
+  clearFloor2Media();
+  floor2Plane.material.uniforms.map.value = null;
+  syncDepthMaterialUniforms(floor2Plane);
+  floor2Plane.visible = false;
+  floor2Aspect = 1;
+  const input = document.getElementById('floor2ImageInput');
+  if (input) input.value = '';
+  const imagePreview = document.getElementById('floor2ImagePreview');
+  const videoPreview = document.getElementById('floor2VideoPreview');
+  const text = document.getElementById('floor2DropZoneText');
+  if (imagePreview) { imagePreview.style.display = 'none'; imagePreview.src = ''; }
+  if (videoPreview) { videoPreview.style.display = 'none'; videoPreview.pause(); videoPreview.src = ''; }
+  if (text) text.style.display = 'block';
+  const pauseBtn = document.getElementById('floor2VideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
+  console.log('Floor2 image cleared');
+}
+
+// ============================================
 // 左側面画像関連関数
 // ============================================
 
@@ -7006,7 +7276,7 @@ function clearBackWallImage() {
 // ============================================
 // モバイル対応: 全動画要素を再生（ユーザー操作のコンテキストで呼ぶ）
 function resumeAllVideos() {
-  const videos = [skyDomeVideo, innerSkyVideo, floorVideo, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo];
+  const videos = [skyDomeVideo, innerSkyVideo, floorVideo, floor2Video, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo];
   videos.forEach(v => {
     if (v && v.paused) {
       v.play().then(() => {
@@ -7542,7 +7812,7 @@ function animate() {
   const now0 = performance.now();
   if (now0 - window._lastVideoCheck > 5000) {
     window._lastVideoCheck = now0;
-    [skyDomeVideo, innerSkyVideo, floorVideo, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo].forEach(v => {
+    [skyDomeVideo, innerSkyVideo, floorVideo, floor2Video, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo].forEach(v => {
       if (v && v.paused && v.readyState >= 2) v.play().catch(() => {});
     });
   }
@@ -7714,6 +7984,11 @@ function animate() {
       ? cloudShadowIntensity * cloudShadowContrast : 0;
     floorPlane.material.uniforms.warmTint.value = warm;
   }
+  if (floor2Plane && floor2Plane.material.uniforms.warmTint) {
+    const warm = (cloudShadowContrast > 0 && cloudShadowEnabled && cloudShadowIntensity > 0)
+      ? cloudShadowIntensity * cloudShadowContrast : 0;
+    floor2Plane.material.uniforms.warmTint.value = warm;
+  }
 
   // ブルーム閾値ランダム変動
   if (bloomPass && bloomThresholdRange.min < bloomThresholdRange.max) {
@@ -7734,7 +8009,25 @@ function animate() {
   updateAudioVisualizer();
 
   if (composer && bloomPass && bloomEnabled && bloomPass.strength > 0) {
-    composer.render();
+    if (!noteBloomEnabled && state.noteObjects && state.noteObjects.length > 0) {
+      // ノートをブルームから除外して描画
+      camera.layers.disable(1);
+      composer.render();
+      camera.layers.enable(1);
+      // ノートだけを上から描画
+      const savedBg = scene.background;
+      scene.background = null;
+      camera.layers.set(1);
+      renderer.autoClear = false;
+      renderer.clearDepth();
+      renderer.render(scene, camera);
+      renderer.autoClear = true;
+      scene.background = savedBg;
+      camera.layers.set(0);
+      camera.layers.enable(1);
+    } else {
+      composer.render();
+    }
   } else {
     renderer.render(scene, camera);
   }
@@ -7891,6 +8184,7 @@ function loadVideoFromURL(slotName, url, loadFn) {
       skyDome:    { setVideo: (v) => { skyDomeVideo = v; skyDomeIsVideo = true; },  getPlane: () => skyDome },
       innerSky:   { setVideo: (v) => { innerSkyVideo = v; innerSkyIsVideo = true; }, getPlane: () => innerSkyDome },
       floor:      { setVideo: (v) => { floorVideo = v; floorIsVideo = true; },       getPlane: () => floorPlane },
+      floor2:     { setVideo: (v) => { floor2Video = v; floor2IsVideo = true; },     getPlane: () => floor2Plane },
       leftWall:   { setVideo: (v) => { leftWallVideo = v; leftWallIsVideo = true; }, getPlane: () => leftWallPlane },
       centerWall: { setVideo: (v) => { centerWallVideo = v; centerWallIsVideo = true; }, getPlane: () => centerWallPlane },
       rightWall:  { setVideo: (v) => { rightWallVideo = v; rightWallIsVideo = true; }, getPlane: () => rightWallPlane },
@@ -7921,6 +8215,12 @@ function loadVideoFromURL(slotName, url, loadFn) {
           floorAspect = video.videoWidth / video.videoHeight;
           const sizeEl = document.getElementById('floorImageSize');
           if (sizeEl) updateFloorImageSize(parseFloat(sizeEl.value));
+        }
+        if (slotName === 'floor2') {
+          floor2Texture = texture;
+          floor2Aspect = video.videoWidth / video.videoHeight;
+          const sizeEl = document.getElementById('floor2ImageSize');
+          if (sizeEl) updateFloor2ImageSize(parseFloat(sizeEl.value));
         }
       }
       console.log(`[Viewer] ${slotName} video texture ready (${video.videoWidth}x${video.videoHeight})`);
@@ -8027,6 +8327,7 @@ async function loadViewerData() {
     { key: 'skyDome', loadFn: loadSkyDomeImage },
     { key: 'innerSky', loadFn: loadInnerSkyImage },
     { key: 'floor', loadFn: loadFloorImage },
+    { key: 'floor2', loadFn: loadFloor2Image },
     { key: 'leftWall', loadFn: loadLeftWallImage },
     { key: 'centerWall', loadFn: loadCenterWallImage },
     { key: 'rightWall', loadFn: loadRightWallImage },
@@ -8269,8 +8570,8 @@ window.CONFIG = CONFIG;
 // プリセット復元用に関数を公開
 window.appFunctions = {
   loadMidi, loadAudio, clearMidi, clearAudio,
-  loadSkyDomeImage, loadInnerSkyImage, loadFloorImage, loadLeftWallImage, loadCenterWallImage, loadRightWallImage, loadBackWallImage,
-  clearSkyDomeImage, clearInnerSkyImage, clearFloorImage, clearLeftWallImage, clearCenterWallImage, clearRightWallImage, clearBackWallImage,
+  loadSkyDomeImage, loadInnerSkyImage, loadFloorImage, loadFloor2Image, loadLeftWallImage, loadCenterWallImage, loadRightWallImage, loadBackWallImage,
+  clearSkyDomeImage, clearInnerSkyImage, clearFloorImage, clearFloor2Image, clearLeftWallImage, clearCenterWallImage, clearRightWallImage, clearBackWallImage,
   updateTrackPanel, debouncedRebuildNotes,
 };
 
