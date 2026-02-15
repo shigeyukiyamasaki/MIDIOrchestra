@@ -757,7 +757,102 @@ async function init() {
   }
 
   updateCreditsPosition();
+  setupValueSpanDirectInput();
   console.log('MIDI Orchestra Visualizer initialized');
+}
+
+// ============================================
+// スライダー値spanダブルクリックで直接入力
+// ============================================
+function setupValueSpanDirectInput() {
+  const spans = document.querySelectorAll(
+    '.setting-item span[id$="Value"], .control-row span[id$="Value"], .sync-row span[id$="Value"]'
+  );
+
+  spans.forEach(span => {
+    // カメラ位置spanは除外
+    if (span.classList.contains('pos-value')) return;
+
+    // spanIDからスライダーIDを導出: xxxValue → xxx
+    const sliderId = span.id.replace(/Value$/, '');
+    const slider = document.getElementById(sliderId);
+    if (!slider || slider.type !== 'range') return;
+
+    span.style.cursor = 'pointer';
+    span.title = 'ダブルクリックで直接入力';
+
+    span.addEventListener('dblclick', () => {
+      // 既に編集中なら何もしない
+      if (span.style.display === 'none') return;
+
+      const currentNum = parseFloat(span.textContent);
+      if (isNaN(currentNum)) return;
+
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.value = currentNum;
+      input.min = slider.min;
+      input.max = slider.max;
+      input.step = slider.step;
+
+      // spanと同じ見た目にする
+      const computed = getComputedStyle(span);
+      input.style.cssText = `
+        width: ${Math.max(span.offsetWidth + 10, 50)}px;
+        font-size: ${computed.fontSize};
+        font-family: ${computed.fontFamily};
+        color: ${computed.color};
+        background: rgba(255,255,255,0.1);
+        border: 1px solid #4fc3f7;
+        border-radius: 3px;
+        padding: 0 2px;
+        text-align: center;
+        outline: none;
+      `;
+
+      const commit = () => {
+        if (input._committed) return;
+        input._committed = true;
+
+        let val = parseFloat(input.value);
+        if (isNaN(val)) val = currentNum;
+
+        const min = parseFloat(slider.min);
+        const max = parseFloat(slider.max);
+        const step = parseFloat(slider.step);
+        val = Math.max(min, Math.min(max, val));
+        // stepに丸める
+        val = Math.round((val - min) / step) * step + min;
+        // 浮動小数点誤差を除去
+        const decimals = (slider.step.split('.')[1] || '').length;
+        val = parseFloat(val.toFixed(decimals));
+
+        slider.value = val;
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+
+        input.remove();
+        span.style.display = '';
+      };
+
+      const cancel = () => {
+        if (input._committed) return;
+        input._committed = true;
+        input.remove();
+        span.style.display = '';
+      };
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      });
+      input.addEventListener('blur', commit);
+
+      span.style.display = 'none';
+      span.parentNode.insertBefore(input, span.nextSibling);
+      input.focus();
+      input.select();
+    });
+  });
 }
 
 // 水面の波計算GLSL（vertex/fragment共通）
