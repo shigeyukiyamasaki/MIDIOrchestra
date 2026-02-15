@@ -473,9 +473,11 @@
     <div id="terrain-panel" class="settings-column">
       <h3>地形エフェクト</h3>
       <div id="terrain-list">
-        <div class="setting-category"><span>水面</span></div>
+        <div class="setting-category"><span>水面</span><input type="checkbox" id="waterSurfaceEnabled"></div>
         <div class="setting-item">
-          <label><input type="checkbox" id="waterSurfaceEnabled"> ON/OFF</label>
+          <label>面積</label>
+          <input type="range" id="waterSurfaceSize" min="100" max="2000" step="50" value="500">
+          <span id="waterSurfaceSizeValue">500</span>
         </div>
         <div class="setting-item">
           <label>スケール</label>
@@ -512,6 +514,30 @@
           <label>高度</label>
           <input type="range" id="waterSurfaceHeight" min="-50" max="50" step="1" value="0">
           <span id="waterSurfaceHeightValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>サンパス強度</label>
+          <input type="range" id="waterSunPathIntensity" min="0" max="3" step="0.05" value="0">
+          <span id="waterSunPathIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>サンパス鋭さ</label>
+          <input type="range" id="waterSunPathSharpness" min="2" max="128" step="1" value="32">
+          <span id="waterSunPathSharpnessValue">32</span>
+        </div>
+        <div class="setting-item">
+          <label>サンパス色</label>
+          <input type="color" id="waterSunPathColor" value="#ffffff">
+        </div>
+        <div class="setting-item">
+          <label>スパークル</label>
+          <input type="range" id="waterSparkleIntensity" min="0" max="3" step="0.05" value="0">
+          <span id="waterSparkleIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>スパークル範囲</label>
+          <input type="range" id="waterSparkleRange" min="0" max="1" step="0.05" value="0.5">
+          <span id="waterSparkleRangeValue">0.5</span>
         </div>
       </div>
     </div>

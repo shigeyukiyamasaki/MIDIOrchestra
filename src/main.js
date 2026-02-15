@@ -788,6 +788,14 @@ function createWaterSurfaceMaterial() {
       opacity: { value: waterSurfaceOpacity },
       causticIntensity: { value: waterSurfaceCaustic },
       lightColor: { value: new THREE.Color(0xffffff) },
+      planeSize: { value: 500.0 },
+      sunPosition: { value: new THREE.Vector3(50, 100, 50) },
+      camPosition: { value: new THREE.Vector3(0, 50, 200) },
+      sunPathIntensity: { value: 0.0 },
+      sunPathSharpness: { value: 32.0 },
+      sunPathColor: { value: new THREE.Color(0xffffff) },
+      sparkleIntensity: { value: 0.0 },
+      sparkleRange: { value: 0.5 },
     },
     vertexShader: `
       uniform float time;
@@ -795,13 +803,16 @@ function createWaterSurfaceMaterial() {
       uniform float waveHeight;
       varying vec2 vUv;
       varying float vWave;
+      varying vec3 vWorldPos;
       ${waterWaveGLSL}
       void main() {
         vUv = uv;
         vWave = calcWave(uv, time, scale);
         vec3 pos = position;
         pos.z += (vWave - 0.5) * waveHeight;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+        vWorldPos = worldPos.xyz;
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
       }
     `,
     fragmentShader: `
@@ -810,8 +821,28 @@ function createWaterSurfaceMaterial() {
       uniform float opacity;
       uniform float causticIntensity;
       uniform vec3 lightColor;
+      uniform vec3 sunPosition;
+      uniform vec3 camPosition;
+      uniform float sunPathIntensity;
+      uniform float sunPathSharpness;
+      uniform vec3 sunPathColor;
+      uniform float sparkleIntensity;
+      uniform float sparkleRange;
+      uniform float time;
+      uniform float scale;
+      uniform float waveHeight;
+      uniform float planeSize;
       varying vec2 vUv;
       varying float vWave;
+      varying vec3 vWorldPos;
+      ${waterWaveGLSL}
+
+      // スパークル用ハッシュ関数
+      float hash(vec2 p) {
+        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+      }
 
       void main() {
         float combined = vWave;
@@ -822,6 +853,67 @@ function createWaterSurfaceMaterial() {
         // コースティクス（光の集光パターン）
         float caustic = pow(combined, 3.0 + (1.0 - causticIntensity) * 5.0);
         color += vec3(caustic * causticIntensity * 2.0);
+
+        // サンパス（太陽反射の光の道）
+        if (sunPathIntensity > 0.0) {
+          // 波の勾配から法線を計算（waveHeightで実際の傾斜を反映）
+          float eps = 1.0 / scale;
+          float hL = calcWave(vUv - vec2(eps, 0.0), time, scale);
+          float hR = calcWave(vUv + vec2(eps, 0.0), time, scale);
+          float hD = calcWave(vUv - vec2(0.0, eps), time, scale);
+          float hU = calcWave(vUv + vec2(0.0, eps), time, scale);
+          // ワールド空間での勾配（UV v増加=worldZ減少を考慮）
+          float worldEps = eps * planeSize;
+          float slopeX = (hR - hL) * waveHeight / (2.0 * worldEps);
+          float slopeZ = (hD - hU) * waveHeight / (2.0 * worldEps);
+          // ワールド空間法線（平面はXZ、Yが上）
+          vec3 worldNormal = normalize(vec3(-slopeX, 1.0, -slopeZ));
+
+          // DirectionalLight: 太陽方向は平行光線（位置ではなく方向）
+          vec3 lightDir = normalize(sunPosition);
+          vec3 viewDir = normalize(camPosition - vWorldPos);
+          vec3 halfVec = normalize(lightDir + viewDir);
+          float spec = pow(max(dot(worldNormal, halfVec), 0.0), sunPathSharpness);
+
+          // フレネル効果：浅い角度ほど反射が強い（光の道が遠方に伸びる）
+          float fresnel = pow(1.0 - max(dot(worldNormal, viewDir), 0.0), 3.0);
+          spec *= (0.3 + 0.7 * fresnel);
+
+          color += sunPathColor * spec * sunPathIntensity;
+
+          // スパークル（宝石のようなキラキラ粒）
+          if (sparkleIntensity > 0.0) {
+            // sparkleRange: 0=サンパス上のみ、1=広範囲
+            float sparkleSharp = mix(sunPathSharpness, sunPathSharpness * 0.1, sparkleRange);
+            float specArea = pow(max(dot(worldNormal, halfVec), 0.0), sparkleSharp);
+            float sparkleArea = specArea * (0.3 + 0.7 * fresnel);
+
+            // 高周波グリッドでセル分割し、各セルにランダムな輝点を配置
+            vec2 sparkleUv = vUv * scale * 8.0;
+            vec2 cell = floor(sparkleUv);
+            vec2 local = fract(sparkleUv);
+
+            // セルごとのランダムな輝点位置とサイズ
+            vec2 starPos = vec2(hash(cell), hash(cell + 71.7));
+            vec2 delta = local - starPos;
+            float dist = length(delta);
+            float size = 0.06 + hash(cell + 99.3) * 0.2;
+
+            // 星型シェイプ: 4本の光条（角度によって距離を変調）
+            float angle = atan(delta.y, delta.x) + hash(cell + 42.0) * 6.2832;
+            float rays = pow(abs(cos(angle * 2.0)), 4.0);
+            float starShape = mix(size * 0.3, size, rays);
+            float sparkle = smoothstep(starShape, starShape * 0.15, dist);
+
+            // 時間で明滅（セルごとに異なる周期・位相）
+            float phase = hash(cell + 13.37) * 6.2832;
+            float speed = 1.5 + hash(cell + 57.1) * 3.0;
+            float twinkle = pow(max(sin(time * speed + phase), 0.0), 4.0);
+
+            sparkle *= twinkle * sparkleArea * sparkleIntensity * 3.0;
+            color += sunPathColor * sparkle;
+          }
+        }
 
         // 光源色の適用
         color *= lightColor;
@@ -2979,6 +3071,42 @@ function setupEventListeners() {
     document.getElementById('waterSurfaceHeightValue').textContent = v;
     if (waterSurfacePlane) waterSurfacePlane.position.y = -50 + v;
     if (waterShadowPlane) waterShadowPlane.position.y = -50 + v + 0.1;
+  });
+  document.getElementById('waterSurfaceSize')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSurfaceSizeValue').textContent = v;
+    if (waterSurfacePlane) {
+      waterSurfacePlane.geometry.dispose();
+      waterSurfacePlane.geometry = new THREE.PlaneGeometry(v, v, 128, 128);
+    }
+    if (waterShadowPlane) {
+      waterShadowPlane.geometry.dispose();
+      waterShadowPlane.geometry = new THREE.PlaneGeometry(v, v);
+    }
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.planeSize.value = v;
+  });
+  document.getElementById('waterSunPathIntensity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSunPathIntensityValue').textContent = v;
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sunPathIntensity.value = v;
+  });
+  document.getElementById('waterSunPathSharpness')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSunPathSharpnessValue').textContent = v;
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sunPathSharpness.value = v;
+  });
+  document.getElementById('waterSunPathColor')?.addEventListener('input', (e) => {
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sunPathColor.value.set(e.target.value);
+  });
+  document.getElementById('waterSparkleIntensity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSparkleIntensityValue').textContent = v;
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sparkleIntensity.value = v;
+  });
+  document.getElementById('waterSparkleRange')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterSparkleRangeValue').textContent = v;
+    if (waterSurfaceMaterial) waterSurfaceMaterial.uniforms.sparkleRange.value = v;
   });
 
   // ============================================
@@ -7465,6 +7593,9 @@ function animate() {
   // 水面アニメーション更新
   if (waterSurfacePlane && waterSurfacePlane.visible) {
     waterSurfaceMaterial.uniforms.time.value += 0.016 * waterSurfaceSpeed;
+    // サンパス用: 太陽位置とカメラ位置を毎フレーム更新
+    if (sunLight) waterSurfaceMaterial.uniforms.sunPosition.value.copy(sunLight.position);
+    waterSurfaceMaterial.uniforms.camPosition.value.copy(camera.position);
   }
 
   // 雲の影UVスクロール
