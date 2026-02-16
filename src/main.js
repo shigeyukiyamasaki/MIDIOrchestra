@@ -879,6 +879,24 @@ const waterWaveGLSL = `
 
 // 水面エフェクト共通フラグメントシェーダーコード
 const waterEffectsGLSL = `
+  // フレネル効果: 水平に近い視線ほど不透明度を上げる
+  float calcFresnelOpacity(vec2 uv, float time, float scale, float waveHeight, float planeSize,
+                           vec3 camPosition, vec3 vWorldPos, float baseOpacity) {
+    float eps = 1.0 / scale;
+    float hL = calcWave(uv - vec2(eps, 0.0), time, scale);
+    float hR = calcWave(uv + vec2(eps, 0.0), time, scale);
+    float hD = calcWave(uv - vec2(0.0, eps), time, scale);
+    float hU = calcWave(uv + vec2(0.0, eps), time, scale);
+    float worldEps = eps * planeSize;
+    float slopeX = (hR - hL) * waveHeight / (2.0 * worldEps);
+    float slopeZ = (hD - hU) * waveHeight / (2.0 * worldEps);
+    vec3 normal = normalize(vec3(-slopeX, 1.0, -slopeZ));
+    vec3 viewDir = normalize(camPosition - vWorldPos);
+    float cosAngle = abs(dot(normal, viewDir));
+    float fresnel = pow(1.0 - cosAngle, 3.0);
+    return clamp(baseOpacity + (1.0 - baseOpacity) * fresnel, 0.0, 1.0);
+  }
+
   // スパークル用ハッシュ関数
   float hash(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -1036,19 +1054,23 @@ function createWaterTintMaterial() {
         float combined = vWave;
         vec3 baseColor = mix(colorDeep, colorShallow, combined) * lightColor;
 
+        // フレネル効果で実効不透明度を計算
+        float effOpacity = calcFresnelOpacity(vUv, time, scale, waveHeight, planeSize,
+                                              camPosition, vWorldPos, opacity);
+
         // opacity=1: 白 → 乗算でも背景に影響なし（サーフェス層が覆う）
         // opacity=0: baseColor → 背景を水色に染める（透き通った水）
-        vec3 tint = mix(baseColor, vec3(1.0), opacity);
+        vec3 tint = mix(baseColor, vec3(1.0), effOpacity);
 
         // コースティクス（不透明度が低いほど見える）
         float causticVal = calcCaustic(combined, causticIntensity, lightColor);
-        tint += vec3(causticVal) * lightColor * (1.0 - opacity);
+        tint += vec3(causticVal) * lightColor * (1.0 - effOpacity);
 
         // サンパス・スパークル（不透明度が低いほど見える）
         vec3 sunEffects = calcSunEffects(vUv, vWorldPos, time, scale, waveHeight, planeSize,
                                          sunPosition, camPosition, sunPathIntensity, sunPathSharpness,
                                          sunPathColor, sparkleIntensity, sparkleRange, lightColor);
-        tint += sunEffects * (1.0 - opacity);
+        tint += sunEffects * (1.0 - effOpacity);
 
         gl_FragColor = vec4(tint, 1.0);
       }
@@ -1080,9 +1102,13 @@ function createWaterSurfaceMaterial() {
                                          sunPathColor, sparkleIntensity, sparkleRange, lightColor);
         baseColor += sunEffects;
 
+        // フレネル効果で実効不透明度を計算
+        float effOpacity = calcFresnelOpacity(vUv, time, scale, waveHeight, planeSize,
+                                              camPosition, vWorldPos, opacity);
+
         // opacity=1: 完全不透明（下が見えない）
         // opacity=0: 完全透明（ティントレイヤーに任せる）
-        gl_FragColor = vec4(baseColor, opacity);
+        gl_FragColor = vec4(baseColor, effOpacity);
       }
     `
   });
@@ -2120,13 +2146,17 @@ function syncSelectableEffect(effectName) {
 // ============================================
 // 背景グラデーション生成・復元
 // ============================================
-function createBackgroundGradientTexture(topHex, bottomHex) {
+function createBackgroundGradientTexture(topHex, bottomHex, midpoint = 0.5) {
   const canvas = document.createElement('canvas');
   canvas.width = 2;
   canvas.height = 512;
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+  const topColor = new THREE.Color(topHex);
+  const bottomColor = new THREE.Color(bottomHex);
+  const blended = topColor.clone().lerp(bottomColor, 0.5);
   gradient.addColorStop(0, topHex);
+  gradient.addColorStop(midpoint, '#' + blended.getHexString());
   gradient.addColorStop(1, bottomHex);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 2, 512);
@@ -2136,7 +2166,9 @@ function createBackgroundGradientTexture(topHex, bottomHex) {
 function updateAndStoreBackground() {
   const topColor = document.getElementById('bgColorTop').value;
   const bottomColor = document.getElementById('bgColorBottom').value;
-  userBackgroundTexture = createBackgroundGradientTexture(topColor, bottomColor);
+  const midpointEl = document.getElementById('bgGradientMidpoint');
+  const midpoint = midpointEl ? parseInt(midpointEl.value) / 100 : 0.5;
+  userBackgroundTexture = createBackgroundGradientTexture(topColor, bottomColor, midpoint);
   scene.background = userBackgroundTexture;
 }
 
@@ -2563,6 +2595,7 @@ function setupEventListeners() {
 
   bgColorTopInput.addEventListener('input', updateAndStoreBackground);
   bgColorBottomInput.addEventListener('input', updateAndStoreBackground);
+  document.getElementById('bgGradientMidpoint')?.addEventListener('input', updateAndStoreBackground);
 
   // 初期グラデーションを適用
   updateAndStoreBackground();
@@ -3432,6 +3465,12 @@ function setupEventListeners() {
   // ============================================
   // 近景スカイドームのイベントリスナー
   // ============================================
+
+  const innerSkyImageLabel = document.getElementById('innerSkyImageLabel');
+  const innerSkyImageInput = document.getElementById('innerSkyImageInput');
+  if (innerSkyImageLabel && innerSkyImageInput) {
+    innerSkyImageLabel.addEventListener('click', () => innerSkyImageInput.click());
+  }
 
   document.getElementById('innerSkyImageInput')?.addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -5249,6 +5288,7 @@ function create3DInstrumentIcons() {
       baseScale: 8,
     };
 
+    sprite.layers.set(1); // ノートと同じレイヤー（ブルーム対象）
     scene.add(sprite);
     state.iconSprites.push(sprite);
   });
@@ -5411,6 +5451,7 @@ function createPopIcon(y, z, instrumentId) {
     baseScale: baseScale,
   };
 
+  sprite.layers.set(1); // ノートと同じレイヤー（ブルーム制御対象）
   scene.add(sprite);
   state.popIcons.push(sprite);
 }
@@ -5785,9 +5826,12 @@ function updateBeatEffects() {
     const pulseTop = baseTop.clone().multiplyScalar(1 + pulseAmount);
     const pulseBottom = baseBottom.clone().multiplyScalar(1 + pulseAmount);
 
+    const midpointEl = document.getElementById('bgGradientMidpoint');
+    const pulseMidpoint = midpointEl ? parseInt(midpointEl.value) / 100 : 0.5;
     scene.background = createBackgroundGradientTexture(
       '#' + pulseTop.getHexString(),
-      '#' + pulseBottom.getHexString()
+      '#' + pulseBottom.getHexString(),
+      pulseMidpoint
     );
   }
 
@@ -8104,7 +8148,7 @@ function animate() {
   updateAudioVisualizer();
 
   if (composer && bloomPass && bloomEnabled && bloomPass.strength > 0) {
-    if (!noteBloomEnabled && state.noteObjects && state.noteObjects.length > 0) {
+    if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
       // ノートをブルームから除外して描画
       camera.layers.disable(1);
       composer.render();

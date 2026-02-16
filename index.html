@@ -560,7 +560,7 @@
             <span class="drop-zone-text" id="skyDomeDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="skyDomeImageLabel">ファイル選択</label>
             <button class="library-btn" data-slot="skyDome">ライブラリ</button>
-            <input type="file" id="skyDomeImageInput" accept="image/*,video/mp4,video/webm">
+            <input type="file" id="skyDomeImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>透明度</label><input type="range" id="skyDomeOpacity" min="0.1" max="1" step="0.05" value="1"><span id="skyDomeOpacityValue">1</span></div>
@@ -582,6 +582,7 @@
             <img id="innerSkyImagePreview" class="drop-zone-preview" style="display: none;">
             <video id="innerSkyVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
             <span class="drop-zone-text" id="innerSkyDropZoneText">ドラッグ&ドロップ<br>または</span>
+            <label class="file-label" id="innerSkyImageLabel">ファイル選択</label>
             <button class="library-btn" data-slot="innerSky">ライブラリ</button>
             <input type="file" id="innerSkyImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
           </div>
@@ -607,7 +608,7 @@
             <span class="drop-zone-text" id="floorDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="floorImageLabel">ファイル選択</label>
             <button class="library-btn" data-slot="floor">ライブラリ</button>
-            <input type="file" id="floorImageInput" accept="image/*,video/mp4,video/webm">
+            <input type="file" id="floorImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="50" max="10000" step="10" value="300"><span id="floorImageSizeValue">300</span></div>
@@ -631,7 +632,7 @@
             <span class="drop-zone-text" id="floor2DropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="floor2ImageLabel">ファイル選択</label>
             <button class="library-btn" data-slot="floor2">ライブラリ</button>
-            <input type="file" id="floor2ImageInput" accept="image/*,video/mp4,video/webm">
+            <input type="file" id="floor2ImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floor2ImageSize" min="50" max="10000" step="10" value="300"><span id="floor2ImageSizeValue">300</span></div>
@@ -656,7 +657,7 @@
             <span class="drop-zone-text" id="leftWallDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="leftWallImageLabel">ファイル選択</label>
             <button class="library-btn" data-slot="leftWall">ライブラリ</button>
-            <input type="file" id="leftWallImageInput" accept="image/*,video/mp4,video/webm">
+            <input type="file" id="leftWallImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="leftWallImageSize" min="50" max="1000" step="10" value="300"><span id="leftWallImageSizeValue">300</span></div>
@@ -703,7 +704,7 @@
             <span class="drop-zone-text" id="rightWallDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="rightWallImageLabel">ファイル選択</label>
             <button class="library-btn" data-slot="rightWall">ライブラリ</button>
-            <input type="file" id="rightWallImageInput" accept="image/*,video/mp4,video/webm">
+            <input type="file" id="rightWallImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="rightWallImageSize" min="50" max="1000" step="10" value="300"><span id="rightWallImageSizeValue">300</span></div>
@@ -727,7 +728,7 @@
             <span class="drop-zone-text" id="backWallDropZoneText">ドラッグ&ドロップ<br>または</span>
             <label class="file-label" id="backWallImageLabel">ファイル選択</label>
             <button class="library-btn" data-slot="backWall">ライブラリ</button>
-            <input type="file" id="backWallImageInput" accept="image/*,video/mp4,video/webm">
+            <input type="file" id="backWallImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="backWallImageSize" min="50" max="1000" step="10" value="300"><span id="backWallImageSizeValue">300</span></div>
@@ -824,6 +825,11 @@
       <div class="setting-item">
         <label>背景色（下）</label>
         <input type="color" id="bgColorBottom" value="#0a0a15">
+      </div>
+      <div class="setting-item">
+        <label>中間点</label>
+        <input type="range" id="bgGradientMidpoint" min="0" max="100" step="1" value="50">
+        <span id="bgGradientMidpointValue">50</span>
       </div>
       <div class="setting-item">
         <button id="bgColorSwap" style="padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-arrows-up-down"></i> 上下入替</button>
