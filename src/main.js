@@ -31,6 +31,8 @@ let floorPlane;         // 床画像用平面
 let floorTexture;       // 床テクスチャ
 let floor2Plane;        // 床2画像用平面
 let floor2Texture;      // 床2テクスチャ
+let floor3Plane;        // 床3画像用平面
+let floor3Texture;      // 床3テクスチャ
 let leftWallPlane;      // 左側面画像用平面
 let leftWallTexture;    // 左側面テクスチャ
 let rightWallPlane;     // 右側面画像用平面
@@ -39,6 +41,8 @@ let centerWallPlane;    // センター画像用平面
 let centerWallTexture;  // センターテクスチャ
 let backWallPlane;      // 奥側画像用平面
 let backWallTexture;    // 奥側テクスチャ
+let panel5WallPlane;    // パネル5画像用平面
+let panel5WallTexture;  // パネル5テクスチャ
 let skyDome;            // スカイドーム（背景球体）
 let skyDomeTexture;     // スカイドームテクスチャ
 let skyDomeVideo;       // スカイドーム動画要素
@@ -49,13 +53,16 @@ let innerSkyVideo;      // 近景スカイドーム動画要素
 let innerSkyIsVideo = false;
 let floorAspect = 1;    // 床画像のアスペクト比（幅/高さ）
 let floor2Aspect = 1;   // 床2画像のアスペクト比
+let floor3Aspect = 1;   // 床3画像のアスペクト比
 let leftWallAspect = 1; // 左側面画像のアスペクト比
 let rightWallAspect = 1; // 右側面画像のアスペクト比
 let centerWallAspect = 1; // センター画像のアスペクト比
 let backWallAspect = 1; // 奥側画像のアスペクト比
+let panel5WallAspect = 1; // パネル5画像のアスペクト比
 let floorY = -50;
 let floorCurvature = 0; // 床の曲率（0=フラット）       // 床のY位置（共有用、グリッドと同じ）
 let floor2Curvature = 0; // 床2の曲率
+let floor3Curvature = 0; // 床3の曲率
 let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用）
 let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
 let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
@@ -78,15 +85,17 @@ let fadeOutDuration = 0.1; // フェードアウト秒数（0.1〜1.0）
 let overlapAudio = null;  // オーバーラップ用の先行再生Audio
 
 // プリセット用メディア参照
-window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, floor2: null, leftWall: null, rightWall: null, centerWall: null, backWall: null };
+window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, floor2: null, floor3: null, leftWall: null, rightWall: null, centerWall: null, backWall: null, panel5Wall: null };
 
 // 床・壁面の動画対応
 let floorVideo = null, floorIsVideo = false;
 let floor2Video = null, floor2IsVideo = false;
+let floor3Video = null, floor3IsVideo = false;
 let leftWallVideo = null, leftWallIsVideo = false;
 let rightWallVideo = null, rightWallIsVideo = false;
 let centerWallVideo = null, centerWallIsVideo = false;
 let backWallVideo = null, backWallIsVideo = false;
+let panel5WallVideo = null, panel5WallIsVideo = false;
 
 // ロード済みメディアのblobを取得（Export用フォールバック）
 window.getLoadedMediaBlob = async function(slot) {
@@ -95,10 +104,12 @@ window.getLoadedMediaBlob = async function(slot) {
     innerSky:   { video: () => innerSkyVideo,   plane: () => innerSkyDome,   isVideo: () => typeof innerSkyIsVideo !== 'undefined' && innerSkyIsVideo },
     floor:      { video: () => floorVideo,      plane: () => floorPlane,     isVideo: () => floorIsVideo },
     floor2:     { video: () => floor2Video,     plane: () => floor2Plane,    isVideo: () => floor2IsVideo },
+    floor3:     { video: () => floor3Video,     plane: () => floor3Plane,    isVideo: () => floor3IsVideo },
     leftWall:   { video: () => leftWallVideo,   plane: () => leftWallPlane,  isVideo: () => leftWallIsVideo },
     centerWall: { video: () => centerWallVideo, plane: () => centerWallPlane,isVideo: () => centerWallIsVideo },
     rightWall:  { video: () => rightWallVideo,  plane: () => rightWallPlane, isVideo: () => rightWallIsVideo },
     backWall:   { video: () => backWallVideo,   plane: () => backWallPlane,  isVideo: () => backWallIsVideo },
+    panel5Wall: { video: () => panel5WallVideo, plane: () => panel5WallPlane, isVideo: () => panel5WallIsVideo },
   };
   const info = slotMap[slot];
   if (!info) { console.log(`[Fallback] ${slot}: not in slotMap`); return null; }
@@ -747,6 +758,10 @@ async function init() {
         }
         statusDiv.innerHTML = msg;
         statusDiv.style.color = '#66bb6a';
+        // バックグラウンドでNotion登録（失敗してもUIに影響させない）
+        window.viewerExport.notifyNotion(song, result.url).catch(e => {
+          console.warn('Notion notification failed:', e);
+        });
       } catch (e) {
         statusDiv.textContent = 'エラー: ' + e.message;
         statusDiv.style.color = '#ff6b6b';
@@ -755,6 +770,29 @@ async function init() {
       }
     });
   }
+
+  // 作品リストコピーボタン
+  document.getElementById('copyListBtn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.style.color = '#aaa';
+    try {
+      const res = await fetch('notion-list.php');
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed');
+      const lines = data.items.map(item => {
+        const t = item.title.includes('_') ? item.title.replace(/_(.+)/, '「$1」') : item.title;
+        return t + '\n' + item.url;
+      });
+      const text = '【過去作品リスト】\n\n' + lines.join('\n\n');
+      await navigator.clipboard.writeText(text);
+      btn.style.color = '#66bb6a';
+      setTimeout(() => btn.style.color = '#999', 1500);
+    } catch (err) {
+      console.error('Copy list failed:', err);
+      btn.style.color = '#ff6b6b';
+      setTimeout(() => btn.style.color = '#999', 1500);
+    }
+  });
 
   updateCreditsPosition();
   setupValueSpanDirectInput();
@@ -1804,6 +1842,25 @@ function setupThreeJS() {
   floor2Plane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(floor2Plane);
 
+  // 床3画像用平面（床の少し上に配置）
+  const floor3Geometry = new THREE.PlaneGeometry(300, 300, 64, 64);
+  const floor3Material = createChromaKeyMaterial(0.8);
+  floor3Material.side = THREE.FrontSide;
+  floor3Material.shadowSide = THREE.DoubleSide;
+  floor3Material.depthWrite = true;
+  floor3Material.stencilWrite = true;
+  floor3Material.stencilRef = 1;
+  floor3Material.stencilFunc = THREE.AlwaysStencilFunc;
+  floor3Material.stencilZPass = THREE.ReplaceStencilOp;
+  floor3Plane = new THREE.Mesh(floor3Geometry, floor3Material);
+  floor3Plane.rotation.x = -Math.PI / 2;
+  floor3Plane.position.y = -49.8;
+  floor3Plane.renderOrder = 0;
+  floor3Plane.visible = false;
+  floor3Plane.castShadow = true;
+  floor3Plane.customDepthMaterial = createChromaKeyDepthMaterial();
+  scene.add(floor3Plane);
+
   // 水面プレーン（2層構成: ティント層 + サーフェス層）
   const waterGeometry = new THREE.PlaneGeometry(500, 500, 128, 128);
 
@@ -1901,6 +1958,18 @@ function setupThreeJS() {
   backWallPlane.castShadow = true;
   backWallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(backWallPlane);
+
+  // パネル5画像用平面（初期は非表示）
+  const panel5WallGeometry = new THREE.PlaneGeometry(300, 300);
+  const panel5WallMaterial = createChromaKeyMaterial(0.8);
+  panel5WallPlane = new THREE.Mesh(panel5WallGeometry, panel5WallMaterial);
+  panel5WallPlane.rotation.y = 0;
+  panel5WallPlane.position.set(0, floorY + initialWallSize / 2, 0);
+  panel5WallPlane.renderOrder = 10;
+  panel5WallPlane.visible = false;
+  panel5WallPlane.castShadow = true;
+  panel5WallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
+  scene.add(panel5WallPlane);
 
   // 影受け用ShadowMaterialプレーン（床の直上に配置）- セグメント分割で曲面対応
   const shadowGeom = new THREE.PlaneGeometry(3000, 3000, 64, 64);
@@ -3182,7 +3251,7 @@ function setupEventListeners() {
     }
     const tint = new THREE.Color().copy(sunLight.color).multiplyScalar(sunLight.intensity);
     // chromaKeyMaterial（床・壁・スカイドーム）
-    [floorPlane, floor2Plane, leftWallPlane, rightWallPlane, centerWallPlane, backWallPlane, skyDome, innerSkyDome].forEach(p => {
+    [floorPlane, floor2Plane, floor3Plane, leftWallPlane, rightWallPlane, centerWallPlane, backWallPlane, panel5WallPlane, skyDome, innerSkyDome].forEach(p => {
       if (p?.material?.uniforms?.lightColor) p.material.uniforms.lightColor.value.copy(tint);
     });
     // 水面（両レイヤー）
@@ -3743,6 +3812,104 @@ function setupEventListeners() {
   }
 
   // ============================================
+  // 床3画像のイベントリスナー
+  // ============================================
+
+  const floor3ImageLabel = document.getElementById('floor3ImageLabel');
+  const floor3ImageInput = document.getElementById('floor3ImageInput');
+  if (floor3ImageLabel && floor3ImageInput) {
+    floor3ImageLabel.addEventListener('click', () => floor3ImageInput.click());
+  }
+
+  if (floor3ImageInput) {
+    floor3ImageInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        if (window.presetManager) window.presetManager.handleFileUpload(file, 'floor3');
+        loadFloor3Image(file);
+      }
+      e.target.value = '';
+    });
+  }
+
+  const floor3ImageSizeInput = document.getElementById('floor3ImageSize');
+  const floor3ImageSizeValue = document.getElementById('floor3ImageSizeValue');
+  if (floor3ImageSizeInput) {
+    floor3ImageSizeInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      floor3ImageSizeValue.textContent = value;
+      updateFloor3ImageSize(value);
+    });
+  }
+
+  const floor3HeightInput = document.getElementById('floor3Height');
+  const floor3HeightValue = document.getElementById('floor3HeightValue');
+  if (floor3HeightInput) {
+    floor3HeightInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      floor3HeightValue.textContent = value;
+      if (floor3Plane) floor3Plane.position.y = value;
+    });
+  }
+
+  const floor3ImageOpacityInput = document.getElementById('floor3ImageOpacity');
+  const floor3ImageOpacityValue = document.getElementById('floor3ImageOpacityValue');
+  if (floor3ImageOpacityInput) {
+    floor3ImageOpacityInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      floor3ImageOpacityValue.textContent = value;
+      if (floor3Plane) {
+        floor3Plane.material.uniforms.opacity.value = value;
+        syncDepthMaterialUniforms(floor3Plane);
+      }
+    });
+  }
+
+  const floor3ImageClearBtn = document.getElementById('floor3ImageClear');
+  if (floor3ImageClearBtn) {
+    floor3ImageClearBtn.addEventListener('click', () => {
+      clearFloor3Image();
+    });
+  }
+
+  document.getElementById('floor3VideoPause')?.addEventListener('click', () => {
+    if (floor3Video) {
+      if (floor3Video.paused) {
+        floor3Video.play();
+        document.getElementById('floor3VideoPreview')?.play();
+        document.getElementById('floor3VideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        floor3Video.pause();
+        document.getElementById('floor3VideoPreview')?.pause();
+        document.getElementById('floor3VideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
+  });
+
+  const floor3DropZone = document.getElementById('floor3DropZone');
+  if (floor3DropZone) setupDropZone(floor3DropZone, loadFloor3Image, true, 'floor3');
+
+  const floor3CurvatureInput = document.getElementById('floor3Curvature');
+  const floor3CurvatureValueEl = document.getElementById('floor3CurvatureValue');
+  if (floor3CurvatureInput) {
+    floor3CurvatureInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      floor3CurvatureValueEl.textContent = value;
+      floor3Curvature = value;
+      applyFloor3Curvature();
+    });
+  }
+
+  const floor3ImageFlipInput = document.getElementById('floor3ImageFlip');
+  if (floor3ImageFlipInput) {
+    floor3ImageFlipInput.addEventListener('change', (e) => {
+      if (floor3Plane) {
+        floor3Plane.scale.x = e.target.checked ? -1 : 1;
+      }
+    });
+  }
+
+  // ============================================
   // 左側面画像のイベントリスナー
   // ============================================
 
@@ -4121,6 +4288,96 @@ function setupEventListeners() {
     }
   });
 
+  // ============================================
+  // パネル5画像のイベントリスナー
+  // ============================================
+
+  // 画像ラベルクリックでファイル選択を開く
+  document.getElementById('panel5WallImageLabel')?.addEventListener('click', () => {
+    document.getElementById('panel5WallImageInput')?.click();
+  });
+
+  // 画像ファイル選択
+  document.getElementById('panel5WallImageInput')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'panel5Wall');
+      loadPanel5WallImage(file);
+    }
+    e.target.value = '';
+  });
+
+  // パネル5画像サイズ
+  document.getElementById('panel5WallImageSize')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('panel5WallImageSizeValue').textContent = value;
+    updatePanel5WallImageSize(value);
+  });
+
+  // パネル5画像X位置
+  document.getElementById('panel5WallImageX')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('panel5WallImageXValue').textContent = value;
+    if (panel5WallPlane) {
+      panel5WallPlane.position.x = value;
+    }
+  });
+
+  // パネル5画像Z位置
+  document.getElementById('panel5WallImageZ')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('panel5WallImageZValue').textContent = value;
+    if (panel5WallPlane) panel5WallPlane.position.z = value;
+  });
+
+  // パネル5画像Y回転
+  document.getElementById('panel5WallImageRotY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('panel5WallImageRotYValue').textContent = value;
+    if (panel5WallPlane) panel5WallPlane.rotation.y = value * Math.PI / 180;
+  });
+
+  // パネル5画像透明度
+  document.getElementById('panel5WallImageOpacity')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('panel5WallImageOpacityValue').textContent = value;
+    if (panel5WallPlane) {
+      panel5WallPlane.material.uniforms.opacity.value = value;
+      syncDepthMaterialUniforms(panel5WallPlane);
+    }
+  });
+
+  // パネル5画像クリア
+  document.getElementById('panel5WallImageClear')?.addEventListener('click', () => {
+    clearPanel5WallImage();
+  });
+
+  // パネル5動画一時停止/再生
+  document.getElementById('panel5WallVideoPause')?.addEventListener('click', () => {
+    if (panel5WallVideo) {
+      if (panel5WallVideo.paused) {
+        panel5WallVideo.play();
+        document.getElementById('panel5WallVideoPreview')?.play();
+        document.getElementById('panel5WallVideoPause').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      } else {
+        panel5WallVideo.pause();
+        document.getElementById('panel5WallVideoPreview')?.pause();
+        document.getElementById('panel5WallVideoPause').innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    }
+  });
+
+  // パネル5画像ドラッグ&ドロップ
+  const panel5WallDropZone = document.getElementById('panel5WallDropZone');
+  setupDropZone(panel5WallDropZone, loadPanel5WallImage, true, 'panel5Wall');
+
+  // パネル5画像左右反転
+  document.getElementById('panel5WallImageFlip')?.addEventListener('change', (e) => {
+    if (panel5WallPlane) {
+      panel5WallPlane.scale.x = e.target.checked ? -1 : 1;
+    }
+  });
+
   } // image-panel guard end
 
   // ============================================
@@ -4142,6 +4399,7 @@ function setupEventListeners() {
     centerWall: loadCenterWallImage,
     rightWall: loadRightWallImage,
     backWall: loadBackWallImage,
+    panel5Wall: loadPanel5WallImage,
   };
 
   const slotMediaTypes = {
@@ -4152,6 +4410,7 @@ function setupEventListeners() {
     leftWall: ['image', 'video'],
     rightWall: ['image', 'video'],
     backWall: ['image', 'video'],
+    panel5Wall: ['image', 'video'],
   };
 
   function cleanupMediaLibraryURLs() {
@@ -4330,10 +4589,12 @@ function setupEventListeners() {
       { prefix: 'innerSky', plane: () => innerSkyDome },
       { prefix: 'floor', plane: () => floorPlane },
       { prefix: 'floor2', plane: () => floor2Plane },
+      { prefix: 'floor3', plane: () => floor3Plane },
       { prefix: 'leftWall', plane: () => leftWallPlane },
       { prefix: 'centerWall', plane: () => centerWallPlane },
       { prefix: 'rightWall', plane: () => rightWallPlane },
       { prefix: 'backWall', plane: () => backWallPlane },
+      { prefix: 'panel5Wall', plane: () => panel5WallPlane },
     ];
     chromaKeyFaces.forEach(({ prefix, plane }) => {
       const colorInput = document.getElementById(`${prefix}ChromaColor`);
@@ -5281,6 +5542,16 @@ function createNoteObjects() {
     backWallPlane.rotation.y = rotY * Math.PI / 180;
   }
 
+  // パネル5画像の位置を調整
+  if (panel5WallPlane) {
+    const currentSize = panel5WallPlane.geometry.parameters.height;
+    const xVal = parseFloat(document.getElementById('panel5WallImageX')?.value || 0);
+    const zVal = parseFloat(document.getElementById('panel5WallImageZ')?.value || 0);
+    panel5WallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
+    const rotY = parseFloat(document.getElementById('panel5WallImageRotY')?.value || 0);
+    panel5WallPlane.rotation.y = rotY * Math.PI / 180;
+  }
+
   // カメラ位置はMIDI読み込み時に変更しない（setupThreeJSで設定した位置を維持）
 
   console.log(`Created ${state.noteObjects.length} note objects`);
@@ -6221,6 +6492,7 @@ function clearRipples() {
 // ============================================
 
 function setupDropZone(dropZone, loadCallback, allowVideo = false, mediaSlotName = null) {
+  if (!dropZone) return;
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -6871,6 +7143,142 @@ function clearFloor2Image() {
 }
 
 // ============================================
+// 床3画像関連関数
+// ============================================
+
+function loadFloor3Image(file) {
+  clearFloor3Media();
+  if (file.type.startsWith('video/')) {
+    loadFloor3Video(file);
+  } else {
+    loadFloor3ImageFile(file);
+  }
+}
+
+function loadFloor3ImageFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      floor3Texture = new THREE.Texture(img);
+      floor3Texture.needsUpdate = true;
+      floor3Aspect = img.width / img.height;
+      floor3Plane.material.uniforms.map.value = floor3Texture;
+      syncDepthMaterialUniforms(floor3Plane);
+      floor3Plane.visible = true;
+      floor3IsVideo = false;
+      const currentSize = parseFloat(document.getElementById('floor3ImageSize')?.value || 300);
+      updateFloor3ImageSize(currentSize);
+      const imagePreview = document.getElementById('floor3ImagePreview');
+      const videoPreview = document.getElementById('floor3VideoPreview');
+      const text = document.getElementById('floor3DropZoneText');
+      if (imagePreview) { imagePreview.src = e.target.result; imagePreview.style.display = 'block'; }
+      if (videoPreview) videoPreview.style.display = 'none';
+      if (text) text.style.display = 'none';
+      console.log('Floor3 image loaded:', file.name, 'aspect:', floor3Aspect);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadFloor3Video(file) {
+  const url = URL.createObjectURL(file);
+  floor3Video = document.createElement('video');
+  floor3Video.src = url;
+  floor3Video.loop = true;
+  floor3Video.muted = true;
+  floor3Video.playsInline = true;
+  floor3Video.setAttribute('playsinline', '');
+  floor3Video.setAttribute('webkit-playsinline', '');
+  floor3Video.onloadeddata = () => {
+    floor3Texture = new THREE.VideoTexture(floor3Video);
+    floor3Texture.minFilter = THREE.LinearFilter;
+    floor3Texture.magFilter = THREE.LinearFilter;
+    floor3Aspect = floor3Video.videoWidth / floor3Video.videoHeight;
+    floor3Plane.material.uniforms.map.value = floor3Texture;
+    syncDepthMaterialUniforms(floor3Plane);
+    floor3Plane.visible = true;
+    floor3IsVideo = true;
+    floor3Video.play().catch(e => console.warn('Floor3 video autoplay blocked:', e));
+    const currentSize = parseFloat(document.getElementById('floor3ImageSize')?.value || 300);
+    updateFloor3ImageSize(currentSize);
+    const imagePreview = document.getElementById('floor3ImagePreview');
+    const videoPreview = document.getElementById('floor3VideoPreview');
+    const text = document.getElementById('floor3DropZoneText');
+    if (videoPreview) { videoPreview.src = url; videoPreview.play(); }
+    if (imagePreview) imagePreview.style.display = 'none';
+    if (videoPreview) videoPreview.style.display = 'block';
+    if (text) text.style.display = 'none';
+    const pauseBtn = document.getElementById('floor3VideoPause');
+    if (pauseBtn) {
+      pauseBtn.style.display = '';
+      pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
+    console.log('Floor3 video loaded:', file.name, 'aspect:', floor3Aspect);
+  };
+  floor3Video.load();
+}
+
+function clearFloor3Media() {
+  if (floor3Texture) {
+    floor3Texture.dispose();
+    floor3Texture = null;
+  }
+  if (floor3Video) {
+    floor3Video.pause();
+    const src = floor3Video.src;
+    floor3Video.src = '';
+    if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+    floor3Video = null;
+  }
+  floor3IsVideo = false;
+}
+
+function updateFloor3ImageSize(size) {
+  if (!floor3Plane) return;
+  const width = size * floor3Aspect;
+  const height = size;
+  floor3Plane.geometry.dispose();
+  floor3Plane.geometry = new THREE.PlaneGeometry(width, height, 64, 64);
+  applyFloor3Curvature();
+}
+
+function applyFloor3Curvature() {
+  if (!floor3Plane) return;
+  const geom = floor3Plane.geometry;
+  const pos = geom.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = -floor3Curvature * (x * x + y * y);
+    pos.setZ(i, z);
+  }
+  pos.needsUpdate = true;
+  geom.computeVertexNormals();
+}
+
+function clearFloor3Image() {
+  window.currentMediaRefs.floor3 = null;
+  clearFloor3Media();
+  floor3Plane.material.uniforms.map.value = null;
+  syncDepthMaterialUniforms(floor3Plane);
+  floor3Plane.visible = false;
+  floor3Aspect = 1;
+  const input = document.getElementById('floor3ImageInput');
+  if (input) input.value = '';
+  const imagePreview = document.getElementById('floor3ImagePreview');
+  const videoPreview = document.getElementById('floor3VideoPreview');
+  const text = document.getElementById('floor3DropZoneText');
+  if (imagePreview) { imagePreview.style.display = 'none'; imagePreview.src = ''; }
+  if (videoPreview) { videoPreview.style.display = 'none'; videoPreview.pause(); videoPreview.src = ''; }
+  if (text) text.style.display = 'block';
+  const pauseBtn = document.getElementById('floor3VideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
+  console.log('Floor3 image cleared');
+}
+
+// ============================================
 // 左側面画像関連関数
 // ============================================
 
@@ -7509,11 +7917,172 @@ function clearBackWallImage() {
 }
 
 // ============================================
+// パネル5画像関連関数
+// ============================================
+
+// パネル5にファイルを読み込み（画像または動画）
+function loadPanel5WallImage(file) {
+  clearPanel5WallMedia();
+
+  if (file.type.startsWith('video/')) {
+    loadPanel5WallVideo(file);
+  } else {
+    loadPanel5WallImageFile(file);
+  }
+}
+
+// パネル5画像を読み込み
+function loadPanel5WallImageFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      panel5WallTexture = new THREE.Texture(img);
+      panel5WallTexture.needsUpdate = true;
+
+      panel5WallAspect = img.width / img.height;
+
+      panel5WallPlane.material.uniforms.map.value = panel5WallTexture;
+      syncDepthMaterialUniforms(panel5WallPlane);
+      panel5WallPlane.visible = true;
+      panel5WallIsVideo = false;
+
+      const currentSize = parseFloat(document.getElementById('panel5WallImageSize').value);
+      updatePanel5WallImageSize(currentSize);
+
+      const imagePreview = document.getElementById('panel5WallImagePreview');
+      const videoPreview = document.getElementById('panel5WallVideoPreview');
+      const text = document.getElementById('panel5WallDropZoneText');
+      imagePreview.src = e.target.result;
+      imagePreview.style.display = 'block';
+      videoPreview.style.display = 'none';
+      text.style.display = 'none';
+
+      console.log('Panel5 wall image loaded:', file.name, 'aspect:', panel5WallAspect);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// パネル5動画を読み込み
+function loadPanel5WallVideo(file) {
+  const url = URL.createObjectURL(file);
+  panel5WallVideo = document.createElement('video');
+  panel5WallVideo.src = url;
+  panel5WallVideo.loop = true;
+  panel5WallVideo.muted = true;
+  panel5WallVideo.playsInline = true;
+
+  panel5WallVideo.onloadeddata = () => {
+    panel5WallTexture = new THREE.VideoTexture(panel5WallVideo);
+    panel5WallTexture.minFilter = THREE.LinearFilter;
+    panel5WallTexture.magFilter = THREE.LinearFilter;
+
+    panel5WallAspect = panel5WallVideo.videoWidth / panel5WallVideo.videoHeight;
+
+    panel5WallPlane.material.uniforms.map.value = panel5WallTexture;
+    syncDepthMaterialUniforms(panel5WallPlane);
+    panel5WallPlane.visible = true;
+    panel5WallIsVideo = true;
+
+    panel5WallVideo.play();
+
+    const currentSize = parseFloat(document.getElementById('panel5WallImageSize').value);
+    updatePanel5WallImageSize(currentSize);
+
+    const imagePreview = document.getElementById('panel5WallImagePreview');
+    const videoPreview = document.getElementById('panel5WallVideoPreview');
+    const text = document.getElementById('panel5WallDropZoneText');
+    videoPreview.src = url;
+    videoPreview.play();
+    imagePreview.style.display = 'none';
+    videoPreview.style.display = 'block';
+    text.style.display = 'none';
+
+    const pauseBtn = document.getElementById('panel5WallVideoPause');
+    if (pauseBtn) {
+      pauseBtn.style.display = '';
+      pauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
+
+    console.log('Panel5 wall video loaded:', file.name, 'aspect:', panel5WallAspect);
+  };
+  panel5WallVideo.load();
+}
+
+// パネル5メディアを破棄
+function clearPanel5WallMedia() {
+  if (panel5WallTexture) {
+    panel5WallTexture.dispose();
+    panel5WallTexture = null;
+  }
+  if (panel5WallVideo) {
+    panel5WallVideo.pause();
+    const src = panel5WallVideo.src;
+    panel5WallVideo.src = '';
+    if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+    panel5WallVideo = null;
+  }
+  panel5WallIsVideo = false;
+}
+
+// パネル5画像サイズを更新（床基準で拡大）
+function updatePanel5WallImageSize(size) {
+  if (!panel5WallPlane) return;
+
+  // アスペクト比を維持してジオメトリを再作成（高さ基準）
+  const width = size * panel5WallAspect;
+  const height = size;
+  panel5WallPlane.geometry.dispose();
+  panel5WallPlane.geometry = new THREE.PlaneGeometry(width, height);
+
+  // Y位置を再計算（床基準：下端が床に接する）
+  panel5WallPlane.position.y = floorY + height / 2;
+
+  // X位置はスライダーの値を維持
+  const xVal = parseFloat(document.getElementById('panel5WallImageX')?.value || 0);
+  panel5WallPlane.position.x = xVal;
+
+  // Z位置はスライダーの値を維持
+  const zVal = parseFloat(document.getElementById('panel5WallImageZ')?.value || 0);
+  panel5WallPlane.position.z = zVal;
+}
+
+// パネル5画像をクリア
+function clearPanel5WallImage() {
+  window.currentMediaRefs.panel5Wall = null;
+  clearPanel5WallMedia();
+
+  panel5WallPlane.material.uniforms.map.value = null;
+  panel5WallPlane.visible = false;
+
+  panel5WallAspect = 1;
+
+  document.getElementById('panel5WallImageInput').value = '';
+
+  const imagePreview = document.getElementById('panel5WallImagePreview');
+  const videoPreview = document.getElementById('panel5WallVideoPreview');
+  const text = document.getElementById('panel5WallDropZoneText');
+  imagePreview.style.display = 'none';
+  imagePreview.src = '';
+  videoPreview.style.display = 'none';
+  videoPreview.pause();
+  videoPreview.src = '';
+  text.style.display = 'block';
+
+  const pauseBtn = document.getElementById('panel5WallVideoPause');
+  if (pauseBtn) pauseBtn.style.display = 'none';
+
+  console.log('Panel5 wall image cleared');
+}
+
+// ============================================
 // 再生コントロール
 // ============================================
 // モバイル対応: 全動画要素を再生（ユーザー操作のコンテキストで呼ぶ）
 function resumeAllVideos() {
-  const videos = [skyDomeVideo, innerSkyVideo, floorVideo, floor2Video, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo];
+  const videos = [skyDomeVideo, innerSkyVideo, floorVideo, floor2Video, floor3Video, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo, panel5WallVideo];
   videos.forEach(v => {
     if (v && v.paused) {
       v.play().then(() => {
@@ -8049,7 +8618,7 @@ function animate() {
   const now0 = performance.now();
   if (now0 - window._lastVideoCheck > 5000) {
     window._lastVideoCheck = now0;
-    [skyDomeVideo, innerSkyVideo, floorVideo, floor2Video, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo].forEach(v => {
+    [skyDomeVideo, innerSkyVideo, floorVideo, floor2Video, floor3Video, leftWallVideo, centerWallVideo, rightWallVideo, backWallVideo, panel5WallVideo].forEach(v => {
       if (v && v.paused && v.readyState >= 2) v.play().catch(() => {});
     });
   }
@@ -8225,6 +8794,11 @@ function animate() {
     const warm = (cloudShadowContrast > 0 && cloudShadowEnabled && cloudShadowIntensity > 0)
       ? cloudShadowIntensity * cloudShadowContrast : 0;
     floor2Plane.material.uniforms.warmTint.value = warm;
+  }
+  if (floor3Plane && floor3Plane.material.uniforms.warmTint) {
+    const warm = (cloudShadowContrast > 0 && cloudShadowEnabled && cloudShadowIntensity > 0)
+      ? cloudShadowIntensity * cloudShadowContrast : 0;
+    floor3Plane.material.uniforms.warmTint.value = warm;
   }
 
   // ブルーム閾値ランダム変動
@@ -8422,10 +8996,12 @@ function loadVideoFromURL(slotName, url, loadFn) {
       innerSky:   { setVideo: (v) => { innerSkyVideo = v; innerSkyIsVideo = true; }, getPlane: () => innerSkyDome },
       floor:      { setVideo: (v) => { floorVideo = v; floorIsVideo = true; },       getPlane: () => floorPlane },
       floor2:     { setVideo: (v) => { floor2Video = v; floor2IsVideo = true; },     getPlane: () => floor2Plane },
+      floor3:     { setVideo: (v) => { floor3Video = v; floor3IsVideo = true; },     getPlane: () => floor3Plane },
       leftWall:   { setVideo: (v) => { leftWallVideo = v; leftWallIsVideo = true; }, getPlane: () => leftWallPlane },
       centerWall: { setVideo: (v) => { centerWallVideo = v; centerWallIsVideo = true; }, getPlane: () => centerWallPlane },
       rightWall:  { setVideo: (v) => { rightWallVideo = v; rightWallIsVideo = true; }, getPlane: () => rightWallPlane },
       backWall:   { setVideo: (v) => { backWallVideo = v; backWallIsVideo = true; }, getPlane: () => backWallPlane },
+      panel5Wall: { setVideo: (v) => { panel5WallVideo = v; panel5WallIsVideo = true; }, getPlane: () => panel5WallPlane },
     };
 
     // 即座にスロット変数に割り当て（resumeAllVideosで再生可能にするため）
@@ -8458,6 +9034,12 @@ function loadVideoFromURL(slotName, url, loadFn) {
           floor2Aspect = video.videoWidth / video.videoHeight;
           const sizeEl = document.getElementById('floor2ImageSize');
           if (sizeEl) updateFloor2ImageSize(parseFloat(sizeEl.value));
+        }
+        if (slotName === 'floor3') {
+          floor3Texture = texture;
+          floor3Aspect = video.videoWidth / video.videoHeight;
+          const sizeEl = document.getElementById('floor3ImageSize');
+          if (sizeEl) updateFloor3ImageSize(parseFloat(sizeEl.value));
         }
       }
       console.log(`[Viewer] ${slotName} video texture ready (${video.videoWidth}x${video.videoHeight})`);
@@ -8565,10 +9147,12 @@ async function loadViewerData() {
     { key: 'innerSky', loadFn: loadInnerSkyImage },
     { key: 'floor', loadFn: loadFloorImage },
     { key: 'floor2', loadFn: loadFloor2Image },
+    { key: 'floor3', loadFn: loadFloor3Image },
     { key: 'leftWall', loadFn: loadLeftWallImage },
     { key: 'centerWall', loadFn: loadCenterWallImage },
     { key: 'rightWall', loadFn: loadRightWallImage },
     { key: 'backWall', loadFn: loadBackWallImage },
+    { key: 'panel5Wall', loadFn: loadPanel5WallImage },
   ];
 
   // メディア読み込み（URL参照の動画はストリーミング、それ以外はblob変換）
@@ -8807,8 +9391,8 @@ window.CONFIG = CONFIG;
 // プリセット復元用に関数を公開
 window.appFunctions = {
   loadMidi, loadAudio, clearMidi, clearAudio,
-  loadSkyDomeImage, loadInnerSkyImage, loadFloorImage, loadFloor2Image, loadLeftWallImage, loadCenterWallImage, loadRightWallImage, loadBackWallImage,
-  clearSkyDomeImage, clearInnerSkyImage, clearFloorImage, clearFloor2Image, clearLeftWallImage, clearCenterWallImage, clearRightWallImage, clearBackWallImage,
+  loadSkyDomeImage, loadInnerSkyImage, loadFloorImage, loadFloor2Image, loadFloor3Image, loadLeftWallImage, loadCenterWallImage, loadRightWallImage, loadBackWallImage, loadPanel5WallImage,
+  clearSkyDomeImage, clearInnerSkyImage, clearFloorImage, clearFloor2Image, clearFloor3Image, clearLeftWallImage, clearCenterWallImage, clearRightWallImage, clearBackWallImage, clearPanel5WallImage,
   updateTrackPanel, debouncedRebuildNotes,
 };
 

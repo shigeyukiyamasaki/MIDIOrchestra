@@ -431,6 +431,7 @@ function collectCurrentSettings() {
     container.querySelectorAll('input[id], select[id]').forEach(el => {
       if (s[el.id] !== undefined) return; // 既に収集済み
       if (el.type === 'file') return; // ファイル入力は除外
+      if (el.id === 'presetSelect') return; // プリセットUI自体は除外
       if (el.type === 'checkbox' || el.type === 'radio') {
         if (el.type === 'radio' && !el.checked) return;
         s[el.id] = el.type === 'checkbox' ? el.checked : el.value;
@@ -782,6 +783,8 @@ async function loadPreset(presetId) {
   app.clearCenterWallImage();
   app.clearRightWallImage();
   app.clearBackWallImage();
+  app.clearFloor3Image();
+  app.clearPanel5WallImage();
 
   // MIDI/Audioクリア
   app.clearMidi();
@@ -978,6 +981,7 @@ async function initPresetSystem() {
     const id = select.value;
     if (!id) return;
     await loadPreset(id);
+    select.value = id; // 読み込み後も選択状態を維持
   });
 
   // 削除ボタン

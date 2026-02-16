@@ -211,4 +211,33 @@ async function publishViewerData(song, onStatus) {
   return result;
 }
 
-window.viewerExport = { exportViewerData, publishViewerData };
+// Notion データベースに公開情報を登録
+async function notifyNotion(song, viewerUrl) {
+  // メタデータ収集
+  const presetSelect = document.getElementById('presetSelect');
+  const presetName = presetSelect?.options[presetSelect.selectedIndex]?.textContent || '';
+  const title = presetName || song;
+  const composer = document.getElementById('creditsLine3')?.value || '';
+
+  // Notion APIに登録
+  const response = await fetch('notion-publish.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      song,
+      title,
+      composer,
+      url: viewerUrl,
+    }),
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || 'Notion publish failed');
+  }
+
+  console.log(`[Notion] ${result.action}: ${song}`);
+  return result;
+}
+
+window.viewerExport = { exportViewerData, publishViewerData, notifyNotion };
