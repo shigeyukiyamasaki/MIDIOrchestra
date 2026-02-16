@@ -9,6 +9,16 @@
 - FTPホスト: `sv1141.xserver.jp`
 - 認証情報: `~/.netrc` に保存済み（lftpが自動で読み取る）
 
+### デプロイ時のファイルパスはHTMLの参照パスと一致させること
+
+サーバー上のディレクトリ構造はローカルと異なる場合がある。
+アップロード先パスは**HTMLの `<script src="...">`や`<link href="...">`の参照パス**に合わせること。
+
+- `src/main.js` → `/midi-orchestra/src/main.js` にアップロード（ルート直下の `/midi-orchestra/main.js` ではない）
+- `style.css` → `/midi-orchestra/style.css` にアップロード
+- デプロイ前に `index.html` 内の参照パスを確認する
+- JSファイル更新時はキャッシュバスター（`?v=...`）も更新する
+
 ### イベントリスナー登録時のnullチェック必須
 
 `src/main.js` はエディター（`index.html`）とビューワー（`viewer.html`）で共有されている。

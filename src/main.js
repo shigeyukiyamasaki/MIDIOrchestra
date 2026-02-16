@@ -59,7 +59,7 @@ let floor2Curvature = 0; // 床2の曲率
 let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用）
 let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
 let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
-let backWallX = 500;    // 奥側画像のX位置（共有用）
+let backWallX = 0;    // 奥側画像のX位置（共有用）
 let audioElement = null; // 音源再生用オーディオ要素
 let audioSrcUrl = null;  // 音源のBlob URL（オーバーラップ用）
 
@@ -1894,8 +1894,8 @@ function setupThreeJS() {
   const backWallGeometry = new THREE.PlaneGeometry(300, 300);
   const backWallMaterial = createChromaKeyMaterial(0.8);
   backWallPlane = new THREE.Mesh(backWallGeometry, backWallMaterial);
-  backWallPlane.rotation.y = Math.PI / 2; // 幕と同じ向きに回転
-  backWallPlane.position.set(250, floorY + initialWallSize / 2, 0); // グリッドの端に配置
+  backWallPlane.rotation.y = 90 * Math.PI / 180; // デフォルト90°（スライダーで制御）
+  backWallPlane.position.set(0, floorY + initialWallSize / 2, 0); // スライダーデフォルトに合わせる
   backWallPlane.renderOrder = 10;
   backWallPlane.visible = false;
   backWallPlane.castShadow = true;
@@ -1952,8 +1952,9 @@ function setupThreeJS() {
   });
   // ページロード完了時にもレイアウト更新（横向きリロード対応）
   window.addEventListener('load', () => {
+    syncImagePanelHeight();
     updateViewerSideControlsWidth();
-    setTimeout(updateViewerSideControlsWidth, 500);
+    setTimeout(() => { syncImagePanelHeight(); updateViewerSideControlsWidth(); }, 500);
   });
 }
 
@@ -1991,7 +1992,17 @@ function calculateCanvasSize(container) {
   return { width, height };
 }
 
+// 画像パネルの高さに合わせてキャンバスコンテナのtopを自動調整
+function syncImagePanelHeight() {
+  const imagePanel = document.getElementById('image-panel');
+  const canvasContainer = document.getElementById('canvas-container');
+  if (!imagePanel || !canvasContainer) return;
+  const panelBottom = imagePanel.offsetTop + imagePanel.offsetHeight;
+  canvasContainer.style.top = panelBottom + 'px';
+}
+
 function onWindowResize() {
+  syncImagePanelHeight();
   const container = document.getElementById('canvas-container');
   const { width, height } = calculateCanvasSize(container);
 
@@ -3569,6 +3580,13 @@ function setupEventListeners() {
     updateFloorImageSize(value);
   });
 
+  // 床高度
+  document.getElementById('floorHeight')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('floorHeightValue').textContent = value;
+    if (floorPlane) floorPlane.position.y = value;
+  });
+
   // 床画像透明度
   const floorImageOpacityInput = document.getElementById('floorImageOpacity');
   const floorImageOpacityValue = document.getElementById('floorImageOpacityValue');
@@ -3759,6 +3777,20 @@ function setupEventListeners() {
     if (leftWallPlane) leftWallPlane.position.x = value;
   });
 
+  // 左側面画像Z位置
+  document.getElementById('leftWallImageZ')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('leftWallImageZValue').textContent = value;
+    if (leftWallPlane) leftWallPlane.position.z = value;
+  });
+
+  // 左側面画像Y回転
+  document.getElementById('leftWallImageRotY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('leftWallImageRotYValue').textContent = value;
+    if (leftWallPlane) leftWallPlane.rotation.y = value * Math.PI / 180;
+  });
+
   // 左側面画像透明度
   const leftWallImageOpacityInput = document.getElementById('leftWallImageOpacity');
   const leftWallImageOpacityValue = document.getElementById('leftWallImageOpacityValue');
@@ -3839,6 +3871,20 @@ function setupEventListeners() {
     if (centerWallPlane) centerWallPlane.position.x = value;
   });
 
+  // センター画像Z位置
+  document.getElementById('centerWallImageZ')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('centerWallImageZValue').textContent = value;
+    if (centerWallPlane) centerWallPlane.position.z = value;
+  });
+
+  // センター画像Y回転
+  document.getElementById('centerWallImageRotY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('centerWallImageRotYValue').textContent = value;
+    if (centerWallPlane) centerWallPlane.rotation.y = value * Math.PI / 180;
+  });
+
   // センター画像透明度
   const centerWallImageOpacityInput = document.getElementById('centerWallImageOpacity');
   const centerWallImageOpacityValue = document.getElementById('centerWallImageOpacityValue');
@@ -3915,6 +3961,20 @@ function setupEventListeners() {
     const value = parseFloat(e.target.value);
     document.getElementById('rightWallImageXValue').textContent = value;
     if (rightWallPlane) rightWallPlane.position.x = value;
+  });
+
+  // 右側面画像Z位置
+  document.getElementById('rightWallImageZ')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('rightWallImageZValue').textContent = value;
+    if (rightWallPlane) rightWallPlane.position.z = value;
+  });
+
+  // 右側面画像Y回転
+  document.getElementById('rightWallImageRotY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('rightWallImageRotYValue').textContent = value;
+    if (rightWallPlane) rightWallPlane.rotation.y = value * Math.PI / 180;
   });
 
   // 右側面画像透明度
@@ -4000,6 +4060,20 @@ function setupEventListeners() {
     if (backWallPlane) {
       backWallPlane.position.x = value;
     }
+  });
+
+  // 奥側画像Z位置
+  document.getElementById('backWallImageZ')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('backWallImageZValue').textContent = value;
+    if (backWallPlane) backWallPlane.position.z = value;
+  });
+
+  // 奥側画像Y回転
+  document.getElementById('backWallImageRotY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('backWallImageRotYValue').textContent = value;
+    if (backWallPlane) backWallPlane.rotation.y = value * Math.PI / 180;
   });
 
   // 奥側画像透明度
@@ -5167,31 +5241,44 @@ function createNoteObjects() {
   noteEdgeZ = -totalDepth / 2;
   noteEdgeZPositive = totalDepth / 2;
 
-  // 左側面画像の位置を調整（幕に垂直、手前側に配置、床基準、幕に隣接）
+  // 左側面画像の位置を調整（幕に垂直、手前側に配置、床基準）
   if (leftWallPlane) {
     const currentSize = leftWallPlane.geometry.parameters.height;
     const xVal = parseFloat(document.getElementById('leftWallImageX')?.value || 0);
-    leftWallPlane.position.set(xVal, floorY + currentSize / 2, noteEdgeZ);
+    const zVal = parseFloat(document.getElementById('leftWallImageZ')?.value || -150);
+    leftWallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
+    const rotY = parseFloat(document.getElementById('leftWallImageRotY')?.value || 0);
+    leftWallPlane.rotation.y = rotY * Math.PI / 180;
   }
 
-  // 右側面画像の位置を調整（幕に垂直、奥側に配置、床基準、幕に隣接）
+  // 右側面画像の位置を調整（幕に垂直、奥側に配置、床基準）
   if (rightWallPlane) {
     const currentSize = rightWallPlane.geometry.parameters.height;
     const xVal = parseFloat(document.getElementById('rightWallImageX')?.value || 0);
-    rightWallPlane.position.set(xVal, floorY + currentSize / 2, noteEdgeZPositive);
+    const zVal = parseFloat(document.getElementById('rightWallImageZ')?.value || 150);
+    rightWallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
+    const rotY = parseFloat(document.getElementById('rightWallImageRotY')?.value || 0);
+    rightWallPlane.rotation.y = rotY * Math.PI / 180;
   }
 
   // センター画像の位置を調整（幕に垂直、中央に配置、床基準）
   if (centerWallPlane) {
     const currentSize = centerWallPlane.geometry.parameters.height;
     const xVal = parseFloat(document.getElementById('centerWallImageX')?.value || 0);
-    centerWallPlane.position.set(xVal, floorY + currentSize / 2, 0);
+    const zVal = parseFloat(document.getElementById('centerWallImageZ')?.value || 0);
+    centerWallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
+    const rotY = parseFloat(document.getElementById('centerWallImageRotY')?.value || 0);
+    centerWallPlane.rotation.y = rotY * Math.PI / 180;
   }
 
   // 奥側画像の位置を調整（スライダーの値を維持）
   if (backWallPlane) {
     const currentSize = backWallPlane.geometry.parameters.height;
-    backWallPlane.position.set(backWallX, floorY + currentSize / 2, 0);
+    const xVal = parseFloat(document.getElementById('backWallImageX')?.value || 0);
+    const zVal = parseFloat(document.getElementById('backWallImageZ')?.value || 0);
+    backWallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
+    const rotY = parseFloat(document.getElementById('backWallImageRotY')?.value || 90);
+    backWallPlane.rotation.y = rotY * Math.PI / 180;
   }
 
   // カメラ位置はMIDI読み込み時に変更しない（setupThreeJSで設定した位置を維持）
@@ -6911,8 +6998,9 @@ function updateLeftWallImageSize(size) {
   const xVal = parseFloat(document.getElementById('leftWallImageX')?.value || 0);
   leftWallPlane.position.x = xVal;
 
-  // Z位置は幕の端に固定
-  leftWallPlane.position.z = noteEdgeZ;
+  // Z位置はスライダーの値を維持
+  const zVal = parseFloat(document.getElementById('leftWallImageZ')?.value || -150);
+  leftWallPlane.position.z = zVal;
 }
 
 // 左側面画像をクリア
@@ -7071,8 +7159,9 @@ function updateRightWallImageSize(size) {
   const xVal = parseFloat(document.getElementById('rightWallImageX')?.value || 0);
   rightWallPlane.position.x = xVal;
 
-  // Z位置は幕の奥側端に固定
-  rightWallPlane.position.z = noteEdgeZPositive;
+  // Z位置はスライダーの値を維持
+  const zVal = parseFloat(document.getElementById('rightWallImageZ')?.value || 150);
+  rightWallPlane.position.z = zVal;
 }
 
 // 右側面画像をクリア
@@ -7228,7 +7317,8 @@ function updateCenterWallImageSize(size) {
   const xVal = parseFloat(document.getElementById('centerWallImageX')?.value || 0);
   centerWallPlane.position.x = xVal;
 
-  centerWallPlane.position.z = 0;
+  const zVal = parseFloat(document.getElementById('centerWallImageZ')?.value || 0);
+  centerWallPlane.position.z = zVal;
 }
 
 // センター画像をクリア
@@ -7380,6 +7470,14 @@ function updateBackWallImageSize(size) {
 
   // Y位置を再計算（床基準：下端が床に接する）
   backWallPlane.position.y = floorY + height / 2;
+
+  // X位置はスライダーの値を維持
+  const xVal = parseFloat(document.getElementById('backWallImageX')?.value || 0);
+  backWallPlane.position.x = xVal;
+
+  // Z位置はスライダーの値を維持
+  const zVal = parseFloat(document.getElementById('backWallImageZ')?.value || 0);
+  backWallPlane.position.z = zVal;
 }
 
 // 奥側画像をクリア
