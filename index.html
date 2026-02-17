@@ -520,7 +520,7 @@
         </div>
         <div class="setting-item">
           <label>スケール</label>
-          <input type="range" id="waterSurfaceScale" min="10" max="100" step="1" value="40">
+          <input type="range" id="waterSurfaceScale" min="10" max="500" step="1" value="40">
           <span id="waterSurfaceScaleValue">40</span>
         </div>
         <div class="setting-item">
@@ -727,6 +727,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="leftWallImageSize" min="10" max="1000" step="1" value="300"><span id="leftWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="leftWallImageX" min="-500" max="500" step="1" value="0"><span id="leftWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="leftWallImageZ" min="-500" max="500" step="1" value="-150"><span id="leftWallImageZValue">-150</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="leftWallImageY" min="-200" max="200" step="0.1" value="0"><span id="leftWallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="leftWallImageRotY" min="-180" max="180" step="1" value="0"><span id="leftWallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="leftWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="leftWallImageFlip">反転</label></div>
@@ -753,6 +754,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="centerWallImageSize" min="10" max="1000" step="1" value="300"><span id="centerWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="centerWallImageX" min="-500" max="500" step="1" value="0"><span id="centerWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="centerWallImageZ" min="-500" max="500" step="1" value="0"><span id="centerWallImageZValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="centerWallImageY" min="-200" max="200" step="0.1" value="0"><span id="centerWallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="centerWallImageRotY" min="-180" max="180" step="1" value="0"><span id="centerWallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="centerWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="centerWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="centerWallImageFlip">反転</label></div>
@@ -779,6 +781,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="rightWallImageSize" min="10" max="1000" step="1" value="300"><span id="rightWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="rightWallImageX" min="-500" max="500" step="1" value="0"><span id="rightWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="rightWallImageZ" min="-500" max="500" step="1" value="150"><span id="rightWallImageZValue">150</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="rightWallImageY" min="-200" max="200" step="0.1" value="0"><span id="rightWallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="rightWallImageRotY" min="-180" max="180" step="1" value="0"><span id="rightWallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="rightWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="rightWallImageFlip">反転</label></div>
@@ -805,6 +808,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="backWallImageSize" min="10" max="1000" step="1" value="300"><span id="backWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="backWallImageX" min="-500" max="500" step="1" value="0"><span id="backWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="backWallImageZ" min="-500" max="500" step="1" value="0"><span id="backWallImageZValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="backWallImageY" min="-200" max="200" step="0.1" value="0"><span id="backWallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="backWallImageRotY" min="-180" max="180" step="1" value="90"><span id="backWallImageRotYValue">90</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="backWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="backWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="backWallImageFlip">反転</label></div>
@@ -831,6 +835,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="panel5WallImageSize" min="10" max="1000" step="1" value="300"><span id="panel5WallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="panel5WallImageX" min="-500" max="500" step="1" value="0"><span id="panel5WallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="panel5WallImageZ" min="-500" max="500" step="1" value="0"><span id="panel5WallImageZValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="panel5WallImageY" min="-200" max="200" step="0.1" value="0"><span id="panel5WallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="panel5WallImageRotY" min="-180" max="180" step="1" value="0"><span id="panel5WallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="panel5WallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="panel5WallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="panel5WallImageFlip">反転</label></div>
@@ -857,6 +862,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="panel6WallImageSize" min="10" max="1000" step="1" value="300"><span id="panel6WallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="panel6WallImageX" min="-500" max="500" step="1" value="0"><span id="panel6WallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="panel6WallImageZ" min="-500" max="500" step="1" value="0"><span id="panel6WallImageZValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="panel6WallImageY" min="-200" max="200" step="0.1" value="0"><span id="panel6WallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="panel6WallImageRotY" min="-180" max="180" step="1" value="0"><span id="panel6WallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="panel6WallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="panel6WallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="panel6WallImageFlip">反転</label></div>
@@ -1089,7 +1095,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
 
   <script src="src/presetManager.js?v=20260217c"></script>
-  <script src="src/viewerExport.js?v=20260216i"></script>
-  <script type="module" src="src/main.js?v=20260217j"></script>
+  <script src="src/viewerExport.js?v=20260217k"></script>
+  <script type="module" src="src/main.js?v=20260218a"></script>
 </body>
 </html>

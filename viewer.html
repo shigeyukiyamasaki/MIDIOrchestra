@@ -366,9 +366,9 @@
           </div>
           <div class="image-controls">
             <div class="control-row"><label>透明度</label><input type="range" id="skyDomeOpacity" min="0.1" max="1" step="0.05" value="1"><span id="skyDomeOpacityValue">1</span></div>
-            <div class="control-row"><label>範囲(度)</label><input type="range" id="skyDomeRange" min="60" max="360" step="10" value="180"><span id="skyDomeRangeValue">180</span></div>
+            <div class="control-row"><label>範囲(度)</label><input type="range" id="skyDomeRange" min="60" max="360" step="1" value="180"><span id="skyDomeRangeValue">180</span></div>
             <div class="control-row"><label>距離</label><input type="range" id="skyDomeRadius" min="100" max="3000" step="50" value="2000"><span id="skyDomeRadiusValue">2000</span></div>
-            <div class="control-row"><label>Yオフセット</label><input type="range" id="skyDomeOffsetY" min="-1000" max="1000" step="10" value="0"><span id="skyDomeOffsetYValue">0</span></div>
+            <div class="control-row"><label>Yオフセット</label><input type="range" id="skyDomeOffsetY" min="-1000" max="1000" step="1" value="0"><span id="skyDomeOffsetYValue">0</span></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="skyDomeChromaColor" value="#00ff00"><input type="range" id="skyDomeChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="skyDomeChromaThresholdValue">0</span></div>
             <button id="skyDomeImageClear" class="clear-btn-small">クリア</button>
           </div>
@@ -386,9 +386,9 @@
           </div>
           <div class="image-controls">
             <div class="control-row"><label>透明度</label><input type="range" id="innerSkyOpacity" min="0.1" max="1" step="0.05" value="1"><span id="innerSkyOpacityValue">1</span></div>
-            <div class="control-row"><label>範囲(度)</label><input type="range" id="innerSkyRange" min="60" max="360" step="10" value="180"><span id="innerSkyRangeValue">180</span></div>
+            <div class="control-row"><label>範囲(度)</label><input type="range" id="innerSkyRange" min="60" max="360" step="1" value="180"><span id="innerSkyRangeValue">180</span></div>
             <div class="control-row"><label>距離</label><input type="range" id="innerSkyRadius" min="50" max="2000" step="50" value="500"><span id="innerSkyRadiusValue">500</span></div>
-            <div class="control-row"><label>Yオフセット</label><input type="range" id="innerSkyOffsetY" min="-1000" max="1000" step="10" value="0"><span id="innerSkyOffsetYValue">0</span></div>
+            <div class="control-row"><label>Yオフセット</label><input type="range" id="innerSkyOffsetY" min="-1000" max="1000" step="1" value="0"><span id="innerSkyOffsetYValue">0</span></div>
             <input type="checkbox" id="innerSkyFollowCameraY" style="display:none;">
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="innerSkyChromaColor" value="#00ff00"><input type="range" id="innerSkyChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="innerSkyChromaThresholdValue">0</span></div>
             <button id="innerSkyImageClear" class="clear-btn-small">クリア</button>
@@ -406,7 +406,8 @@
             <input type="file" id="floorImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
-            <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="10" max="10000" step="10" value="300"><span id="floorImageSizeValue">300</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="10" max="10000" step="1" value="300"><span id="floorImageSizeValue">300</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="floorHeight" min="-200" max="200" step="0.1" value="-50"><span id="floorHeightValue">-50</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="floorImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="floorImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floorChromaColor" value="#00ff00"><input type="range" id="floorChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floorChromaThresholdValue">0</span></div>
@@ -426,13 +427,34 @@
             <input type="file" id="floor2ImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
-            <div class="control-row"><label>サイズ</label><input type="range" id="floor2ImageSize" min="10" max="10000" step="10" value="300"><span id="floor2ImageSizeValue">300</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="floor2ImageSize" min="10" max="10000" step="1" value="300"><span id="floor2ImageSizeValue">300</span></div>
             <div class="control-row"><label>高度</label><input type="range" id="floor2Height" min="-200" max="200" step="0.1" value="-49.9"><span id="floor2HeightValue">-49.9</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="floor2ImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="floor2ImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="floor2ImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floor2ChromaColor" value="#00ff00"><input type="range" id="floor2ChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floor2ChromaThresholdValue">0</span></div>
             <div class="control-row"><label>曲率</label><input type="range" id="floor2Curvature" min="0" max="0.0003" step="0.00001" value="0"><span id="floor2CurvatureValue">0</span></div>
             <button id="floor2ImageClear" class="clear-btn-small">クリア</button>
+          </div>
+        </div>
+      </div>
+      <div class="image-section">
+        <div class="setting-category">床3</div>
+        <div class="image-row">
+          <div class="drop-zone" id="floor3DropZone">
+            <img id="floor3ImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="floor3VideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+            <span class="drop-zone-text" id="floor3DropZoneText">ドラッグ&ドロップ<br>または</span>
+            <label class="file-label" id="floor3ImageLabel">ファイル選択</label>
+            <input type="file" id="floor3ImageInput" accept="image/*,video/mp4,video/webm">
+          </div>
+          <div class="image-controls">
+            <div class="control-row"><label>サイズ</label><input type="range" id="floor3ImageSize" min="10" max="10000" step="1" value="300"><span id="floor3ImageSizeValue">300</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="floor3Height" min="-200" max="200" step="0.1" value="-49.8"><span id="floor3HeightValue">-49.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="floor3ImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="floor3ImageOpacityValue">1</span></div>
+            <div class="control-row"><label><input type="checkbox" id="floor3ImageFlip">反転</label></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floor3ChromaColor" value="#00ff00"><input type="range" id="floor3ChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floor3ChromaThresholdValue">0</span></div>
+            <div class="control-row"><label>曲率</label><input type="range" id="floor3Curvature" min="0" max="0.0003" step="0.00001" value="0"><span id="floor3CurvatureValue">0</span></div>
+            <button id="floor3ImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
       </div>
@@ -447,8 +469,11 @@
             <input type="file" id="leftWallImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
-            <div class="control-row"><label>サイズ</label><input type="range" id="leftWallImageSize" min="10" max="1000" step="10" value="300"><span id="leftWallImageSizeValue">300</span></div>
-            <div class="control-row"><label>X位置</label><input type="range" id="leftWallImageX" min="-500" max="500" step="10" value="0"><span id="leftWallImageXValue">0</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="leftWallImageSize" min="10" max="1000" step="1" value="300"><span id="leftWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="leftWallImageX" min="-500" max="500" step="1" value="0"><span id="leftWallImageXValue">0</span></div>
+            <div class="control-row"><label>Z位置</label><input type="range" id="leftWallImageZ" min="-500" max="500" step="1" value="-150"><span id="leftWallImageZValue">-150</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="leftWallImageY" min="-200" max="200" step="0.1" value="0"><span id="leftWallImageYValue">0</span></div>
+            <div class="control-row"><label>Y回転</label><input type="range" id="leftWallImageRotY" min="-180" max="180" step="1" value="0"><span id="leftWallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="leftWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="leftWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="leftWallChromaColor" value="#00ff00"><input type="range" id="leftWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="leftWallChromaThresholdValue">0</span></div>
@@ -467,8 +492,11 @@
             <input type="file" id="rightWallImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
-            <div class="control-row"><label>サイズ</label><input type="range" id="rightWallImageSize" min="10" max="1000" step="10" value="300"><span id="rightWallImageSizeValue">300</span></div>
-            <div class="control-row"><label>X位置</label><input type="range" id="rightWallImageX" min="-500" max="500" step="10" value="0"><span id="rightWallImageXValue">0</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="rightWallImageSize" min="10" max="1000" step="1" value="300"><span id="rightWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="rightWallImageX" min="-500" max="500" step="1" value="0"><span id="rightWallImageXValue">0</span></div>
+            <div class="control-row"><label>Z位置</label><input type="range" id="rightWallImageZ" min="-500" max="500" step="1" value="150"><span id="rightWallImageZValue">150</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="rightWallImageY" min="-200" max="200" step="0.1" value="0"><span id="rightWallImageYValue">0</span></div>
+            <div class="control-row"><label>Y回転</label><input type="range" id="rightWallImageRotY" min="-180" max="180" step="1" value="0"><span id="rightWallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="rightWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="rightWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="rightWallChromaColor" value="#00ff00"><input type="range" id="rightWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="rightWallChromaThresholdValue">0</span></div>
@@ -487,8 +515,11 @@
             <input type="file" id="centerWallImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
           </div>
           <div class="image-controls">
-            <div class="control-row"><label>サイズ</label><input type="range" id="centerWallImageSize" min="10" max="1000" step="10" value="300"><span id="centerWallImageSizeValue">300</span></div>
-            <div class="control-row"><label>X位置</label><input type="range" id="centerWallImageX" min="-500" max="500" step="10" value="0"><span id="centerWallImageXValue">0</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="centerWallImageSize" min="10" max="1000" step="1" value="300"><span id="centerWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="centerWallImageX" min="-500" max="500" step="1" value="0"><span id="centerWallImageXValue">0</span></div>
+            <div class="control-row"><label>Z位置</label><input type="range" id="centerWallImageZ" min="-500" max="500" step="1" value="0"><span id="centerWallImageZValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="centerWallImageY" min="-200" max="200" step="0.1" value="0"><span id="centerWallImageYValue">0</span></div>
+            <div class="control-row"><label>Y回転</label><input type="range" id="centerWallImageRotY" min="-180" max="180" step="1" value="0"><span id="centerWallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="centerWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="centerWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="centerWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="centerWallChromaColor" value="#00ff00"><input type="range" id="centerWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="centerWallChromaThresholdValue">0</span></div>
@@ -507,12 +538,61 @@
             <input type="file" id="backWallImageInput" accept="image/*,video/mp4,video/webm">
           </div>
           <div class="image-controls">
-            <div class="control-row"><label>サイズ</label><input type="range" id="backWallImageSize" min="10" max="1000" step="10" value="300"><span id="backWallImageSizeValue">300</span></div>
-            <div class="control-row"><label>X位置</label><input type="range" id="backWallImageX" min="0" max="500" step="10" value="250"><span id="backWallImageXValue">250</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="backWallImageSize" min="10" max="1000" step="1" value="300"><span id="backWallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="backWallImageX" min="-500" max="500" step="1" value="0"><span id="backWallImageXValue">0</span></div>
+            <div class="control-row"><label>Z位置</label><input type="range" id="backWallImageZ" min="-500" max="500" step="1" value="0"><span id="backWallImageZValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="backWallImageY" min="-200" max="200" step="0.1" value="0"><span id="backWallImageYValue">0</span></div>
+            <div class="control-row"><label>Y回転</label><input type="range" id="backWallImageRotY" min="-180" max="180" step="1" value="90"><span id="backWallImageRotYValue">90</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="backWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="backWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="backWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="backWallChromaColor" value="#00ff00"><input type="range" id="backWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="backWallChromaThresholdValue">0</span></div>
             <button id="backWallImageClear" class="clear-btn-small">クリア</button>
+          </div>
+        </div>
+      </div>
+      <div class="image-section">
+        <div class="setting-category">パネル5</div>
+        <div class="image-row">
+          <div class="drop-zone" id="panel5WallDropZone">
+            <img id="panel5WallImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="panel5WallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+            <span class="drop-zone-text" id="panel5WallDropZoneText">ドラッグ&ドロップ<br>または</span>
+            <label class="file-label" id="panel5WallImageLabel">ファイル選択</label>
+            <input type="file" id="panel5WallImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
+          </div>
+          <div class="image-controls">
+            <div class="control-row"><label>サイズ</label><input type="range" id="panel5WallImageSize" min="10" max="1000" step="1" value="300"><span id="panel5WallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="panel5WallImageX" min="-500" max="500" step="1" value="0"><span id="panel5WallImageXValue">0</span></div>
+            <div class="control-row"><label>Z位置</label><input type="range" id="panel5WallImageZ" min="-500" max="500" step="1" value="0"><span id="panel5WallImageZValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="panel5WallImageY" min="-200" max="200" step="0.1" value="0"><span id="panel5WallImageYValue">0</span></div>
+            <div class="control-row"><label>Y回転</label><input type="range" id="panel5WallImageRotY" min="-180" max="180" step="1" value="0"><span id="panel5WallImageRotYValue">0</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="panel5WallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="panel5WallImageOpacityValue">1</span></div>
+            <div class="control-row"><label><input type="checkbox" id="panel5WallImageFlip">反転</label></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="panel5WallChromaColor" value="#00ff00"><input type="range" id="panel5WallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="panel5WallChromaThresholdValue">0</span></div>
+            <button id="panel5WallImageClear" class="clear-btn-small">クリア</button>
+          </div>
+        </div>
+      </div>
+      <div class="image-section">
+        <div class="setting-category">パネル6</div>
+        <div class="image-row">
+          <div class="drop-zone" id="panel6WallDropZone">
+            <img id="panel6WallImagePreview" class="drop-zone-preview" style="display: none;">
+            <video id="panel6WallVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+            <span class="drop-zone-text" id="panel6WallDropZoneText">ドラッグ&ドロップ<br>または</span>
+            <label class="file-label" id="panel6WallImageLabel">ファイル選択</label>
+            <input type="file" id="panel6WallImageInput" accept="image/*,video/mp4,video/webm" style="display:none;">
+          </div>
+          <div class="image-controls">
+            <div class="control-row"><label>サイズ</label><input type="range" id="panel6WallImageSize" min="10" max="1000" step="1" value="300"><span id="panel6WallImageSizeValue">300</span></div>
+            <div class="control-row"><label>X位置</label><input type="range" id="panel6WallImageX" min="-500" max="500" step="1" value="0"><span id="panel6WallImageXValue">0</span></div>
+            <div class="control-row"><label>Z位置</label><input type="range" id="panel6WallImageZ" min="-500" max="500" step="1" value="0"><span id="panel6WallImageZValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="panel6WallImageY" min="-200" max="200" step="0.1" value="0"><span id="panel6WallImageYValue">0</span></div>
+            <div class="control-row"><label>Y回転</label><input type="range" id="panel6WallImageRotY" min="-180" max="180" step="1" value="0"><span id="panel6WallImageRotYValue">0</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="panel6WallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="panel6WallImageOpacityValue">1</span></div>
+            <div class="control-row"><label><input type="checkbox" id="panel6WallImageFlip">反転</label></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="panel6WallChromaColor" value="#00ff00"><input type="range" id="panel6WallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="panel6WallChromaThresholdValue">0</span></div>
+            <button id="panel6WallImageClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
       </div>
@@ -602,6 +682,11 @@
         <input type="color" id="bgColorBottom" value="#0a0a15">
       </div>
       <div class="setting-item">
+        <label>中間点</label>
+        <input type="range" id="bgGradientMidpoint" min="0" max="100" step="1" value="50">
+        <span id="bgGradientMidpointValue">50</span>
+      </div>
+      <div class="setting-item">
         <button id="bgColorSwap" style="padding: 4px 8px; font-size: 11px;">↕ 上下入替</button>
       </div>
     </div>
@@ -668,12 +753,12 @@
     <input type="range" id="cloudShadowContrast" min="0" max="3" step="0.05" value="0"><span id="cloudShadowContrastValue">0</span>
     <!-- 影 -->
     <input type="checkbox" id="shadowEnabled">
-    <input type="radio" name="shadowEnvironment" value="outdoor" checked>
-    <input type="radio" name="shadowEnvironment" value="indoor">
+    <input type="radio" name="shadowEnvironment" value="indoor" checked>
+    <input type="radio" name="shadowEnvironment" value="outdoor">
     <input type="range" id="shadowOpacity" min="0" max="1" step="0.05" value="0.3"><span id="shadowOpacityValue">0.3</span>
     <input type="checkbox" id="noteShadowEnabled">
     <!-- 天候 -->
-    <select id="weatherType"><option value="none">なし</option><option value="snow">雪</option><option value="rain">雨</option><option value="sakura">桜</option><option value="leaves">落ち葉</option><option value="firefly">蛍</option></select>
+    <select id="weatherType"><option value="none">なし</option><option value="rain">雨</option><option value="snow">雪</option></select>
     <input type="range" id="weatherAmount" min="100" max="500000" step="100" value="3000"><span id="weatherAmountValue">3000</span>
     <input type="range" id="weatherSpeed" min="0.1" max="15" step="0.1" value="1"><span id="weatherSpeedValue">1</span>
     <input type="range" id="weatherSplash" min="0" max="20" step="1" value="3"><span id="weatherSplashValue">3</span>
@@ -690,7 +775,7 @@
     <!-- 水面 -->
     <input type="checkbox" id="waterSurfaceEnabled">
     <input type="range" id="waterSurfaceSize" min="100" max="2000" step="50" value="500"><span id="waterSurfaceSizeValue">500</span>
-    <input type="range" id="waterSurfaceScale" min="10" max="100" step="1" value="40"><span id="waterSurfaceScaleValue">40</span>
+    <input type="range" id="waterSurfaceScale" min="10" max="500" step="1" value="40"><span id="waterSurfaceScaleValue">40</span>
     <input type="range" id="waterSurfaceSpeed" min="0.1" max="3" step="0.1" value="1"><span id="waterSurfaceSpeedValue">1</span>
     <input type="color" id="waterSurfaceColor" value="#1a3a6a">
     <input type="color" id="waterSurfaceColor2" value="#4a9eed">
@@ -710,7 +795,7 @@
     <input type="checkbox" id="loopEndEnabled">
     <input type="range" id="loopEndSeek" min="0" max="1000" step="1" value="1000">
     <span id="loopEndTime">-:--.--</span>
-    <input type="range" id="fadeOutDuration" min="0" max="50" step="1" value="0"><span id="fadeOutValue">0</span>
+    <input type="range" id="fadeOutDuration" min="1" max="10" step="1" value="1"><span id="fadeOutValue">0.1s</span>
     <!-- スペクトラム -->
     <input type="checkbox" id="audioVisualizerEnabled">
     <select id="audioVisualizerStyle">
@@ -798,13 +883,14 @@
     // URLパラメータから曲名を取得し、対応するデータファイルを動的読み込み
     const params = new URLSearchParams(location.search);
     const song = params.get('song');
+    const cacheBuster = '?t=' + Date.now();
     if (song) {
-      document.write('<script src="data/' + encodeURIComponent(song) + '.js"><\/script>');
+      document.write('<script src="data/' + encodeURIComponent(song) + '.js' + cacheBuster + '"><\/script>');
     } else {
-      document.write('<script src="viewer-data.js"><\/script>');
+      document.write('<script src="viewer-data.js' + cacheBuster + '"><\/script>');
     }
   </script>
-  <script src="src/presetManager.js?v=20260217c"></script>
-  <script type="module" src="src/main.js?v=20260217j"></script>
+  <script src="src/presetManager.js?v=20260217p"></script>
+  <script type="module" src="src/main.js?v=20260218a"></script>
 </body>
 </html>

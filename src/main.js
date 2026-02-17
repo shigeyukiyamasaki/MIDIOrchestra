@@ -2199,6 +2199,66 @@ function syncImagePanelHeight() {
   canvasContainer.style.top = panelBottom + 'px';
 }
 
+// ビューワー用: DOM値から壁面パネルの3Dオブジェクトを一括同期
+// （エディターではイベントリスナーが処理するが、ビューワーにはないため）
+function syncWallSettingsFromDOM() {
+  // 壁面パネル: 位置・回転・透明度・反転
+  const wallPanels = [
+    { prefix: 'leftWall', plane: leftWallPlane, defaultZ: -150, defaultRotY: 0 },
+    { prefix: 'rightWall', plane: rightWallPlane, defaultZ: 150, defaultRotY: 0 },
+    { prefix: 'centerWall', plane: centerWallPlane, defaultZ: 0, defaultRotY: 0 },
+    { prefix: 'backWall', plane: backWallPlane, defaultZ: 0, defaultRotY: 90 },
+    { prefix: 'panel5Wall', plane: panel5WallPlane, defaultZ: 0, defaultRotY: 0 },
+    { prefix: 'panel6Wall', plane: panel6WallPlane, defaultZ: 0, defaultRotY: 0 },
+  ];
+  wallPanels.forEach(({ prefix, plane, defaultZ, defaultRotY }) => {
+    if (!plane) return;
+    // X位置
+    const xVal = parseFloat(document.getElementById(prefix + 'ImageX')?.value || 0);
+    plane.position.x = xVal;
+    // Z位置
+    const zVal = parseFloat(document.getElementById(prefix + 'ImageZ')?.value || defaultZ);
+    plane.position.z = zVal;
+    // Y位置（サイズ基準で床に接する高さ + 高度オフセット）
+    const currentSize = plane.geometry.parameters.height;
+    const yOffset = parseFloat(document.getElementById(prefix + 'ImageY')?.value || 0);
+    plane.position.y = floorY + currentSize / 2 + yOffset;
+    // Y回転
+    const rotY = parseFloat(document.getElementById(prefix + 'ImageRotY')?.value || defaultRotY);
+    plane.rotation.y = rotY * Math.PI / 180;
+    // 透明度
+    const opacityVal = parseFloat(document.getElementById(prefix + 'ImageOpacity')?.value || 1);
+    if (plane.material?.uniforms?.opacity) {
+      plane.material.uniforms.opacity.value = opacityVal;
+      syncDepthMaterialUniforms(plane);
+    }
+    // 反転
+    const flipEl = document.getElementById(prefix + 'ImageFlip');
+    if (flipEl) {
+      plane.scale.x = flipEl.checked ? -1 : 1;
+    }
+  });
+
+  // 床パネル: 透明度・反転
+  const floorPanels = [
+    { prefix: 'floor', plane: floorPlane },
+    { prefix: 'floor2', plane: floor2Plane },
+    { prefix: 'floor3', plane: floor3Plane },
+  ];
+  floorPanels.forEach(({ prefix, plane }) => {
+    if (!plane) return;
+    const opacityVal = parseFloat(document.getElementById(prefix + 'ImageOpacity')?.value || 1);
+    if (plane.material?.uniforms?.opacity) {
+      plane.material.uniforms.opacity.value = opacityVal;
+      syncDepthMaterialUniforms(plane);
+    }
+    const flipEl = document.getElementById(prefix + 'ImageFlip');
+    if (flipEl) {
+      plane.scale.x = flipEl.checked ? -1 : 1;
+    }
+  });
+}
+
 function onWindowResize() {
   syncImagePanelHeight();
   const container = document.getElementById('canvas-container');
@@ -4160,6 +4220,16 @@ function setupEventListeners() {
     if (leftWallPlane) leftWallPlane.position.z = value;
   });
 
+  // 左側面画像高度
+  document.getElementById('leftWallImageY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('leftWallImageYValue').textContent = value;
+    if (leftWallPlane) {
+      const currentSize = leftWallPlane.geometry.parameters.height;
+      leftWallPlane.position.y = floorY + currentSize / 2 + value;
+    }
+  });
+
   // 左側面画像Y回転
   document.getElementById('leftWallImageRotY')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
@@ -4254,6 +4324,16 @@ function setupEventListeners() {
     if (centerWallPlane) centerWallPlane.position.z = value;
   });
 
+  // センター画像高度
+  document.getElementById('centerWallImageY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('centerWallImageYValue').textContent = value;
+    if (centerWallPlane) {
+      const currentSize = centerWallPlane.geometry.parameters.height;
+      centerWallPlane.position.y = floorY + currentSize / 2 + value;
+    }
+  });
+
   // センター画像Y回転
   document.getElementById('centerWallImageRotY')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
@@ -4344,6 +4424,16 @@ function setupEventListeners() {
     const value = parseFloat(e.target.value);
     document.getElementById('rightWallImageZValue').textContent = value;
     if (rightWallPlane) rightWallPlane.position.z = value;
+  });
+
+  // 右側面画像高度
+  document.getElementById('rightWallImageY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('rightWallImageYValue').textContent = value;
+    if (rightWallPlane) {
+      const currentSize = rightWallPlane.geometry.parameters.height;
+      rightWallPlane.position.y = floorY + currentSize / 2 + value;
+    }
   });
 
   // 右側面画像Y回転
@@ -4445,6 +4535,16 @@ function setupEventListeners() {
     if (backWallPlane) backWallPlane.position.z = value;
   });
 
+  // 奥側画像高度
+  document.getElementById('backWallImageY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('backWallImageYValue').textContent = value;
+    if (backWallPlane) {
+      const currentSize = backWallPlane.geometry.parameters.height;
+      backWallPlane.position.y = floorY + currentSize / 2 + value;
+    }
+  });
+
   // 奥側画像Y回転
   document.getElementById('backWallImageRotY')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
@@ -4539,6 +4639,16 @@ function setupEventListeners() {
     if (panel5WallPlane) panel5WallPlane.position.z = value;
   });
 
+  // パネル5画像高度
+  document.getElementById('panel5WallImageY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('panel5WallImageYValue').textContent = value;
+    if (panel5WallPlane) {
+      const currentSize = panel5WallPlane.geometry.parameters.height;
+      panel5WallPlane.position.y = floorY + currentSize / 2 + value;
+    }
+  });
+
   // パネル5画像Y回転
   document.getElementById('panel5WallImageRotY')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
@@ -4627,6 +4737,16 @@ function setupEventListeners() {
     const value = parseFloat(e.target.value);
     document.getElementById('panel6WallImageZValue').textContent = value;
     if (panel6WallPlane) panel6WallPlane.position.z = value;
+  });
+
+  // パネル6画像高度
+  document.getElementById('panel6WallImageY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('panel6WallImageYValue').textContent = value;
+    if (panel6WallPlane) {
+      const currentSize = panel6WallPlane.geometry.parameters.height;
+      panel6WallPlane.position.y = floorY + currentSize / 2 + value;
+    }
   });
 
   // パネル6画像Y回転
@@ -7890,8 +8010,9 @@ function updateLeftWallImageSize(size) {
   leftWallPlane.geometry.dispose();
   leftWallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
-  // Y位置を再計算（床基準：下端が床に接する）
-  leftWallPlane.position.y = floorY + height / 2;
+  // Y位置を再計算（床基準：下端が床に接する + 高度オフセット）
+  const yOffset = parseFloat(document.getElementById('leftWallImageY')?.value || 0);
+  leftWallPlane.position.y = floorY + height / 2 + yOffset;
 
   // X位置はスライダーの値を維持
   const xVal = parseFloat(document.getElementById('leftWallImageX')?.value || 0);
@@ -8061,8 +8182,9 @@ function updateRightWallImageSize(size) {
   rightWallPlane.geometry.dispose();
   rightWallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
-  // Y位置を再計算（床基準：下端が床に接する）
-  rightWallPlane.position.y = floorY + height / 2;
+  // Y位置を再計算（床基準：下端が床に接する + 高度オフセット）
+  const yOffset = parseFloat(document.getElementById('rightWallImageY')?.value || 0);
+  rightWallPlane.position.y = floorY + height / 2 + yOffset;
 
   // X位置はスライダーの値を維持
   const xVal = parseFloat(document.getElementById('rightWallImageX')?.value || 0);
@@ -8231,7 +8353,8 @@ function updateCenterWallImageSize(size) {
   centerWallPlane.geometry.dispose();
   centerWallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
-  centerWallPlane.position.y = floorY + height / 2;
+  const yOffset = parseFloat(document.getElementById('centerWallImageY')?.value || 0);
+  centerWallPlane.position.y = floorY + height / 2 + yOffset;
 
   const xVal = parseFloat(document.getElementById('centerWallImageX')?.value || 0);
   centerWallPlane.position.x = xVal;
@@ -8397,8 +8520,9 @@ function updateBackWallImageSize(size) {
   backWallPlane.geometry.dispose();
   backWallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
-  // Y位置を再計算（床基準：下端が床に接する）
-  backWallPlane.position.y = floorY + height / 2;
+  // Y位置を再計算（床基準：下端が床に接する + 高度オフセット）
+  const yOffset = parseFloat(document.getElementById('backWallImageY')?.value || 0);
+  backWallPlane.position.y = floorY + height / 2 + yOffset;
 
   // X位置はスライダーの値を維持
   const xVal = parseFloat(document.getElementById('backWallImageX')?.value || 0);
@@ -8568,8 +8692,9 @@ function updatePanel5WallImageSize(size) {
   panel5WallPlane.geometry.dispose();
   panel5WallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
-  // Y位置を再計算（床基準：下端が床に接する）
-  panel5WallPlane.position.y = floorY + height / 2;
+  // Y位置を再計算（床基準：下端が床に接する + 高度オフセット）
+  const yOffset = parseFloat(document.getElementById('panel5WallImageY')?.value || 0);
+  panel5WallPlane.position.y = floorY + height / 2 + yOffset;
 
   // X位置はスライダーの値を維持
   const xVal = parseFloat(document.getElementById('panel5WallImageX')?.value || 0);
@@ -8738,8 +8863,9 @@ function updatePanel6WallImageSize(size) {
   panel6WallPlane.geometry.dispose();
   panel6WallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
-  // Y位置を再計算（床基準：下端が床に接する）
-  panel6WallPlane.position.y = floorY + height / 2;
+  // Y位置を再計算（床基準：下端が床に接する + 高度オフセット）
+  const yOffset = parseFloat(document.getElementById('panel6WallImageY')?.value || 0);
+  panel6WallPlane.position.y = floorY + height / 2 + yOffset;
 
   // X位置はスライダーの値を維持
   const xVal = parseFloat(document.getElementById('panel6WallImageX')?.value || 0);
@@ -9802,7 +9928,6 @@ function loadVideoFromURL(slotName, url, loadFn) {
 async function loadViewerData() {
   const data = window.VIEWER_DATA;
   if (!data) return;
-
   // 設定を適用
   if (data.settings && window.presetManager) {
     window.presetManager.applySettings(data.settings);
@@ -9919,6 +10044,9 @@ async function loadViewerData() {
   if (data.settings && window.presetManager) {
     setTimeout(() => {
       window.presetManager.applySettings(data.settings);
+      // ビューワーではimage-panelガード内のイベントリスナーが存在しないため、
+      // DOM値を直接3Dオブジェクトに反映する
+      syncWallSettingsFromDOM();
     }, 500);
   }
 
