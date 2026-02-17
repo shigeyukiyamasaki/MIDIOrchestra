@@ -29,12 +29,12 @@
     <div class="control-group sync-controls">
       <div class="sync-row">
         <label>MIDI遅延</label>
-        <input type="range" id="midiDelay" min="0" max="3" step="0.05" value="0">
+        <input type="range" id="midiDelay" min="-2" max="3" step="0.05" value="0">
         <span id="midiDelayValue">0.00秒</span>
       </div>
       <div class="sync-row">
         <label>音源遅延</label>
-        <input type="range" id="audioDelay" min="0" max="3" step="0.05" value="0">
+        <input type="range" id="audioDelay" min="-2" max="3" step="0.05" value="0">
         <span id="audioDelayValue">0.00秒</span>
       </div>
     </div>
@@ -649,7 +649,7 @@
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="10" max="10000" step="1" value="300"><span id="floorImageSizeValue">300</span></div>
             <div class="control-row"><label>高度</label><input type="range" id="floorHeight" min="-200" max="200" step="0.1" value="-50"><span id="floorHeightValue">-50</span></div>
-            <div class="control-row"><label>透明度</label><input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="floorImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="floorImageOpacityValue">1</span></div>
             <div class="control-row"><label>曲率</label><input type="range" id="floorCurvature" min="0" max="0.0003" step="0.00001" value="0"><span id="floorCurvatureValue">0</span></div>
             <div class="control-row"><label><input type="checkbox" id="floorImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floorChromaColor" value="#00ff00"><input type="range" id="floorChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floorChromaThresholdValue">0</span></div>
@@ -674,7 +674,7 @@
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floor2ImageSize" min="10" max="10000" step="1" value="300"><span id="floor2ImageSizeValue">300</span></div>
             <div class="control-row"><label>高度</label><input type="range" id="floor2Height" min="-200" max="200" step="0.1" value="-49.9"><span id="floor2HeightValue">-49.9</span></div>
-            <div class="control-row"><label>透明度</label><input type="range" id="floor2ImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="floor2ImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="floor2ImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="floor2ImageOpacityValue">1</span></div>
             <div class="control-row"><label>曲率</label><input type="range" id="floor2Curvature" min="0" max="0.0003" step="0.00001" value="0"><span id="floor2CurvatureValue">0</span></div>
             <div class="control-row"><label><input type="checkbox" id="floor2ImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floor2ChromaColor" value="#00ff00"><input type="range" id="floor2ChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floor2ChromaThresholdValue">0</span></div>
@@ -699,7 +699,7 @@
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floor3ImageSize" min="10" max="10000" step="1" value="300"><span id="floor3ImageSizeValue">300</span></div>
             <div class="control-row"><label>高度</label><input type="range" id="floor3Height" min="-200" max="200" step="0.1" value="-49.8"><span id="floor3HeightValue">-49.8</span></div>
-            <div class="control-row"><label>透明度</label><input type="range" id="floor3ImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="floor3ImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="floor3ImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="floor3ImageOpacityValue">1</span></div>
             <div class="control-row"><label>曲率</label><input type="range" id="floor3Curvature" min="0" max="0.0003" step="0.00001" value="0"><span id="floor3CurvatureValue">0</span></div>
             <div class="control-row"><label><input type="checkbox" id="floor3ImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floor3ChromaColor" value="#00ff00"><input type="range" id="floor3ChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floor3ChromaThresholdValue">0</span></div>
@@ -728,7 +728,7 @@
             <div class="control-row"><label>X位置</label><input type="range" id="leftWallImageX" min="-500" max="500" step="1" value="0"><span id="leftWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="leftWallImageZ" min="-500" max="500" step="1" value="-150"><span id="leftWallImageZValue">-150</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="leftWallImageRotY" min="-180" max="180" step="1" value="0"><span id="leftWallImageRotYValue">0</span></div>
-            <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="leftWallImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="leftWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="leftWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="leftWallChromaColor" value="#00ff00"><input type="range" id="leftWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="leftWallChromaThresholdValue">0</span></div>
             <button id="leftWallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
@@ -754,7 +754,7 @@
             <div class="control-row"><label>X位置</label><input type="range" id="centerWallImageX" min="-500" max="500" step="1" value="0"><span id="centerWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="centerWallImageZ" min="-500" max="500" step="1" value="0"><span id="centerWallImageZValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="centerWallImageRotY" min="-180" max="180" step="1" value="0"><span id="centerWallImageRotYValue">0</span></div>
-            <div class="control-row"><label>透明度</label><input type="range" id="centerWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="centerWallImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="centerWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="centerWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="centerWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="centerWallChromaColor" value="#00ff00"><input type="range" id="centerWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="centerWallChromaThresholdValue">0</span></div>
             <button id="centerWallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
@@ -780,7 +780,7 @@
             <div class="control-row"><label>X位置</label><input type="range" id="rightWallImageX" min="-500" max="500" step="1" value="0"><span id="rightWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="rightWallImageZ" min="-500" max="500" step="1" value="150"><span id="rightWallImageZValue">150</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="rightWallImageRotY" min="-180" max="180" step="1" value="0"><span id="rightWallImageRotYValue">0</span></div>
-            <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="rightWallImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="rightWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="rightWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="rightWallChromaColor" value="#00ff00"><input type="range" id="rightWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="rightWallChromaThresholdValue">0</span></div>
             <button id="rightWallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
@@ -806,7 +806,7 @@
             <div class="control-row"><label>X位置</label><input type="range" id="backWallImageX" min="-500" max="500" step="1" value="0"><span id="backWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="backWallImageZ" min="-500" max="500" step="1" value="0"><span id="backWallImageZValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="backWallImageRotY" min="-180" max="180" step="1" value="90"><span id="backWallImageRotYValue">90</span></div>
-            <div class="control-row"><label>透明度</label><input type="range" id="backWallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="backWallImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="backWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="backWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="backWallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="backWallChromaColor" value="#00ff00"><input type="range" id="backWallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="backWallChromaThresholdValue">0</span></div>
             <button id="backWallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
@@ -832,7 +832,7 @@
             <div class="control-row"><label>X位置</label><input type="range" id="panel5WallImageX" min="-500" max="500" step="1" value="0"><span id="panel5WallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="panel5WallImageZ" min="-500" max="500" step="1" value="0"><span id="panel5WallImageZValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="panel5WallImageRotY" min="-180" max="180" step="1" value="0"><span id="panel5WallImageRotYValue">0</span></div>
-            <div class="control-row"><label>透明度</label><input type="range" id="panel5WallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="panel5WallImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="panel5WallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="panel5WallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="panel5WallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="panel5WallChromaColor" value="#00ff00"><input type="range" id="panel5WallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="panel5WallChromaThresholdValue">0</span></div>
             <button id="panel5WallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
@@ -858,7 +858,7 @@
             <div class="control-row"><label>X位置</label><input type="range" id="panel6WallImageX" min="-500" max="500" step="1" value="0"><span id="panel6WallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="panel6WallImageZ" min="-500" max="500" step="1" value="0"><span id="panel6WallImageZValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="panel6WallImageRotY" min="-180" max="180" step="1" value="0"><span id="panel6WallImageRotYValue">0</span></div>
-            <div class="control-row"><label>透明度</label><input type="range" id="panel6WallImageOpacity" min="0.1" max="1" step="0.05" value="0.8"><span id="panel6WallImageOpacityValue">0.8</span></div>
+            <div class="control-row"><label>透明度</label><input type="range" id="panel6WallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="panel6WallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="panel6WallImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="panel6WallChromaColor" value="#00ff00"><input type="range" id="panel6WallChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="panel6WallChromaThresholdValue">0</span></div>
             <button id="panel6WallVideoPause" class="video-pause-btn" style="display:none;" title="動画を一時停止/再生"><i class="fa-solid fa-pause"></i></button>
@@ -1090,6 +1090,6 @@
 
   <script src="src/presetManager.js?v=20260217c"></script>
   <script src="src/viewerExport.js?v=20260216i"></script>
-  <script type="module" src="src/main.js?v=20260217i"></script>
+  <script type="module" src="src/main.js?v=20260217j"></script>
 </body>
 </html>

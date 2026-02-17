@@ -1922,7 +1922,7 @@ function setupThreeJS() {
 
   // 床画像用平面（初期は非表示）- セグメント分割で曲面対応
   const floorGeometry = new THREE.PlaneGeometry(300, 300, 64, 64);
-  const floorMaterial = createChromaKeyMaterial(0.8);
+  const floorMaterial = createChromaKeyMaterial(1);
   floorMaterial.side = THREE.FrontSide; // 裏面を非表示
   floorMaterial.shadowSide = THREE.DoubleSide; // 影パスでは両面描画
   floorMaterial.depthWrite = true; // 水面が床の下にあるとき正しく隠れるように
@@ -1942,7 +1942,7 @@ function setupThreeJS() {
 
   // 床2画像用平面（床の少し上に配置）
   const floor2Geometry = new THREE.PlaneGeometry(300, 300, 64, 64);
-  const floor2Material = createChromaKeyMaterial(0.8);
+  const floor2Material = createChromaKeyMaterial(1);
   floor2Material.side = THREE.FrontSide;
   floor2Material.shadowSide = THREE.DoubleSide;
   floor2Material.depthWrite = true;
@@ -1961,7 +1961,7 @@ function setupThreeJS() {
 
   // 床3画像用平面（床の少し上に配置）
   const floor3Geometry = new THREE.PlaneGeometry(300, 300, 64, 64);
-  const floor3Material = createChromaKeyMaterial(0.8);
+  const floor3Material = createChromaKeyMaterial(1);
   floor3Material.side = THREE.FrontSide;
   floor3Material.shadowSide = THREE.DoubleSide;
   floor3Material.depthWrite = true;
@@ -2030,7 +2030,7 @@ function setupThreeJS() {
 
   // 左側面画像用平面（初期は非表示）- 幕に垂直な壁
   const leftWallGeometry = new THREE.PlaneGeometry(300, 300);
-  const leftWallMaterial = createChromaKeyMaterial(0.8);
+  const leftWallMaterial = createChromaKeyMaterial(1);
   leftWallPlane = new THREE.Mesh(leftWallGeometry, leftWallMaterial);
   // 回転なし = XY平面に平行 = 幕に垂直
   // 床基準でY位置を設定（下端が床に接する）
@@ -2044,7 +2044,7 @@ function setupThreeJS() {
 
   // 右側面画像用平面（初期は非表示）- 幕に垂直な壁（奥側）
   const rightWallGeometry = new THREE.PlaneGeometry(300, 300);
-  const rightWallMaterial = createChromaKeyMaterial(0.8);
+  const rightWallMaterial = createChromaKeyMaterial(1);
   rightWallPlane = new THREE.Mesh(rightWallGeometry, rightWallMaterial);
   rightWallPlane.position.set(0, floorY + initialWallSize / 2, 150); // 奥側に配置
   rightWallPlane.renderOrder = 10;
@@ -2055,7 +2055,7 @@ function setupThreeJS() {
 
   // センター画像用平面（初期は非表示）- 幕に垂直な壁（中央）
   const centerWallGeometry = new THREE.PlaneGeometry(300, 300);
-  const centerWallMaterial = createChromaKeyMaterial(0.8);
+  const centerWallMaterial = createChromaKeyMaterial(1);
   centerWallPlane = new THREE.Mesh(centerWallGeometry, centerWallMaterial);
   centerWallPlane.position.set(0, floorY + initialWallSize / 2, 0); // センターに配置
   centerWallPlane.renderOrder = 10;
@@ -2066,7 +2066,7 @@ function setupThreeJS() {
 
   // 奥側画像用平面（初期は非表示）- タイムライン幕と平行（YZ平面）
   const backWallGeometry = new THREE.PlaneGeometry(300, 300);
-  const backWallMaterial = createChromaKeyMaterial(0.8);
+  const backWallMaterial = createChromaKeyMaterial(1);
   backWallPlane = new THREE.Mesh(backWallGeometry, backWallMaterial);
   backWallPlane.rotation.y = 90 * Math.PI / 180; // デフォルト90°（スライダーで制御）
   backWallPlane.position.set(0, floorY + initialWallSize / 2, 0); // スライダーデフォルトに合わせる
@@ -2078,7 +2078,7 @@ function setupThreeJS() {
 
   // パネル5画像用平面（初期は非表示）
   const panel5WallGeometry = new THREE.PlaneGeometry(300, 300);
-  const panel5WallMaterial = createChromaKeyMaterial(0.8);
+  const panel5WallMaterial = createChromaKeyMaterial(1);
   panel5WallPlane = new THREE.Mesh(panel5WallGeometry, panel5WallMaterial);
   panel5WallPlane.rotation.y = 0;
   panel5WallPlane.position.set(0, floorY + initialWallSize / 2, 0);
@@ -2090,7 +2090,7 @@ function setupThreeJS() {
 
   // パネル6画像用平面（初期は非表示）
   const panel6WallGeometry = new THREE.PlaneGeometry(300, 300);
-  const panel6WallMaterial = createChromaKeyMaterial(0.8);
+  const panel6WallMaterial = createChromaKeyMaterial(1);
   panel6WallPlane = new THREE.Mesh(panel6WallGeometry, panel6WallMaterial);
   panel6WallPlane.rotation.y = 0;
   panel6WallPlane.position.set(0, floorY + initialWallSize / 2, 0);
