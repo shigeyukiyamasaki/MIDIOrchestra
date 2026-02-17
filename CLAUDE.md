@@ -80,20 +80,8 @@ if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) ||
 
 ### メディアスロット追加時のチェックリスト
 
-新しいメディアスロット（床3、パネル5壁など）を追加した際は、以下すべてを更新すること。
-漏れるとプリセット読み込みやビューワーがクラッシュする。
-
-1. **`window.appFunctions` にエクスポート**（main.js末尾）
-   - `loadXxxImage` と `clearXxxImage` の両方を追加
-2. **`setupDropZone` のnullガード**（setupEventListeners内）
-   - ビューワーにはエディターのDOM要素がないため、ガードなしだとビューワーがクラッシュする
-   - `setupDropZone` 関数自体に `if (!dropZone) return;` が入っているが、呼び出し側でも `if (xxxDropZone)` ガードを付けるのが望ましい
-3. **`presetManager.js` の `loadPreset` 内のクリア処理**
-   - `app.clearXxxImage()` を追加
-4. **`presetManager.js` の `loadPreset` 内のメディア復元処理**
-   - `if (media.xxx) await restoreMediaSlot(...)` を追加
-5. **`presetManager.js` の `loadPreset` 内の `currentMediaRefs` 復元**
-   - `window.currentMediaRefs.xxx = media.xxx || null` を追加
+詳細は [media-slot-addition skill](.claude/skills/media-slot-addition/skill.md) を参照。
+専用エージェント [add-media-slot](.claude/agents/add-media-slot.md) で実行すること。
 
 ### 自動収集（collectCurrentSettings）の除外ルール
 
@@ -102,11 +90,6 @@ if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) ||
 
 新しいUIコントロールを `#controls` 内に追加する際、それが「保存すべき設定」でない場合は除外条件に追加する。
 
-### ドット絵の拡大は4倍・ニアレストネイバー
+### キャラクターアニメーション（ドット絵スプライト）
 
-このプロジェクトのキャラクタースプライトは元ドットの**4倍**で描画されている。
-ドット絵素材を拡大する際は、ぼやけないように**ニアレストネイバー**で**4倍**に統一すること。
-
-```bash
-ffmpeg -i input.png -vf "scale=iw*4:ih*4:flags=neighbor" -update 1 -y output.png
-```
+詳細は [character-animation skill](.claude/skills/character-animation/skill.md) を参照。

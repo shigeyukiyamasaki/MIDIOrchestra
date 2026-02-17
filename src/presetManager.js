@@ -785,6 +785,7 @@ async function loadPreset(presetId) {
   app.clearBackWallImage();
   app.clearFloor3Image();
   app.clearPanel5WallImage();
+  app.clearPanel6WallImage();
 
   // MIDI/Audioクリア
   app.clearMidi();
@@ -808,6 +809,9 @@ async function loadPreset(presetId) {
     window.currentMediaRefs.centerWall = media.centerWall || null;
     window.currentMediaRefs.rightWall = media.rightWall || null;
     window.currentMediaRefs.backWall = media.backWall || null;
+    window.currentMediaRefs.floor3 = media.floor3 || null;
+    window.currentMediaRefs.panel5Wall = media.panel5Wall || null;
+    window.currentMediaRefs.panel6Wall = media.panel6Wall || null;
   }
 
   if (media.midi) {
@@ -868,6 +872,15 @@ async function loadPreset(presetId) {
   }
   if (media.backWall) {
     await restoreMediaSlot(media.backWall, app.loadBackWallImage, null);
+  }
+  if (media.floor3) {
+    await restoreMediaSlot(media.floor3, app.loadFloor3Image, null);
+  }
+  if (media.panel5Wall) {
+    await restoreMediaSlot(media.panel5Wall, app.loadPanel5WallImage, null);
+  }
+  if (media.panel6Wall) {
+    await restoreMediaSlot(media.panel6Wall, app.loadPanel6WallImage, null);
   }
 
   console.log('Preset loaded:', preset.name);
