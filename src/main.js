@@ -7667,11 +7667,12 @@ function loadLeftWallImageFile(file) {
 
       leftWallPlane.material.uniforms.map.value = leftWallTexture;
       syncDepthMaterialUniforms(leftWallPlane);
-      leftWallPlane.visible = true;
       leftWallIsVideo = false;
 
       const currentSize = parseFloat(document.getElementById('leftWallImageSize').value);
       updateLeftWallImageSize(currentSize);
+      leftWallPlane.visible = true;
+      onWindowResize();
 
       const imagePreview = document.getElementById('leftWallImagePreview');
       const videoPreview = document.getElementById('leftWallVideoPreview');
@@ -7697,7 +7698,12 @@ function loadLeftWallVideo(file) {
   leftWallVideo.muted = true;
   leftWallVideo.playsInline = true;
 
-  leftWallVideo.onloadeddata = () => {
+  let textureReady = false;
+  function onVideoReady() {
+    if (textureReady) return;
+    if (leftWallVideo.videoWidth === 0) return;
+    textureReady = true;
+
     leftWallTexture = new THREE.VideoTexture(leftWallVideo);
     leftWallTexture.minFilter = THREE.LinearFilter;
     leftWallTexture.magFilter = THREE.LinearFilter;
@@ -7706,13 +7712,14 @@ function loadLeftWallVideo(file) {
 
     leftWallPlane.material.uniforms.map.value = leftWallTexture;
     syncDepthMaterialUniforms(leftWallPlane);
-    leftWallPlane.visible = true;
     leftWallIsVideo = true;
 
     leftWallVideo.play();
 
     const currentSize = parseFloat(document.getElementById('leftWallImageSize').value);
     updateLeftWallImageSize(currentSize);
+    leftWallPlane.visible = true;
+    onWindowResize();
 
     const imagePreview = document.getElementById('leftWallImagePreview');
     const videoPreview = document.getElementById('leftWallVideoPreview');
@@ -7730,7 +7737,10 @@ function loadLeftWallVideo(file) {
     }
 
     console.log('Left wall video loaded:', file.name, 'aspect:', leftWallAspect);
-  };
+  }
+  leftWallVideo.addEventListener('loadedmetadata', onVideoReady);
+  leftWallVideo.addEventListener('loadeddata', onVideoReady);
+  leftWallVideo.addEventListener('canplay', onVideoReady);
   leftWallVideo.load();
 }
 
@@ -7828,11 +7838,12 @@ function loadRightWallImageFile(file) {
 
       rightWallPlane.material.uniforms.map.value = rightWallTexture;
       syncDepthMaterialUniforms(rightWallPlane);
-      rightWallPlane.visible = true;
       rightWallIsVideo = false;
 
       const currentSize = parseFloat(document.getElementById('rightWallImageSize').value);
       updateRightWallImageSize(currentSize);
+      rightWallPlane.visible = true;
+      onWindowResize();
 
       const imagePreview = document.getElementById('rightWallImagePreview');
       const videoPreview = document.getElementById('rightWallVideoPreview');
@@ -7858,7 +7869,12 @@ function loadRightWallVideo(file) {
   rightWallVideo.muted = true;
   rightWallVideo.playsInline = true;
 
-  rightWallVideo.onloadeddata = () => {
+  let textureReady = false;
+  function onVideoReady() {
+    if (textureReady) return;
+    if (rightWallVideo.videoWidth === 0) return;
+    textureReady = true;
+
     rightWallTexture = new THREE.VideoTexture(rightWallVideo);
     rightWallTexture.minFilter = THREE.LinearFilter;
     rightWallTexture.magFilter = THREE.LinearFilter;
@@ -7867,13 +7883,14 @@ function loadRightWallVideo(file) {
 
     rightWallPlane.material.uniforms.map.value = rightWallTexture;
     syncDepthMaterialUniforms(rightWallPlane);
-    rightWallPlane.visible = true;
     rightWallIsVideo = true;
 
     rightWallVideo.play();
 
     const currentSize = parseFloat(document.getElementById('rightWallImageSize').value);
     updateRightWallImageSize(currentSize);
+    rightWallPlane.visible = true;
+    onWindowResize();
 
     const imagePreview = document.getElementById('rightWallImagePreview');
     const videoPreview = document.getElementById('rightWallVideoPreview');
@@ -7891,7 +7908,10 @@ function loadRightWallVideo(file) {
     }
 
     console.log('Right wall video loaded:', file.name, 'aspect:', rightWallAspect);
-  };
+  }
+  rightWallVideo.addEventListener('loadedmetadata', onVideoReady);
+  rightWallVideo.addEventListener('loadeddata', onVideoReady);
+  rightWallVideo.addEventListener('canplay', onVideoReady);
   rightWallVideo.load();
 }
 
@@ -7989,11 +8009,12 @@ function loadCenterWallImageFile(file) {
 
       centerWallPlane.material.uniforms.map.value = centerWallTexture;
       syncDepthMaterialUniforms(centerWallPlane);
-      centerWallPlane.visible = true;
       centerWallIsVideo = false;
 
       const currentSize = parseFloat(document.getElementById('centerWallImageSize').value);
       updateCenterWallImageSize(currentSize);
+      centerWallPlane.visible = true;
+      onWindowResize();
 
       const imagePreview = document.getElementById('centerWallImagePreview');
       const videoPreview = document.getElementById('centerWallVideoPreview');
@@ -8019,7 +8040,12 @@ function loadCenterWallVideo(file) {
   centerWallVideo.muted = true;
   centerWallVideo.playsInline = true;
 
-  centerWallVideo.onloadeddata = () => {
+  let textureReady = false;
+  function onVideoReady() {
+    if (textureReady) return;
+    if (centerWallVideo.videoWidth === 0) return;
+    textureReady = true;
+
     centerWallTexture = new THREE.VideoTexture(centerWallVideo);
     centerWallTexture.minFilter = THREE.LinearFilter;
     centerWallTexture.magFilter = THREE.LinearFilter;
@@ -8028,13 +8054,14 @@ function loadCenterWallVideo(file) {
 
     centerWallPlane.material.uniforms.map.value = centerWallTexture;
     syncDepthMaterialUniforms(centerWallPlane);
-    centerWallPlane.visible = true;
     centerWallIsVideo = true;
 
     centerWallVideo.play();
 
     const currentSize = parseFloat(document.getElementById('centerWallImageSize').value);
     updateCenterWallImageSize(currentSize);
+    centerWallPlane.visible = true;
+    onWindowResize();
 
     const imagePreview = document.getElementById('centerWallImagePreview');
     const videoPreview = document.getElementById('centerWallVideoPreview');
@@ -8052,7 +8079,10 @@ function loadCenterWallVideo(file) {
     }
 
     console.log('Center wall video loaded:', file.name, 'aspect:', centerWallAspect);
-  };
+  }
+  centerWallVideo.addEventListener('loadedmetadata', onVideoReady);
+  centerWallVideo.addEventListener('loadeddata', onVideoReady);
+  centerWallVideo.addEventListener('canplay', onVideoReady);
   centerWallVideo.load();
 }
 
@@ -8144,11 +8174,12 @@ function loadBackWallImageFile(file) {
 
       backWallPlane.material.uniforms.map.value = backWallTexture;
       syncDepthMaterialUniforms(backWallPlane);
-      backWallPlane.visible = true;
       backWallIsVideo = false;
 
       const currentSize = parseFloat(document.getElementById('backWallImageSize').value);
       updateBackWallImageSize(currentSize);
+      backWallPlane.visible = true;
+      onWindowResize();
 
       const imagePreview = document.getElementById('backWallImagePreview');
       const videoPreview = document.getElementById('backWallVideoPreview');
@@ -8174,7 +8205,12 @@ function loadBackWallVideo(file) {
   backWallVideo.muted = true;
   backWallVideo.playsInline = true;
 
-  backWallVideo.onloadeddata = () => {
+  let textureReady = false;
+  function onVideoReady() {
+    if (textureReady) return;
+    if (backWallVideo.videoWidth === 0) return;
+    textureReady = true;
+
     backWallTexture = new THREE.VideoTexture(backWallVideo);
     backWallTexture.minFilter = THREE.LinearFilter;
     backWallTexture.magFilter = THREE.LinearFilter;
@@ -8183,13 +8219,14 @@ function loadBackWallVideo(file) {
 
     backWallPlane.material.uniforms.map.value = backWallTexture;
     syncDepthMaterialUniforms(backWallPlane);
-    backWallPlane.visible = true;
     backWallIsVideo = true;
 
     backWallVideo.play();
 
     const currentSize = parseFloat(document.getElementById('backWallImageSize').value);
     updateBackWallImageSize(currentSize);
+    backWallPlane.visible = true;
+    onWindowResize();
 
     const imagePreview = document.getElementById('backWallImagePreview');
     const videoPreview = document.getElementById('backWallVideoPreview');
@@ -8207,7 +8244,10 @@ function loadBackWallVideo(file) {
     }
 
     console.log('Back wall video loaded:', file.name, 'aspect:', backWallAspect);
-  };
+  }
+  backWallVideo.addEventListener('loadedmetadata', onVideoReady);
+  backWallVideo.addEventListener('loadeddata', onVideoReady);
+  backWallVideo.addEventListener('canplay', onVideoReady);
   backWallVideo.load();
 }
 
@@ -8305,11 +8345,12 @@ function loadPanel5WallImageFile(file) {
 
       panel5WallPlane.material.uniforms.map.value = panel5WallTexture;
       syncDepthMaterialUniforms(panel5WallPlane);
-      panel5WallPlane.visible = true;
       panel5WallIsVideo = false;
 
       const currentSize = parseFloat(document.getElementById('panel5WallImageSize').value);
       updatePanel5WallImageSize(currentSize);
+      panel5WallPlane.visible = true;
+      onWindowResize();
 
       const imagePreview = document.getElementById('panel5WallImagePreview');
       const videoPreview = document.getElementById('panel5WallVideoPreview');
@@ -8335,7 +8376,12 @@ function loadPanel5WallVideo(file) {
   panel5WallVideo.muted = true;
   panel5WallVideo.playsInline = true;
 
-  panel5WallVideo.onloadeddata = () => {
+  let textureReady = false;
+  function onVideoReady() {
+    if (textureReady) return;
+    if (panel5WallVideo.videoWidth === 0) return;
+    textureReady = true;
+
     panel5WallTexture = new THREE.VideoTexture(panel5WallVideo);
     panel5WallTexture.minFilter = THREE.LinearFilter;
     panel5WallTexture.magFilter = THREE.LinearFilter;
@@ -8344,13 +8390,14 @@ function loadPanel5WallVideo(file) {
 
     panel5WallPlane.material.uniforms.map.value = panel5WallTexture;
     syncDepthMaterialUniforms(panel5WallPlane);
-    panel5WallPlane.visible = true;
     panel5WallIsVideo = true;
 
     panel5WallVideo.play();
 
     const currentSize = parseFloat(document.getElementById('panel5WallImageSize').value);
     updatePanel5WallImageSize(currentSize);
+    panel5WallPlane.visible = true;
+    onWindowResize();
 
     const imagePreview = document.getElementById('panel5WallImagePreview');
     const videoPreview = document.getElementById('panel5WallVideoPreview');
@@ -8368,7 +8415,10 @@ function loadPanel5WallVideo(file) {
     }
 
     console.log('Panel5 wall video loaded:', file.name, 'aspect:', panel5WallAspect);
-  };
+  }
+  panel5WallVideo.addEventListener('loadedmetadata', onVideoReady);
+  panel5WallVideo.addEventListener('loadeddata', onVideoReady);
+  panel5WallVideo.addEventListener('canplay', onVideoReady);
   panel5WallVideo.load();
 }
 
