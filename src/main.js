@@ -894,6 +894,15 @@ function setupValueSpanDirectInput() {
         if (e.key === 'Enter') { e.preventDefault(); commit(); }
         if (e.key === 'Escape') { e.preventDefault(); cancel(); }
       });
+      input.addEventListener('input', () => {
+        let val = parseFloat(input.value);
+        if (isNaN(val)) return;
+        const min = parseFloat(slider.min);
+        const max = parseFloat(slider.max);
+        val = Math.max(min, Math.min(max, val));
+        slider.value = val;
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+      });
       input.addEventListener('blur', commit);
 
       span.style.display = 'none';
@@ -2277,6 +2286,9 @@ function initColorPickerHueFix() {
         this.value = hslToHex(this._lastHue, safeSat, safeL);
       }
     });
+
+    // chroma-key-row内のカラーピッカーはコード表示をスキップ（スペース不足）
+    if (input.closest('.chroma-key-row')) return;
 
     // カラーコード表示 + コピーボタンを注入
     const wrapper = document.createElement('span');

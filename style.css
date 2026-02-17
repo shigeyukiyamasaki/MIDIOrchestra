@@ -492,7 +492,6 @@ button:disabled {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  overflow: hidden;
 }
 
 .image-controls .clear-btn-small {
@@ -1202,14 +1201,20 @@ button:disabled {
 
 
 /* クロマキー行（各面個別） */
-.chroma-key-row {
+.control-row.chroma-key-row {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 4px;
 }
 
-.chroma-key-row input[type="color"] {
+.control-row.chroma-key-row label {
+  white-space: nowrap;
+}
+
+.control-row.chroma-key-row input[type="color"] {
+  -webkit-appearance: none;
+  appearance: none;
   width: 28px;
   height: 20px;
   min-width: 28px;
@@ -1220,13 +1225,23 @@ button:disabled {
   padding: 0;
 }
 
-.chroma-key-row input[type="range"] {
-  flex: 1;
-  width: auto;
-  min-width: 0;
+.control-row.chroma-key-row input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
 }
 
-.chroma-key-row span {
+.control-row.chroma-key-row input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+.control-row.chroma-key-row input[type="range"] {
+  flex: 1;
+  width: auto;
+  min-width: 60px;
+  height: 4px;
+}
+
+.control-row.chroma-key-row span {
   width: auto;
   min-width: 20px;
 }
