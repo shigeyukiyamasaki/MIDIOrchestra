@@ -425,7 +425,7 @@ function collectCurrentSettings() {
   }
 
   // 自動収集: 各パネル内のid付きinput/selectで未収集のものを自動追加
-  ['controls', 'settings-container', 'image-panel', 'display-settings-panel'].forEach(containerId => {
+  ['controls', 'settings-container', 'image-panel', 'display-settings-panel', 'sunlight-panel'].forEach(containerId => {
     const container = document.getElementById(containerId);
     if (!container) return;
     container.querySelectorAll('input[id], select[id]').forEach(el => {
@@ -969,9 +969,9 @@ async function initPresetSystem() {
     }
   });
 
-  // Enterキーで保存
+  // Enterキーで保存（IME変換中は無視）
   nameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.isComposing) {
       confirmBtn.click();
     }
   });

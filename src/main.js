@@ -311,12 +311,23 @@ let sunLight = null;    // DirectionalLight（光源位置操作用）
 let shadowPlane = null; // 影受け用ShadowMaterialプレーン
 let shadowEnabled = false; // 影ON/OFF
 let weatherParticles = null; // 天候パーティクルシステム
+let rainSplash = null; // 雨スプラッシュパーティクル
 let weatherType = 'none'; // none / rain / snow
 let weatherAmount = 3000;
 let weatherSpeed = 1;
 let weatherSpread = 400;
+let weatherSplash = 3;  // スプラッシュ量 (0=無効, 1-20)
 let weatherAngle = 0;   // 傾き角度(度) 0=真下, 80=ほぼ横
 let weatherWindDir = 0;  // 風向(度) 0=+Z方向
+let lightningFrequency = 0;  // 0=無効, 1-10 (回/分の目安)
+let lightningIntensity = 0.5; // フラッシュ強度 0.1-1.0
+let lightningColor = '#ffffff'; // 稲光の色
+let lightningFlashOpacity = 0.5; // フラッシュ濃度 0.1-1.0
+let lightningFlashDecay = 0.3;   // フラッシュ減衰時間(秒) 0.01-2.0
+let lightningRandomness = 0.5;   // 間隔のばらつき 0=均等, 1=最大
+let lightningBolts = [];      // 現在表示中のボルトオブジェクト配列
+let lightningTimer = 0;       // 次の雷までのカウントダウン(ms)
+let lightningLastTime = 0;    // 前フレームのタイムスタンプ
 let waterSurfacePlane = null;
 let waterSurfaceMaterial = null;
 let waterTintPlane = null;
@@ -779,7 +790,7 @@ async function init() {
       const res = await fetch('notion-list.php');
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed');
-      const lines = data.items.map(item => {
+      const lines = data.items.slice(1).map(item => {
         const t = item.title.includes('_') ? item.title.replace(/_(.+)/, '「$1」') : item.title;
         return t + '\n' + item.url;
       });
@@ -1255,6 +1266,12 @@ function buildWeatherParticles() {
     weatherParticles.material.dispose();
     weatherParticles = null;
   }
+  if (rainSplash) {
+    scene.remove(rainSplash);
+    rainSplash.geometry.dispose();
+    rainSplash.material.dispose();
+    rainSplash = null;
+  }
   if (weatherType === 'none') return;
 
   const count = weatherAmount;
@@ -1312,6 +1329,33 @@ function buildWeatherParticles() {
     });
 
     weatherParticles = new THREE.LineSegments(geom, mat);
+
+    // スプラッシュパーティクルプール
+    const splashCount = Math.min(Math.floor(count * 0.5), 8000);
+    const splashPos = new Float32Array(splashCount * 3);
+    const splashVel = new Float32Array(splashCount * 3);
+    const splashLife = new Float32Array(splashCount); // 0=未使用, >0=残りライフ
+    // 初期位置を画面外に
+    for (let i = 0; i < splashCount; i++) {
+      splashPos[i * 3 + 1] = -9999;
+    }
+    const splashGeom = new THREE.BufferGeometry();
+    splashGeom.setAttribute('position', new THREE.BufferAttribute(splashPos, 3));
+    splashGeom._velocities = splashVel;
+    splashGeom._life = splashLife;
+    splashGeom._nextIndex = 0;
+    splashGeom._count = splashCount;
+    const splashMat = new THREE.PointsMaterial({
+      color: 0xaaccff,
+      size: 2,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    rainSplash = new THREE.Points(splashGeom, splashMat);
+    rainSplash.frustumCulled = false;
+    scene.add(rainSplash);
   } else {
     // 雪: Pointsで丸い粒
     const positions = new Float32Array(count * 3);
@@ -1373,6 +1417,11 @@ function updateWeatherParticles() {
 
   if (isRain) {
     // 雨: 始点・終点ペア（6要素ごと）
+    // 速度に比例して線の長さを変える（基準streakLen=10はspeed=1相当）
+    const streakScale = Math.sqrt(speed);
+    const sdx = geom._streakDx * streakScale;
+    const sdy = geom._streakDy * streakScale;
+    const sdz = geom._streakDz * streakScale;
     const count = vel.length / 3;
     for (let i = 0; i < count; i++) {
       const i3 = i * 3;
@@ -1383,10 +1432,36 @@ function updateWeatherParticles() {
       pos[i6]     += dxv;    // 始点X
       pos[i6 + 1] += dy;     // 始点Y
       pos[i6 + 2] += dzv;    // 始点Z
-      pos[i6 + 3] += dxv;    // 終点X
-      pos[i6 + 4] += dy;     // 終点Y
-      pos[i6 + 5] += dzv;    // 終点Z
+      // 終点 = 始点 + 速度比例の線分オフセット
+      pos[i6 + 3] = pos[i6]     + sdx;
+      pos[i6 + 4] = pos[i6 + 1] + sdy;
+      pos[i6 + 5] = pos[i6 + 2] + sdz;
       if (pos[i6 + 1] < -50) {
+        // スプラッシュ生成
+        if (rainSplash && weatherSplash > 0) {
+          const sg = rainSplash.geometry;
+          const sPos = sg.attributes.position.array;
+          const sVel = sg._velocities;
+          const sLife = sg._life;
+          const splashX = pos[i6];
+          const splashZ = pos[i6 + 2];
+          // 2〜3個のスプラッシュ粒子を生成
+          const numSplash = Math.floor(weatherSplash * (0.5 + Math.random() * 0.5));
+          for (let s = 0; s < numSplash; s++) {
+            const si = sg._nextIndex;
+            const si3 = si * 3;
+            sPos[si3]     = splashX;
+            sPos[si3 + 1] = -50;
+            sPos[si3 + 2] = splashZ;
+            const angle = Math.random() * Math.PI * 2;
+            const hSpeed = 0.3 + Math.random() * 0.7;
+            sVel[si3]     = Math.cos(angle) * hSpeed;
+            sVel[si3 + 1] = 0.8 + Math.random() * 1.2;
+            sVel[si3 + 2] = Math.sin(angle) * hSpeed;
+            sLife[si] = 1.0;
+            sg._nextIndex = (si + 1) % sg._count;
+          }
+        }
         // 落下中の水平ドリフト分を風上側にオフセット
         const fallDist = spread * 2;
         const driftX = vel[i3] / Math.abs(vel[i3 + 1]) * fallDist;
@@ -1397,9 +1472,9 @@ function updateWeatherParticles() {
         pos[i6]     = x;
         pos[i6 + 1] = y;
         pos[i6 + 2] = z;
-        pos[i6 + 3] = x + geom._streakDx;
-        pos[i6 + 4] = y + geom._streakDy;
-        pos[i6 + 5] = z + geom._streakDz;
+        pos[i6 + 3] = x + sdx;
+        pos[i6 + 4] = y + sdy;
+        pos[i6 + 5] = z + sdz;
       }
     }
   } else {
@@ -1421,6 +1496,34 @@ function updateWeatherParticles() {
     }
   }
   geom.attributes.position.needsUpdate = true;
+
+  // スプラッシュパーティクル更新
+  if (rainSplash) {
+    const sg = rainSplash.geometry;
+    const sPos = sg.attributes.position.array;
+    const sVel = sg._velocities;
+    const sLife = sg._life;
+    const gravity = 0.06;
+    for (let i = 0; i < sg._count; i++) {
+      if (sLife[i] <= 0) continue;
+      const i3 = i * 3;
+      sLife[i] -= 0.04;
+      if (sLife[i] <= 0) {
+        sPos[i3 + 1] = -9999;
+        continue;
+      }
+      sVel[i3 + 1] -= gravity; // 重力
+      sPos[i3]     += sVel[i3];
+      sPos[i3 + 1] += sVel[i3 + 1];
+      sPos[i3 + 2] += sVel[i3 + 2];
+      // 地面で止める
+      if (sPos[i3 + 1] < -50) {
+        sPos[i3 + 1] = -9999;
+        sLife[i] = 0;
+      }
+    }
+    sg.attributes.position.needsUpdate = true;
+  }
 }
 
 // クロマキー対応デプスマテリアル（影用：クロマキーで除去した部分の影を出さない）
@@ -2125,7 +2228,7 @@ function updateCreditsPosition() {
 }
 
 // ============================================
-// カラーピッカー色相保持（白で色相が失われる問題の回避）
+// カラーピッカー色相保持（無彩色で色相が失われる問題の回避）
 // ============================================
 function initColorPickerHueFix() {
   function hexToHSL(hex) {
@@ -2152,21 +2255,53 @@ function initColorPickerHueFix() {
     return `#${f(0)}${f(8)}${f(4)}`;
   }
   document.querySelectorAll('input[type="color"]').forEach(input => {
-    // 初期値から色相を取得
+    // 初期値から色相・彩度を取得
     const initHSL = hexToHSL(input.value);
     input._lastHue = initHSL.s > 1 ? initHSL.h : 0;
-    // 色変更時に色相を記憶
+    input._lastSat = initHSL.s;
+    // 色変更時に色相・彩度を記憶
     input.addEventListener('input', () => {
       const { h, s } = hexToHSL(input.value);
-      if (s > 1) input._lastHue = h;
-    });
-    // ピッカーを開く前に白を近似白+色相に置換
-    input.addEventListener('click', function() {
-      const { s, l } = hexToHSL(this.value);
-      if (s < 1 && l > 99) {
-        this.value = hslToHex(this._lastHue, 2, 99);
+      if (s > 1) {
+        input._lastHue = h;
+        input._lastSat = s;
       }
     });
+    // ピッカーを開く前に無彩色を近似色+色相に置換
+    input.addEventListener('click', function() {
+      const { s, l } = hexToHSL(this.value);
+      if (s < 1) {
+        // 無彩色: 微量の彩度を注入して色相を保持
+        const safeSat = Math.max(this._lastSat, 2);
+        const safeL = Math.min(Math.max(l, 1), 99);
+        this.value = hslToHex(this._lastHue, safeSat, safeL);
+      }
+    });
+
+    // カラーコード表示 + コピーボタンを注入
+    const wrapper = document.createElement('span');
+    wrapper.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;';
+    const codeSpan = document.createElement('span');
+    codeSpan.textContent = input.value;
+    codeSpan.style.cssText = 'font-size:10px;font-family:monospace;color:#ccc;user-select:all;min-width:58px;';
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = '\u{1F4CB}';
+    copyBtn.title = 'コピー';
+    copyBtn.style.cssText = 'background:none;border:none;cursor:pointer;padding:0 2px;font-size:11px;line-height:1;opacity:0.6;';
+    copyBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      navigator.clipboard.writeText(input.value).then(() => {
+        copyBtn.textContent = '\u2713';
+        setTimeout(() => { copyBtn.textContent = '\u{1F4CB}'; }, 1000);
+      });
+    });
+    wrapper.appendChild(codeSpan);
+    wrapper.appendChild(copyBtn);
+    input.insertAdjacentElement('afterend', wrapper);
+    // 色変更時にコード更新
+    input.addEventListener('input', () => { codeSpan.textContent = input.value; });
+    input.addEventListener('change', () => { codeSpan.textContent = input.value; });
   });
 }
 
@@ -3321,6 +3456,11 @@ function setupEventListeners() {
     document.getElementById('weatherSpeedValue').textContent = v;
     weatherSpeed = v;
   });
+  document.getElementById('weatherSplash')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('weatherSplashValue').textContent = v;
+    weatherSplash = v;
+  });
   document.getElementById('weatherAngle')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
     document.getElementById('weatherAngleValue').textContent = v;
@@ -3338,6 +3478,46 @@ function setupEventListeners() {
     document.getElementById('weatherSpreadValue').textContent = v;
     weatherSpread = v;
     buildWeatherParticles();
+  });
+
+  // 雷パラメータ
+  document.getElementById('lightningFrequency')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('lightningFrequencyValue').textContent = v;
+    lightningFrequency = v;
+    if (v === 0) {
+      // 無効化時にボルトを全除去
+      for (const bolt of lightningBolts) {
+        scene.remove(bolt);
+        bolt.geometry.dispose();
+        bolt.material.dispose();
+      }
+      lightningBolts = [];
+      lightningLastTime = 0;
+    }
+  });
+  document.getElementById('lightningIntensity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('lightningIntensityValue').textContent = v;
+    lightningIntensity = v;
+  });
+  document.getElementById('lightningColor')?.addEventListener('input', (e) => {
+    lightningColor = e.target.value;
+  });
+  document.getElementById('lightningFlashOpacity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('lightningFlashOpacityValue').textContent = v;
+    lightningFlashOpacity = v;
+  });
+  document.getElementById('lightningFlashDecay')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('lightningFlashDecayValue').textContent = v;
+    lightningFlashDecay = v;
+  });
+  document.getElementById('lightningRandomness')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('lightningRandomnessValue').textContent = v;
+    lightningRandomness = v;
   });
 
   // 水面パラメータ
@@ -6416,6 +6596,175 @@ function triggerBeatFlash() {
   }, 50);
 }
 
+// ── 雷エフェクト ──
+
+function buildLightningBolt(branch = false, branchOrigin = null) {
+  // スカイドームの半径を取得（DOM値 or デフォルト2000）
+  const radiusEl = document.getElementById('skyDomeRadius');
+  const domeRadius = radiusEl ? parseFloat(radiusEl.value) : 2000;
+  // スカイドームのYオフセットを取得
+  const offsetYEl = document.getElementById('skyDomeOffsetY');
+  const domeOffsetY = offsetYEl ? parseFloat(offsetYEl.value) : 0;
+
+  let startX, startY, startZ;
+  if (branchOrigin) {
+    startX = branchOrigin.x;
+    startY = branchOrigin.y;
+    startZ = branchOrigin.z;
+  } else {
+    // スカイドーム上部の球面上にランダムな開始点を取る
+    const theta = (Math.random() - 0.5) * Math.PI * 0.6; // 水平角 ±54度
+    const phi = Math.random() * Math.PI * 0.3 + Math.PI * 0.15; // 仰角 27〜54度（上部）
+    startX = domeRadius * Math.sin(phi) * Math.sin(theta);
+    startY = domeRadius * Math.cos(phi) + domeOffsetY;
+    startZ = domeRadius * Math.sin(phi) * Math.cos(theta);
+  }
+
+  // 終点: 地面（Y=0）に向かう
+  const endY = 0;
+  const totalDrop = startY - endY;
+  const segments = branch ? (3 + Math.floor(Math.random() * 3)) : (8 + Math.floor(Math.random() * 8));
+  const points = [];
+  let x = startX, y = startY, z = startZ;
+  const stepY = totalDrop / segments;
+  // ジグザグの大きさをドーム半径に比例させる
+  const jitter = branch ? domeRadius * 0.01 : domeRadius * 0.02;
+
+  for (let i = 0; i <= segments; i++) {
+    points.push(new THREE.Vector3(x, y, z));
+    if (i < segments) {
+      y -= stepY;
+      x += (Math.random() - 0.5) * jitter * 2;
+      z += (Math.random() - 0.5) * jitter * 2;
+    }
+  }
+
+  const positions = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    positions.push(points[i].x, points[i].y, points[i].z);
+    positions.push(points[i + 1].x, points[i + 1].y, points[i + 1].z);
+  }
+
+  // 分岐（枝）: 本幹のみ、30%の確率で追加
+  const branches = [];
+  if (!branch) {
+    for (let i = 1; i < points.length - 1; i++) {
+      if (Math.random() < 0.3) {
+        const branchBolt = buildLightningBolt(true, points[i]);
+        branches.push(branchBolt);
+      }
+    }
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const mat = new THREE.LineBasicMaterial({
+    color: new THREE.Color(lightningColor),
+    transparent: true,
+    opacity: branch ? 0.6 : 1.0,
+    linewidth: 1,
+    depthWrite: false,
+  });
+  const bolt = new THREE.LineSegments(geom, mat);
+  bolt._branches = branches;
+  bolt._createdAt = performance.now();
+  bolt._lifetime = 200 + Math.random() * 200; // 200-400ms
+
+  scene.add(bolt);
+  for (const b of branches) scene.add(b);
+
+  return bolt;
+}
+
+function triggerLightningFlash() {
+  if (!renderer || !renderer.domElement) return;
+  const canvas = renderer.domElement;
+
+  let flashOverlay = document.getElementById('beatFlashOverlay');
+  if (!flashOverlay) {
+    flashOverlay = document.createElement('div');
+    flashOverlay.id = 'beatFlashOverlay';
+    flashOverlay.style.cssText = `
+      position: absolute;
+      background: white;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.1s ease-out;
+    `;
+    canvas.parentElement.appendChild(flashOverlay);
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const containerRect = canvas.parentElement.getBoundingClientRect();
+  flashOverlay.style.left = (rect.left - containerRect.left) + 'px';
+  flashOverlay.style.top = (rect.top - containerRect.top) + 'px';
+  flashOverlay.style.width = rect.width + 'px';
+  flashOverlay.style.height = rect.height + 'px';
+
+  flashOverlay.style.transition = 'none';
+  flashOverlay.style.opacity = lightningFlashOpacity;
+
+  // decay=0: 1フレームだけ表示して即消去
+  if (lightningFlashDecay <= 0) {
+    requestAnimationFrame(() => {
+      flashOverlay.style.opacity = '0';
+    });
+  } else {
+    // 点灯維持 = decay の 1/3（最低16ms=1フレーム）
+    const hold = Math.max(16, lightningFlashDecay * 333);
+    setTimeout(() => {
+      flashOverlay.style.transition = `opacity ${lightningFlashDecay}s ease-out`;
+      flashOverlay.style.opacity = '0';
+    }, hold);
+  }
+}
+
+function triggerLightning() {
+  // 1〜3本のボルト生成
+  const count = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < count; i++) {
+    const bolt = buildLightningBolt();
+    lightningBolts.push(bolt);
+    for (const b of bolt._branches) {
+      b._createdAt = bolt._createdAt;
+      b._lifetime = bolt._lifetime;
+      lightningBolts.push(b);
+    }
+  }
+  // 白フラッシュ
+  triggerLightningFlash();
+}
+
+function updateLightning() {
+  if (lightningFrequency === 0) return;
+
+  const now = performance.now();
+  if (lightningLastTime === 0) {
+    lightningLastTime = now;
+    lightningTimer = 60000 / lightningFrequency * (1 - lightningRandomness + Math.random() * lightningRandomness * 2);
+    return;
+  }
+  const dt = now - lightningLastTime;
+  lightningLastTime = now;
+  lightningTimer -= dt;
+
+  if (lightningTimer <= 0) {
+    triggerLightning();
+    lightningTimer = 60000 / lightningFrequency * (1 - lightningRandomness + Math.random() * lightningRandomness * 2);
+  }
+
+  // 期限切れのボルトを除去
+  for (let i = lightningBolts.length - 1; i >= 0; i--) {
+    const bolt = lightningBolts[i];
+    if (now - bolt._createdAt > bolt._lifetime) {
+      scene.remove(bolt);
+      bolt.geometry.dispose();
+      bolt.material.dispose();
+      lightningBolts.splice(i, 1);
+    }
+  }
+}
+
 function triggerStrobe() {
   if (!scene) return;
   const intensity = effects.strobe.intensity;
@@ -8758,6 +9107,7 @@ function animate() {
 
   // 天候パーティクル更新
   updateWeatherParticles();
+  updateLightning();
 
   // 水面アニメーション更新（両レイヤー同期）
   if (waterSurfacePlane && waterSurfacePlane.visible) {
@@ -9119,6 +9469,25 @@ async function loadViewerData() {
     if (data.settings.fadeOutDuration !== undefined) {
       fadeOutDuration = parseInt(data.settings.fadeOutDuration) / 10;
     }
+
+    // 天候パラメータをビューワー用に直接同期
+    const s = data.settings;
+    if (s.weatherType !== undefined) { weatherType = s.weatherType; }
+    if (s.weatherAmount !== undefined) { weatherAmount = parseInt(s.weatherAmount); }
+    if (s.weatherSpeed !== undefined) { weatherSpeed = parseFloat(s.weatherSpeed); }
+    if (s.weatherSpread !== undefined) { weatherSpread = parseInt(s.weatherSpread); }
+    if (s.weatherSplash !== undefined) { weatherSplash = parseInt(s.weatherSplash); }
+    if (s.weatherAngle !== undefined) { weatherAngle = parseInt(s.weatherAngle); }
+    if (s.weatherWindDir !== undefined) { weatherWindDir = parseInt(s.weatherWindDir); }
+    if (weatherType !== 'none') buildWeatherParticles();
+
+    // 雷パラメータをビューワー用に直接同期
+    if (s.lightningFrequency !== undefined) { lightningFrequency = parseInt(s.lightningFrequency); }
+    if (s.lightningIntensity !== undefined) { lightningIntensity = parseFloat(s.lightningIntensity); }
+    if (s.lightningColor !== undefined) { lightningColor = s.lightningColor; }
+    if (s.lightningFlashOpacity !== undefined) { lightningFlashOpacity = parseFloat(s.lightningFlashOpacity); }
+    if (s.lightningFlashDecay !== undefined) { lightningFlashDecay = parseFloat(s.lightningFlashDecay); }
+    if (s.lightningRandomness !== undefined) { lightningRandomness = parseFloat(s.lightningRandomness); }
   }
 
   // メディアを読み込み
@@ -9417,6 +9786,7 @@ window.exportHelpers = {
     updateRipples(dt);
     updatePopIcons(dt);
     updateWeatherParticles();
+    updateLightning();
     if (waterSurfacePlane && waterSurfacePlane.visible) {
       const timeDelta = 0.016 * waterSurfaceSpeed;
       waterSurfaceMaterial.uniforms.time.value += timeDelta;
