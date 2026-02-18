@@ -480,6 +480,17 @@ button:disabled {
   min-height: 175px;
 }
 
+.image-row .drop-zone-column {
+  flex: 3;
+  min-width: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.image-row .drop-zone-column .drop-zone {
+  flex: 1;
+  padding: 8px;
+}
 .image-row .drop-zone {
   flex: 3;
   min-width: 60px;
@@ -672,6 +683,9 @@ button:disabled {
   justify-content: center;
   background: #000;
   border-left: 1px solid #555;
+}
+#canvas-container.preview-above-modal {
+  z-index: 1001;
 }
 
 /* クレジットオーバーレイ */

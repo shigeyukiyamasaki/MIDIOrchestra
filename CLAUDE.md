@@ -90,6 +90,13 @@ if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) ||
 
 新しいUIコントロールを `#controls` 内に追加する際、それが「保存すべき設定」でない場合は除外条件に追加する。
 
+### エディター↔ビューワーの設定同期
+
+`index.html` にUIコントロールを追加・変更した場合、`viewer.html` との同期が必須。
+変更後は `python3 tools/check-viewer-sync.py` を実行し、不整合がないことを確認すること。
+
+詳細は [viewer-sync skill](.claude/skills/viewer-sync/skill.md) を参照。
+
 ### キャラクターアニメーション（ドット絵スプライト）
 
 詳細は [character-animation skill](.claude/skills/character-animation/skill.md) を参照。

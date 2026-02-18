@@ -64,6 +64,11 @@ let panel5WallAspect = 1; // パネル5画像のアスペクト比
 let panel6WallAspect = 1; // パネル6画像のアスペクト比
 let floorY = -50;
 let floorCurvature = 0; // 床の曲率（0=フラット）       // 床のY位置（共有用、グリッドと同じ）
+let floorDisplacementData = null; // ハイトマップのImageData
+let floorDisplacementScale = 0;   // 起伏スケール
+let floorAlphaData = null;        // 床画像のアルファチャンネルImageData
+let floorCliffDepth = 0;          // 崖壁の深さ
+let floorCliffMesh = null;        // 内部崖壁メッシュ
 let floor2Curvature = 0; // 床2の曲率
 let floor3Curvature = 0; // 床3の曲率
 let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用）
@@ -3923,6 +3928,7 @@ function setupEventListeners() {
     const value = parseFloat(e.target.value);
     document.getElementById('floorHeightValue').textContent = value;
     if (floorPlane) floorPlane.position.y = value;
+    if (floorCliffMesh) floorCliffMesh.position.y = value;
   });
 
   // 床画像透明度
@@ -3972,6 +3978,168 @@ function setupEventListeners() {
       floorCurvature = value;
       applyFloorCurvature();
     });
+  }
+
+  // 起伏設定モーダル
+  function openDisplacementModal() {
+    const bg = document.getElementById('displacementModalBg');
+    const modal = document.getElementById('displacementModal');
+    if (bg) bg.style.display = 'block';
+    if (modal) modal.style.display = 'flex';
+    document.getElementById('canvas-container')?.classList.add('preview-above-modal');
+    loadHeightmapLibrary();
+  }
+  function closeDisplacementModal() {
+    const bg = document.getElementById('displacementModalBg');
+    const modal = document.getElementById('displacementModal');
+    if (bg) bg.style.display = 'none';
+    if (modal) modal.style.display = 'none';
+    document.getElementById('canvas-container')?.classList.remove('preview-above-modal');
+  }
+  document.getElementById('floorDisplacementOpenBtn')?.addEventListener('click', openDisplacementModal);
+  document.getElementById('displacementModalClose')?.addEventListener('click', closeDisplacementModal);
+  document.getElementById('displacementModalBg')?.addEventListener('click', closeDisplacementModal);
+
+  // モーダルドラッグ移動
+  {
+    const modal = document.getElementById('displacementModal');
+    const content = modal?.querySelector('.modal-content');
+    const handle = modal?.querySelector('h3');
+    if (handle && content) {
+      handle.style.cursor = 'grab';
+      let dragging = false, startX, startY, origX, origY;
+      handle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        handle.style.cursor = 'grabbing';
+        const rect = content.getBoundingClientRect();
+        startX = e.clientX; startY = e.clientY;
+        origX = rect.left; origY = rect.top;
+        content.style.position = 'fixed';
+        content.style.margin = '0';
+        content.style.left = origX + 'px';
+        content.style.top = origY + 'px';
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        content.style.left = (origX + e.clientX - startX) + 'px';
+        content.style.top = (origY + e.clientY - startY) + 'px';
+      });
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.style.cursor = 'grab';
+      });
+    }
+  }
+
+  // 床ハイトマップ（起伏マップ）
+  const floorHeightmapLabel = document.getElementById('floorHeightmapLabel');
+  const floorHeightmapInput = document.getElementById('floorHeightmapInput');
+  floorHeightmapLabel?.addEventListener('click', () => floorHeightmapInput?.click());
+  floorHeightmapInput?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    applyHeightmapFromFile(file);
+    // ライブラリに保存
+    if (window.presetManager?.saveMediaToLibrary) {
+      window.presetManager.saveMediaToLibrary(file, 'heightmap').then(() => {
+        loadHeightmapLibrary();
+      }).catch(err => console.warn('heightmap library save failed:', err));
+    }
+  });
+  document.getElementById('floorHeightmapClear')?.addEventListener('click', () => {
+    floorDisplacementData = null;
+    const input = document.getElementById('floorHeightmapInput');
+    if (input) input.value = '';
+    // セグメント数を戻す
+    if (floorPlane) {
+      const p = floorPlane.geometry.parameters;
+      floorPlane.geometry.dispose();
+      floorPlane.geometry = new THREE.PlaneGeometry(p.width, p.height, 64, 64);
+    }
+    applyFloorCurvature();
+  });
+  document.getElementById('floorDisplacementScale')?.addEventListener('input', (e) => {
+    floorDisplacementScale = parseFloat(e.target.value);
+    const v = e.target.value;
+    const mainVal = document.getElementById('floorDisplacementScaleValue');
+    const modalVal = document.getElementById('floorDisplacementScaleValueModal');
+    if (mainVal) mainVal.textContent = v;
+    if (modalVal) modalVal.textContent = v;
+    applyFloorCurvature();
+  });
+  // 側面深さ
+  document.getElementById('floorCliffDepth')?.addEventListener('input', (e) => {
+    floorCliffDepth = parseFloat(e.target.value);
+    const v = e.target.value;
+    const mainVal = document.getElementById('floorCliffDepthValue');
+    const modalVal = document.getElementById('floorCliffDepthValueModal');
+    if (mainVal) mainVal.textContent = v;
+    if (modalVal) modalVal.textContent = v;
+    updateFloorCliffs();
+  });
+  // ハイトマップをファイル/Blobから適用する共通関数
+  function applyHeightmapFromFile(fileOrBlob) {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      floorDisplacementData = ctx.getImageData(0, 0, img.width, img.height);
+      if (floorPlane) {
+        const p = floorPlane.geometry.parameters;
+        floorPlane.geometry.dispose();
+        floorPlane.geometry = new THREE.PlaneGeometry(p.width, p.height, 256, 256);
+      }
+      applyFloorCurvature();
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(fileOrBlob);
+  }
+
+  // ハイトマップライブラリの読み込み・表示
+  async function loadHeightmapLibrary() {
+    const grid = document.getElementById('heightmapLibraryGrid');
+    if (!grid || !window.presetManager?.getAllMediaByType) return;
+    grid.innerHTML = '';
+    try {
+      const items = await window.presetManager.getAllMediaByType('heightmap');
+      if (items.length === 0) {
+        grid.innerHTML = '<div class="media-grid-empty">ライブラリは空です</div>';
+        return;
+      }
+      items.sort((a, b) => b.createdAt - a.createdAt);
+      items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'media-grid-item';
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(item.blob);
+        img.style.height = '60px';
+        const name = document.createElement('div');
+        name.className = 'media-name';
+        name.textContent = item.name;
+        const delBtn = document.createElement('button');
+        delBtn.className = 'media-delete-btn';
+        delBtn.textContent = '×';
+        delBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await window.presetManager.deleteMediaFromLibrary(item.id);
+          loadHeightmapLibrary();
+        });
+        div.appendChild(delBtn);
+        div.appendChild(img);
+        div.appendChild(name);
+        div.addEventListener('click', () => {
+          applyHeightmapFromFile(item.blob);
+        });
+        grid.appendChild(div);
+      });
+    } catch (err) {
+      console.warn('heightmap library load failed:', err);
+    }
   }
 
   // 床画像左右反転
@@ -7405,6 +7573,15 @@ function loadFloorImageFile(file) {
       // アスペクト比を保存
       floorAspect = img.width / img.height;
 
+      // アルファチャンネルを抽出（側面生成用）
+      const alphaCanvas = document.createElement('canvas');
+      alphaCanvas.width = img.width;
+      alphaCanvas.height = img.height;
+      const alphaCtx = alphaCanvas.getContext('2d');
+      alphaCtx.drawImage(img, 0, 0);
+      floorAlphaData = alphaCtx.getImageData(0, 0, img.width, img.height);
+      updateFloorCliffs();
+
       // ShaderMaterialのuniformsにテクスチャを適用
       floorPlane.material.uniforms.map.value = floorTexture;
       syncDepthMaterialUniforms(floorPlane);
@@ -7503,8 +7680,9 @@ function updateFloorImageSize(size) {
   // アスペクト比を維持してジオメトリを再作成（セグメント分割）
   const width = size * floorAspect;
   const height = size;
+  const segs = floorDisplacementData ? 256 : 64;
   floorPlane.geometry.dispose();
-  floorPlane.geometry = new THREE.PlaneGeometry(width, height, 64, 64);
+  floorPlane.geometry = new THREE.PlaneGeometry(width, height, segs, segs);
   // 雲の影メッシュも床サイズに合わせてリサイズ
   if (cloudShadowPlane) {
     cloudShadowPlane.geometry.dispose();
@@ -7519,24 +7697,205 @@ function updateFloorImageSize(size) {
   applyFloorCurvature();
 }
 
-// 床の曲率を適用（頂点変形）
+// 床の曲率・起伏を適用（頂点変形）
 function applyFloorCurvature() {
   if (!floorPlane) return;
   const geom = floorPlane.geometry;
   const pos = geom.attributes.position;
+  const params = geom.parameters;
   // PlaneGeometryはXY平面。rotation.x=-PI/2でXZ平面になる。
   // Z成分を変形すると、ワールドのY方向に膨らむ。
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const y = pos.getY(i);
     // 放物面: z = -curvature * (x² + y²)  中心が最も高く、端が下がる
-    const z = -floorCurvature * (x * x + y * y);
+    let z = -floorCurvature * (x * x + y * y);
+    // ハイトマップによる起伏
+    if (floorDisplacementData && floorDisplacementScale > 0) {
+      const u = (x / params.width) + 0.5;
+      const v = 1.0 - ((y / params.height) + 0.5); // Y反転
+      const px = Math.min(Math.max(Math.floor(u * floorDisplacementData.width), 0), floorDisplacementData.width - 1);
+      const py = Math.min(Math.max(Math.floor(v * floorDisplacementData.height), 0), floorDisplacementData.height - 1);
+      const idx = (py * floorDisplacementData.width + px) * 4;
+      const height = floorDisplacementData.data[idx] / 255;
+      z += height * floorDisplacementScale;
+    }
     pos.setZ(i, z);
   }
   pos.needsUpdate = true;
   geom.computeVertexNormals();
+  updateFloorCliffs();
   applyShadowPlaneCurvature();
   applyCloudShadowCurvature();
+}
+
+// 内部崖壁を生成（床画像のアルファ境界に壁を作る — 起伏とは独立）
+function updateFloorCliffs() {
+  // 既存メッシュを削除
+  if (floorCliffMesh) {
+    scene.remove(floorCliffMesh);
+    floorCliffMesh.geometry.dispose();
+    floorCliffMesh.material.dispose();
+    floorCliffMesh = null;
+  }
+
+  if (!floorPlane || !floorAlphaData || floorCliffDepth <= 0) return;
+
+  const geom = floorPlane.geometry;
+  const pos = geom.attributes.position;
+  const params = geom.parameters;
+  const W = params.widthSegments;
+  const H = params.heightSegments;
+  const stride = W + 1;
+  const vertCount = stride * (H + 1);
+
+  // --- Step 1: 床画像のアルファで地形判定（alpha > 128 = 地形） ---
+  const isTerrain = new Uint8Array(vertCount);
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const vi = iy * stride + ix;
+      const x = pos.getX(vi), y = pos.getY(vi);
+      const u = (x / params.width) + 0.5;
+      const v = 1.0 - ((y / params.height) + 0.5);
+      const px = Math.min(Math.max(Math.floor(u * floorAlphaData.width), 0), floorAlphaData.width - 1);
+      const py = Math.min(Math.max(Math.floor(v * floorAlphaData.height), 0), floorAlphaData.height - 1);
+      const idx = (py * floorAlphaData.width + px) * 4 + 3;
+      isTerrain[vi] = floorAlphaData.data[idx] > 128 ? 1 : 0;
+    }
+  }
+
+  // --- Step 2: 境界地形頂点を検出（地形で、4近傍に透明がある） ---
+  const isBoundary = new Uint8Array(vertCount);
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const vi = iy * stride + ix;
+      if (!isTerrain[vi]) continue;
+      if ((ix > 0 && !isTerrain[vi - 1]) ||
+          (ix < W && !isTerrain[vi + 1]) ||
+          (iy > 0 && !isTerrain[vi - stride]) ||
+          (iy < H && !isTerrain[vi + stride])) {
+        isBoundary[vi] = 1;
+      }
+    }
+  }
+
+  // --- Step 3: 2種類のエッジを収集 ---
+  const edgeSet = new Set();
+  const edges = [];
+  function addEdge(a, b) {
+    const key = a < b ? a * vertCount + b : b * vertCount + a;
+    if (edgeSet.has(key)) return;
+    edgeSet.add(key);
+    edges.push([a, b]);
+  }
+
+  // (A) 境界エッジ: 地形と透明の境目
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix < W; ix++) {
+      const a = iy * stride + ix, b = a + 1;
+      if (isTerrain[a] !== isTerrain[b]) addEdge(a, b);
+    }
+  }
+  for (let iy = 0; iy < H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const a = iy * stride + ix, b = a + stride;
+      if (isTerrain[a] !== isTerrain[b]) addEdge(a, b);
+    }
+  }
+
+  // (B) チェーンエッジ: 隣接する境界地形頂点同士を連結
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix < W; ix++) {
+      const a = iy * stride + ix, b = a + 1;
+      if (isBoundary[a] && isBoundary[b]) addEdge(a, b);
+    }
+  }
+  for (let iy = 0; iy < H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const a = iy * stride + ix, b = a + stride;
+      if (isBoundary[a] && isBoundary[b]) addEdge(a, b);
+    }
+  }
+
+  if (edges.length === 0) return;
+
+  // --- Step 4: 壁ジオメトリ構築（UV付き） ---
+  const triVerts = edges.length * 6;
+  const posArr = new Float32Array(triVerts * 3);
+  const nrmArr = new Float32Array(triVerts * 3);
+  const uvArr = new Float32Array(triVerts * 2);
+  let vi = 0;
+
+  for (const [idxA, idxB] of edges) {
+    const ax = pos.getX(idxA), ay = pos.getY(idxA);
+    const bx = pos.getX(idxB), by = pos.getY(idxB);
+    const az_top = pos.getZ(idxA), bz_top = pos.getZ(idxB);
+    const az_base = az_top - floorCliffDepth;
+    const bz_base = bz_top - floorCliffDepth;
+
+    // UV: 境界エッジでは透明側も地形側のUVを使う（透明ピクセルの白を回避）
+    let au, av, bu, bv;
+    if (isTerrain[idxA] && !isTerrain[idxB]) {
+      au = (ax / params.width) + 0.5;
+      av = (ay / params.height) + 0.5;
+      bu = au; bv = av;
+    } else if (!isTerrain[idxA] && isTerrain[idxB]) {
+      bu = (bx / params.width) + 0.5;
+      bv = (by / params.height) + 0.5;
+      au = bu; av = bv;
+    } else {
+      au = (ax / params.width) + 0.5;
+      av = (ay / params.height) + 0.5;
+      bu = (bx / params.width) + 0.5;
+      bv = (by / params.height) + 0.5;
+    }
+
+    // 法線
+    const edgeX = bx - ax, edgeY = by - ay;
+    const edgeLen = Math.sqrt(edgeX * edgeX + edgeY * edgeY) || 1;
+    const nx = -edgeY / edgeLen, ny = edgeX / edgeLen;
+
+    // 三角形1: A_top → B_top → B_base
+    posArr[vi*3]=ax; posArr[vi*3+1]=ay; posArr[vi*3+2]=az_top;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=au; uvArr[vi*2+1]=av; vi++;
+    posArr[vi*3]=bx; posArr[vi*3+1]=by; posArr[vi*3+2]=bz_top;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=bu; uvArr[vi*2+1]=bv; vi++;
+    posArr[vi*3]=bx; posArr[vi*3+1]=by; posArr[vi*3+2]=bz_base;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=bu; uvArr[vi*2+1]=bv; vi++;
+
+    // 三角形2: A_top → B_base → A_base
+    posArr[vi*3]=ax; posArr[vi*3+1]=ay; posArr[vi*3+2]=az_top;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=au; uvArr[vi*2+1]=av; vi++;
+    posArr[vi*3]=bx; posArr[vi*3+1]=by; posArr[vi*3+2]=bz_base;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=bu; uvArr[vi*2+1]=bv; vi++;
+    posArr[vi*3]=ax; posArr[vi*3+1]=ay; posArr[vi*3+2]=az_base;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=au; uvArr[vi*2+1]=av; vi++;
+  }
+
+  const cliffGeom = new THREE.BufferGeometry();
+  cliffGeom.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  cliffGeom.setAttribute('normal', new THREE.BufferAttribute(nrmArr, 3));
+  cliffGeom.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
+
+  const cliffMat = new THREE.MeshStandardMaterial({
+    map: floorTexture || null,
+    color: floorTexture ? 0xffffff : 0x6b5a4a,
+    side: THREE.DoubleSide,
+    roughness: 0.8,
+    metalness: 0.1
+  });
+
+  floorCliffMesh = new THREE.Mesh(cliffGeom, cliffMat);
+  floorCliffMesh.position.copy(floorPlane.position);
+  floorCliffMesh.rotation.copy(floorPlane.rotation);
+  floorCliffMesh.scale.copy(floorPlane.scale);
+  scene.add(floorCliffMesh);
 }
 
 // 影受けプレーンに床の曲率を反映
@@ -7579,6 +7938,8 @@ function applyCloudShadowCurvature() {
 function clearFloorImage() {
   window.currentMediaRefs.floor = null;
   clearFloorMedia();
+  floorAlphaData = null;
+  updateFloorCliffs();
 
   floorPlane.material.uniforms.map.value = null;
   syncDepthMaterialUniforms(floorPlane);

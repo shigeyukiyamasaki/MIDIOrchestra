@@ -60,7 +60,7 @@ async function collectMediaData(onStatus) {
   if (onStatus) onStatus('設定を収集中...');
   const settings = window.presetManager.collectCurrentSettings();
   const refs = window.currentMediaRefs || {};
-  const mediaSlots = ['midi', 'audio', 'skyDome', 'innerSky', 'floor', 'leftWall', 'centerWall', 'rightWall', 'backWall'];
+  const mediaSlots = ['midi', 'audio', 'skyDome', 'innerSky', 'floor', 'floor2', 'floor3', 'leftWall', 'centerWall', 'rightWall', 'backWall', 'panel5Wall', 'panel6Wall'];
 
   const media = {};
   const largeFiles = {};

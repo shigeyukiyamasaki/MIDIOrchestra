@@ -398,12 +398,15 @@
       <div class="image-section">
         <div class="setting-category">床</div>
         <div class="image-row">
-          <div class="drop-zone" id="floorDropZone">
-            <img id="floorImagePreview" class="drop-zone-preview" style="display: none;">
-            <video id="floorVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
-            <span class="drop-zone-text" id="floorDropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="floorImageLabel">ファイル選択</label>
-            <input type="file" id="floorImageInput" accept="image/*,video/mp4,video/webm">
+          <div class="drop-zone-column">
+            <div class="drop-zone" id="floorDropZone">
+              <img id="floorImagePreview" class="drop-zone-preview" style="display: none;">
+              <video id="floorVideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+              <span class="drop-zone-text" id="floorDropZoneText">ドラッグ&ドロップ<br>または</span>
+              <label class="file-label" id="floorImageLabel">ファイル選択</label>
+              <input type="file" id="floorImageInput" accept="image/*,video/mp4,video/webm">
+            </div>
+            <button id="floorDisplacementOpenBtn" class="file-label" style="font-size:11px;padding:3px 8px;width:100%;">起伏・側面</button>
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="10" max="10000" step="1" value="300"><span id="floorImageSizeValue">300</span></div>
@@ -867,6 +870,22 @@
     </div>
   </div>
 
+  <!-- 起伏・側面設定モーダル（オーバーレイとダイアログを分離してcanvasをその間に挟む） -->
+  <div id="displacementModalBg" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:1000;"></div>
+  <div id="displacementModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:1002;pointer-events:none;align-items:center;justify-content:center;">
+    <div class="modal-content" style="min-width:320px;pointer-events:auto;">
+      <h3>起伏・側面設定</h3>
+      <div class="control-row"><label>起伏</label><input type="range" id="floorDisplacementScale" min="0" max="200" step="1" value="0"><span id="floorDisplacementScaleValueModal">0</span></div>
+      <div class="control-row"><label>側面</label><input type="range" id="floorCliffDepth" min="0" max="200" step="1" value="0"><span id="floorCliffDepthValueModal">0</span></div>
+      <div class="control-row"><label>マップ</label><input type="file" id="floorHeightmapInput" accept="image/*" style="display:none;"><label class="file-label" id="floorHeightmapLabel" style="font-size:11px;padding:2px 8px;">選択</label><button id="floorHeightmapClear" class="clear-btn-small" style="margin-left:4px;">クリア</button></div>
+      <div style="margin-top:8px;"><label style="font-size:12px;color:#aaa;">マップライブラリ</label></div>
+      <div id="heightmapLibraryGrid" class="media-grid" style="max-height:200px;grid-template-columns:repeat(auto-fill, minmax(80px, 1fr));"></div>
+      <div class="modal-buttons">
+        <button id="displacementModalClose">閉じる</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ライブラリ読み込み -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -891,6 +910,6 @@
     }
   </script>
   <script src="src/presetManager.js?v=20260217p"></script>
-  <script type="module" src="src/main.js?v=20260218a"></script>
+  <script type="module" src="src/main.js?v=20260218w"></script>
 </body>
 </html>
