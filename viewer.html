@@ -410,7 +410,7 @@
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floorImageSize" min="10" max="10000" step="1" value="300"><span id="floorImageSizeValue">300</span></div>
-            <div class="control-row"><label>高度</label><input type="range" id="floorHeight" min="-200" max="200" step="0.1" value="-50"><span id="floorHeightValue">-50</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="floorHeight" min="-500" max="500" step="0.1" value="-50"><span id="floorHeightValue">-50</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="floorImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="floorImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="floorImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floorChromaColor" value="#00ff00"><input type="range" id="floorChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floorChromaThresholdValue">0</span></div>
@@ -422,16 +422,19 @@
       <div class="image-section">
         <div class="setting-category">床2</div>
         <div class="image-row">
-          <div class="drop-zone" id="floor2DropZone">
-            <img id="floor2ImagePreview" class="drop-zone-preview" style="display: none;">
-            <video id="floor2VideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
-            <span class="drop-zone-text" id="floor2DropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="floor2ImageLabel">ファイル選択</label>
-            <input type="file" id="floor2ImageInput" accept="image/*,video/mp4,video/webm">
+          <div class="drop-zone-column">
+            <div class="drop-zone" id="floor2DropZone">
+              <img id="floor2ImagePreview" class="drop-zone-preview" style="display: none;">
+              <video id="floor2VideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+              <span class="drop-zone-text" id="floor2DropZoneText">ドラッグ&ドロップ<br>または</span>
+              <label class="file-label" id="floor2ImageLabel">ファイル選択</label>
+              <input type="file" id="floor2ImageInput" accept="image/*,video/mp4,video/webm">
+            </div>
+            <button id="floor2DisplacementOpenBtn" class="file-label" style="font-size:11px;padding:3px 8px;width:100%;">起伏・側面</button>
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floor2ImageSize" min="10" max="10000" step="1" value="300"><span id="floor2ImageSizeValue">300</span></div>
-            <div class="control-row"><label>高度</label><input type="range" id="floor2Height" min="-200" max="200" step="0.1" value="-49.9"><span id="floor2HeightValue">-49.9</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="floor2Height" min="-500" max="500" step="0.1" value="-49.9"><span id="floor2HeightValue">-49.9</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="floor2ImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="floor2ImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="floor2ImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floor2ChromaColor" value="#00ff00"><input type="range" id="floor2ChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floor2ChromaThresholdValue">0</span></div>
@@ -443,16 +446,19 @@
       <div class="image-section">
         <div class="setting-category">床3</div>
         <div class="image-row">
-          <div class="drop-zone" id="floor3DropZone">
-            <img id="floor3ImagePreview" class="drop-zone-preview" style="display: none;">
-            <video id="floor3VideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
-            <span class="drop-zone-text" id="floor3DropZoneText">ドラッグ&ドロップ<br>または</span>
-            <label class="file-label" id="floor3ImageLabel">ファイル選択</label>
-            <input type="file" id="floor3ImageInput" accept="image/*,video/mp4,video/webm">
+          <div class="drop-zone-column">
+            <div class="drop-zone" id="floor3DropZone">
+              <img id="floor3ImagePreview" class="drop-zone-preview" style="display: none;">
+              <video id="floor3VideoPreview" class="drop-zone-preview" style="display: none;" muted loop></video>
+              <span class="drop-zone-text" id="floor3DropZoneText">ドラッグ&ドロップ<br>または</span>
+              <label class="file-label" id="floor3ImageLabel">ファイル選択</label>
+              <input type="file" id="floor3ImageInput" accept="image/*,video/mp4,video/webm">
+            </div>
+            <button id="floor3DisplacementOpenBtn" class="file-label" style="font-size:11px;padding:3px 8px;width:100%;">起伏・側面</button>
           </div>
           <div class="image-controls">
             <div class="control-row"><label>サイズ</label><input type="range" id="floor3ImageSize" min="10" max="10000" step="1" value="300"><span id="floor3ImageSizeValue">300</span></div>
-            <div class="control-row"><label>高度</label><input type="range" id="floor3Height" min="-200" max="200" step="0.1" value="-49.8"><span id="floor3HeightValue">-49.8</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="floor3Height" min="-500" max="500" step="0.1" value="-49.8"><span id="floor3HeightValue">-49.8</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="floor3ImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="floor3ImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="floor3ImageFlip">反転</label></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="floor3ChromaColor" value="#00ff00"><input type="range" id="floor3ChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="floor3ChromaThresholdValue">0</span></div>
@@ -475,7 +481,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="leftWallImageSize" min="10" max="1000" step="1" value="300"><span id="leftWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="leftWallImageX" min="-500" max="500" step="1" value="0"><span id="leftWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="leftWallImageZ" min="-500" max="500" step="1" value="-150"><span id="leftWallImageZValue">-150</span></div>
-            <div class="control-row"><label>高度</label><input type="range" id="leftWallImageY" min="-200" max="200" step="0.1" value="0"><span id="leftWallImageYValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="leftWallImageY" min="-500" max="500" step="0.1" value="0"><span id="leftWallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="leftWallImageRotY" min="-180" max="180" step="1" value="0"><span id="leftWallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="leftWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="leftWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="leftWallImageFlip">反転</label></div>
@@ -498,7 +504,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="rightWallImageSize" min="10" max="1000" step="1" value="300"><span id="rightWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="rightWallImageX" min="-500" max="500" step="1" value="0"><span id="rightWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="rightWallImageZ" min="-500" max="500" step="1" value="150"><span id="rightWallImageZValue">150</span></div>
-            <div class="control-row"><label>高度</label><input type="range" id="rightWallImageY" min="-200" max="200" step="0.1" value="0"><span id="rightWallImageYValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="rightWallImageY" min="-500" max="500" step="0.1" value="0"><span id="rightWallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="rightWallImageRotY" min="-180" max="180" step="1" value="0"><span id="rightWallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="rightWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="rightWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="rightWallImageFlip">反転</label></div>
@@ -521,7 +527,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="centerWallImageSize" min="10" max="1000" step="1" value="300"><span id="centerWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="centerWallImageX" min="-500" max="500" step="1" value="0"><span id="centerWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="centerWallImageZ" min="-500" max="500" step="1" value="0"><span id="centerWallImageZValue">0</span></div>
-            <div class="control-row"><label>高度</label><input type="range" id="centerWallImageY" min="-200" max="200" step="0.1" value="0"><span id="centerWallImageYValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="centerWallImageY" min="-500" max="500" step="0.1" value="0"><span id="centerWallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="centerWallImageRotY" min="-180" max="180" step="1" value="0"><span id="centerWallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="centerWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="centerWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="centerWallImageFlip">反転</label></div>
@@ -544,7 +550,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="backWallImageSize" min="10" max="1000" step="1" value="300"><span id="backWallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="backWallImageX" min="-500" max="500" step="1" value="0"><span id="backWallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="backWallImageZ" min="-500" max="500" step="1" value="0"><span id="backWallImageZValue">0</span></div>
-            <div class="control-row"><label>高度</label><input type="range" id="backWallImageY" min="-200" max="200" step="0.1" value="0"><span id="backWallImageYValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="backWallImageY" min="-500" max="500" step="0.1" value="0"><span id="backWallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="backWallImageRotY" min="-180" max="180" step="1" value="90"><span id="backWallImageRotYValue">90</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="backWallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="backWallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="backWallImageFlip">反転</label></div>
@@ -567,7 +573,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="panel5WallImageSize" min="10" max="1000" step="1" value="300"><span id="panel5WallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="panel5WallImageX" min="-500" max="500" step="1" value="0"><span id="panel5WallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="panel5WallImageZ" min="-500" max="500" step="1" value="0"><span id="panel5WallImageZValue">0</span></div>
-            <div class="control-row"><label>高度</label><input type="range" id="panel5WallImageY" min="-200" max="200" step="0.1" value="0"><span id="panel5WallImageYValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="panel5WallImageY" min="-500" max="500" step="0.1" value="0"><span id="panel5WallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="panel5WallImageRotY" min="-180" max="180" step="1" value="0"><span id="panel5WallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="panel5WallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="panel5WallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="panel5WallImageFlip">反転</label></div>
@@ -590,7 +596,7 @@
             <div class="control-row"><label>サイズ</label><input type="range" id="panel6WallImageSize" min="10" max="1000" step="1" value="300"><span id="panel6WallImageSizeValue">300</span></div>
             <div class="control-row"><label>X位置</label><input type="range" id="panel6WallImageX" min="-500" max="500" step="1" value="0"><span id="panel6WallImageXValue">0</span></div>
             <div class="control-row"><label>Z位置</label><input type="range" id="panel6WallImageZ" min="-500" max="500" step="1" value="0"><span id="panel6WallImageZValue">0</span></div>
-            <div class="control-row"><label>高度</label><input type="range" id="panel6WallImageY" min="-200" max="200" step="0.1" value="0"><span id="panel6WallImageYValue">0</span></div>
+            <div class="control-row"><label>高度</label><input type="range" id="panel6WallImageY" min="-500" max="500" step="0.1" value="0"><span id="panel6WallImageYValue">0</span></div>
             <div class="control-row"><label>Y回転</label><input type="range" id="panel6WallImageRotY" min="-180" max="180" step="1" value="0"><span id="panel6WallImageRotYValue">0</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="panel6WallImageOpacity" min="0.1" max="1" step="0.05" value="1"><span id="panel6WallImageOpacityValue">1</span></div>
             <div class="control-row"><label><input type="checkbox" id="panel6WallImageFlip">反転</label></div>
@@ -876,12 +882,44 @@
     <div class="modal-content" style="min-width:320px;pointer-events:auto;">
       <h3>起伏・側面設定</h3>
       <div class="control-row"><label>起伏</label><input type="range" id="floorDisplacementScale" min="0" max="200" step="1" value="0"><span id="floorDisplacementScaleValueModal">0</span></div>
-      <div class="control-row"><label>側面</label><input type="range" id="floorCliffDepth" min="0" max="200" step="1" value="0"><span id="floorCliffDepthValueModal">0</span></div>
+      <div class="control-row"><label>側面</label><input type="range" id="floorCliffDepth" min="0" max="1000" step="1" value="0"><span id="floorCliffDepthValueModal">0</span></div>
       <div class="control-row"><label>マップ</label><input type="file" id="floorHeightmapInput" accept="image/*" style="display:none;"><label class="file-label" id="floorHeightmapLabel" style="font-size:11px;padding:2px 8px;">選択</label><button id="floorHeightmapClear" class="clear-btn-small" style="margin-left:4px;">クリア</button></div>
       <div style="margin-top:8px;"><label style="font-size:12px;color:#aaa;">マップライブラリ</label></div>
       <div id="heightmapLibraryGrid" class="media-grid" style="max-height:200px;grid-template-columns:repeat(auto-fill, minmax(80px, 1fr));"></div>
       <div class="modal-buttons">
         <button id="displacementModalClose">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 床2起伏・側面設定モーダル -->
+  <div id="displacement2ModalBg" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:1000;"></div>
+  <div id="displacement2Modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:1002;pointer-events:none;align-items:center;justify-content:center;">
+    <div class="modal-content" style="min-width:320px;pointer-events:auto;">
+      <h3>床2 起伏・側面設定</h3>
+      <div class="control-row"><label>起伏</label><input type="range" id="floor2DisplacementScale" min="0" max="200" step="1" value="0"><span id="floor2DisplacementScaleValueModal">0</span></div>
+      <div class="control-row"><label>側面</label><input type="range" id="floor2CliffDepth" min="0" max="1000" step="1" value="0"><span id="floor2CliffDepthValueModal">0</span></div>
+      <div class="control-row"><label>マップ</label><input type="file" id="floor2HeightmapInput" accept="image/*" style="display:none;"><label class="file-label" id="floor2HeightmapLabel" style="font-size:11px;padding:2px 8px;">選択</label><button id="floor2HeightmapClear" class="clear-btn-small" style="margin-left:4px;">クリア</button></div>
+      <div style="margin-top:8px;"><label style="font-size:12px;color:#aaa;">マップライブラリ</label></div>
+      <div id="heightmap2LibraryGrid" class="media-grid" style="max-height:200px;grid-template-columns:repeat(auto-fill, minmax(80px, 1fr));"></div>
+      <div class="modal-buttons">
+        <button id="displacement2ModalClose">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 床3起伏・側面設定モーダル -->
+  <div id="displacement3ModalBg" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:1000;"></div>
+  <div id="displacement3Modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:1002;pointer-events:none;align-items:center;justify-content:center;">
+    <div class="modal-content" style="min-width:320px;pointer-events:auto;">
+      <h3>床3 起伏・側面設定</h3>
+      <div class="control-row"><label>起伏</label><input type="range" id="floor3DisplacementScale" min="0" max="200" step="1" value="0"><span id="floor3DisplacementScaleValueModal">0</span></div>
+      <div class="control-row"><label>側面</label><input type="range" id="floor3CliffDepth" min="0" max="1000" step="1" value="0"><span id="floor3CliffDepthValueModal">0</span></div>
+      <div class="control-row"><label>マップ</label><input type="file" id="floor3HeightmapInput" accept="image/*" style="display:none;"><label class="file-label" id="floor3HeightmapLabel" style="font-size:11px;padding:2px 8px;">選択</label><button id="floor3HeightmapClear" class="clear-btn-small" style="margin-left:4px;">クリア</button></div>
+      <div style="margin-top:8px;"><label style="font-size:12px;color:#aaa;">マップライブラリ</label></div>
+      <div id="heightmap3LibraryGrid" class="media-grid" style="max-height:200px;grid-template-columns:repeat(auto-fill, minmax(80px, 1fr));"></div>
+      <div class="modal-buttons">
+        <button id="displacement3ModalClose">閉じる</button>
       </div>
     </div>
   </div>
@@ -909,7 +947,7 @@
       document.write('<script src="viewer-data.js' + cacheBuster + '"><\/script>');
     }
   </script>
-  <script src="src/presetManager.js?v=20260218a"></script>
-  <script type="module" src="src/main.js?v=20260218x"></script>
+  <script src="src/presetManager.js?v=20260218b"></script>
+  <script type="module" src="src/main.js?v=20260218zd"></script>
 </body>
 </html>

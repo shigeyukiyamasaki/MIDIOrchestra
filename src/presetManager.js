@@ -397,6 +397,12 @@ function collectCurrentSettings() {
   s.floor2ChromaColor = getColorValue('floor2ChromaColor');
   s.floor2ChromaThreshold = getRangeValue('floor2ChromaThreshold');
   s.floor2Curvature = getRangeValue('floor2Curvature');
+  s.floor2DisplacementScale = getRangeValue('floor2DisplacementScale');
+  s.floor2CliffDepth = getRangeValue('floor2CliffDepth');
+
+  // 床3（モーダル内のため明示的に収集）
+  s.floor3DisplacementScale = getRangeValue('floor3DisplacementScale');
+  s.floor3CliffDepth = getRangeValue('floor3CliffDepth');
 
   // 左側面
   s.leftWallImageSize = getRangeValue('leftWallImageSize');
@@ -651,6 +657,12 @@ function applySettings(s) {
   setColorValue('floor2ChromaColor', s.floor2ChromaColor);
   setRangeValue('floor2ChromaThreshold', s.floor2ChromaThreshold);
   setRangeValue('floor2Curvature', s.floor2Curvature);
+  setRangeValue('floor2DisplacementScale', s.floor2DisplacementScale);
+  setRangeValue('floor2CliffDepth', s.floor2CliffDepth);
+
+  // 床3（モーダル内のため明示的に適用）
+  setRangeValue('floor3DisplacementScale', s.floor3DisplacementScale);
+  setRangeValue('floor3CliffDepth', s.floor3CliffDepth);
 
   // 左側面
   setRangeValue('leftWallImageSize', s.leftWallImageSize);
@@ -694,7 +706,8 @@ function applySettings(s) {
     'midiDelay','audioDelay','loopStartEnabled','loopStartTime','loopEndEnabled','loopEndTime','fadeOutDuration','shadowEnvironment','weatherType',
     'skyDomeOpacity','skyDomeRange','skyDomeRadius',
     'floorImageSize','floorImageOpacity','floorImageFlip','floorChromaColor','floorChromaThreshold','floorCurvature','floorDisplacementScale','floorCliffDepth',
-    'floor2ImageSize','floor2Height','floor2ImageOpacity','floor2ImageFlip','floor2ChromaColor','floor2ChromaThreshold','floor2Curvature',
+    'floor2ImageSize','floor2Height','floor2ImageOpacity','floor2ImageFlip','floor2ChromaColor','floor2ChromaThreshold','floor2Curvature','floor2DisplacementScale','floor2CliffDepth',
+    'floor3DisplacementScale','floor3CliffDepth',
     'leftWallImageSize','leftWallImageOpacity','leftWallImageFlip','leftWallChromaColor','leftWallChromaThreshold',
     'rightWallImageSize','rightWallImageOpacity','rightWallImageFlip','rightWallChromaColor','rightWallChromaThreshold',
     'backWallImageSize','backWallImageX','backWallImageOpacity','backWallImageFlip','backWallChromaColor','backWallChromaThreshold',

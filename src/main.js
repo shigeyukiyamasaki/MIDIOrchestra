@@ -71,6 +71,16 @@ let floorCliffDepth = 0;          // 崖壁の深さ
 let floorCliffMesh = null;        // 内部崖壁メッシュ
 let floor2Curvature = 0; // 床2の曲率
 let floor3Curvature = 0; // 床3の曲率
+let floor2DisplacementData = null;
+let floor2DisplacementScale = 0;
+let floor2AlphaData = null;
+let floor2CliffDepth = 0;
+let floor2CliffMesh = null;
+let floor3DisplacementData = null;
+let floor3DisplacementScale = 0;
+let floor3AlphaData = null;
+let floor3CliffDepth = 0;
+let floor3CliffMesh = null;
 let timelineTotalDepth = 300; // タイムライン幕の奥行き（共有用）
 let noteEdgeZ = -150;   // ノートのZ軸負方向の端（共有用）
 let noteEdgeZPositive = 150; // ノートのZ軸正方向の端（共有用）
@@ -132,6 +142,28 @@ window.getLoadedMediaBlob = async function(slot) {
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
       return { blob, name: 'heightmap.png', mimeType: 'image/png' };
     } catch(e) { console.error('[Fallback] heightmap: canvas failed', e); return null; }
+  }
+  if (slot === 'heightmap2') {
+    if (!floor2DisplacementData) { console.log('[Fallback] heightmap2: no data'); return null; }
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = floor2DisplacementData.width;
+      canvas.height = floor2DisplacementData.height;
+      canvas.getContext('2d').putImageData(floor2DisplacementData, 0, 0);
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      return { blob, name: 'heightmap2.png', mimeType: 'image/png' };
+    } catch(e) { console.error('[Fallback] heightmap2: canvas failed', e); return null; }
+  }
+  if (slot === 'heightmap3') {
+    if (!floor3DisplacementData) { console.log('[Fallback] heightmap3: no data'); return null; }
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = floor3DisplacementData.width;
+      canvas.height = floor3DisplacementData.height;
+      canvas.getContext('2d').putImageData(floor3DisplacementData, 0, 0);
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      return { blob, name: 'heightmap3.png', mimeType: 'image/png' };
+    } catch(e) { console.error('[Fallback] heightmap3: canvas failed', e); return null; }
   }
 
   const info = slotMap[slot];
@@ -1273,6 +1305,86 @@ function createChromaKeyMaterial(opacity = 0.8) {
   return mat;
 }
 
+// 影受けプレーン用マテリアル（ShadowMaterial + onBeforeCompile で床テクスチャの透明/クロマキー領域を除外）
+function createShadowPlaneMaterial() {
+  const mat = new THREE.ShadowMaterial({
+    opacity: 0.3,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -6,
+    polygonOffsetUnit: -6,
+    // ステンシル: 床の不透明部分（ステンシル=1）のみ影を描画
+    stencilWrite: true,
+    stencilWriteMask: 0x00,
+    stencilRef: 1,
+    stencilFunc: THREE.EqualStencilFunc,
+    stencilFail: THREE.KeepStencilOp,
+    stencilZFail: THREE.KeepStencilOp,
+    stencilZPass: THREE.KeepStencilOp,
+  });
+
+  // onBeforeCompile用のuniform参照をuserDataに保持
+  mat.userData.floorMap = { value: null };
+  mat.userData.hasFloorMap = { value: 0.0 };
+  mat.userData.chromaKeyColor = { value: new THREE.Color(0x00ff00) };
+  mat.userData.chromaKeyThreshold = { value: 0.0 };
+
+  mat.onBeforeCompile = (shader) => {
+    // uniformsを登録
+    shader.uniforms.floorMap = mat.userData.floorMap;
+    shader.uniforms.hasFloorMap = mat.userData.hasFloorMap;
+    shader.uniforms.chromaKeyColor = mat.userData.chromaKeyColor;
+    shader.uniforms.chromaKeyThreshold = mat.userData.chromaKeyThreshold;
+
+    // 頂点シェーダー: vUvを追加
+    shader.vertexShader = shader.vertexShader.replace(
+      'void main() {',
+      'varying vec2 vUv;\nvoid main() {\n  vUv = uv;'
+    );
+
+    // フラグメントシェーダー: uniform宣言を追加
+    shader.fragmentShader = shader.fragmentShader.replace(
+      'uniform vec3 color;',
+      `uniform vec3 color;
+uniform sampler2D floorMap;
+uniform float hasFloorMap;
+uniform vec3 chromaKeyColor;
+uniform float chromaKeyThreshold;
+varying vec2 vUv;`
+    );
+
+    // フラグメントシェーダー: main()の先頭に床テクスチャチェックを挿入
+    shader.fragmentShader = shader.fragmentShader.replace(
+      'void main() {',
+      `void main() {
+  if (hasFloorMap > 0.5) {
+    vec4 floorColor = texture2D(floorMap, vUv);
+    if (floorColor.a < 0.01) discard;
+    if (chromaKeyThreshold > 0.0) {
+      float dist = distance(floorColor.rgb, chromaKeyColor);
+      if (dist < chromaKeyThreshold) discard;
+    }
+  }`
+    );
+  };
+
+  return mat;
+}
+
+// 影プレーンの床テクスチャ・クロマキー情報を同期
+function syncShadowPlaneFloorTexture() {
+  if (!shadowPlane) return;
+  const ud = shadowPlane.material.userData;
+  if (!ud || !ud.floorMap) return;
+  ud.floorMap.value = floorTexture || null;
+  ud.hasFloorMap.value = floorTexture ? 1.0 : 0.0;
+  // 床のクロマキー設定を同期
+  if (floorPlane && floorPlane.material.uniforms) {
+    ud.chromaKeyColor.value.copy(floorPlane.material.uniforms.chromaKeyColor.value);
+    ud.chromaKeyThreshold.value = floorPlane.material.uniforms.chromaKeyThreshold.value;
+  }
+}
+
 // 天候パーティクルシステムの構築・再構築
 // 雪用の丸テクスチャを生成
 function generateSnowTexture() {
@@ -2118,24 +2230,10 @@ function setupThreeJS() {
   panel6WallPlane.customDepthMaterial = createChromaKeyDepthMaterial();
   scene.add(panel6WallPlane);
 
-  // 影受け用ShadowMaterialプレーン（床の直上に配置）- セグメント分割で曲面対応
+  // 影受け用カスタムプレーン（床の直上に配置）- セグメント分割で曲面対応
+  // 床テクスチャの透明/クロマキー領域では影を描画しない
   const shadowGeom = new THREE.PlaneGeometry(3000, 3000, 64, 64);
-  const shadowMat = new THREE.ShadowMaterial({
-    opacity: 0.3,
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -6,
-    polygonOffsetUnit: -6,
-    // ステンシル: 床の不透明部分（ステンシル=1）のみ影を描画
-    // stencilWrite=true でテストを有効化、writeMask=0x00 で書き込みは防止
-    stencilWrite: true,
-    stencilWriteMask: 0x00,
-    stencilRef: 1,
-    stencilFunc: THREE.EqualStencilFunc,
-    stencilFail: THREE.KeepStencilOp,
-    stencilZFail: THREE.KeepStencilOp,
-    stencilZPass: THREE.KeepStencilOp,
-  });
+  const shadowMat = createShadowPlaneMaterial();
   shadowPlane = new THREE.Mesh(shadowGeom, shadowMat);
   shadowPlane.rotation.x = -Math.PI / 2;
   shadowPlane.position.y = floorY + 0.5;
@@ -3942,6 +4040,8 @@ function setupEventListeners() {
     document.getElementById('floorHeightValue').textContent = value;
     if (floorPlane) floorPlane.position.y = value;
     if (floorCliffMesh) floorCliffMesh.position.y = value;
+    if (shadowPlane) shadowPlane.position.y = value + 0.5;
+    if (cloudShadowPlane) cloudShadowPlane.position.y = value + 0.5;
   });
 
   // 床画像透明度
@@ -4202,6 +4302,7 @@ function setupEventListeners() {
       const value = parseFloat(e.target.value);
       floor2HeightValue.textContent = value;
       if (floor2Plane) floor2Plane.position.y = value;
+      if (floor2CliffMesh) floor2CliffMesh.position.y = value;
     });
   }
 
@@ -4262,6 +4363,161 @@ function setupEventListeners() {
     });
   }
 
+  // 床2 起伏設定モーダル
+  function openDisplacement2Modal() {
+    const bg = document.getElementById('displacement2ModalBg');
+    const modal = document.getElementById('displacement2Modal');
+    if (bg) bg.style.display = 'block';
+    if (modal) modal.style.display = 'flex';
+    document.getElementById('canvas-container')?.classList.add('preview-above-modal');
+    loadHeightmap2Library();
+  }
+  function closeDisplacement2Modal() {
+    const bg = document.getElementById('displacement2ModalBg');
+    const modal = document.getElementById('displacement2Modal');
+    if (bg) bg.style.display = 'none';
+    if (modal) modal.style.display = 'none';
+    document.getElementById('canvas-container')?.classList.remove('preview-above-modal');
+  }
+  document.getElementById('floor2DisplacementOpenBtn')?.addEventListener('click', openDisplacement2Modal);
+  document.getElementById('displacement2ModalClose')?.addEventListener('click', closeDisplacement2Modal);
+  document.getElementById('displacement2ModalBg')?.addEventListener('click', closeDisplacement2Modal);
+
+  // 床2モーダルドラッグ
+  {
+    const modal = document.getElementById('displacement2Modal');
+    const content = modal?.querySelector('.modal-content');
+    const handle = modal?.querySelector('h3');
+    if (handle && content) {
+      handle.style.cursor = 'grab';
+      let dragging = false, startX, startY, origX, origY;
+      handle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        handle.style.cursor = 'grabbing';
+        const rect = content.getBoundingClientRect();
+        startX = e.clientX; startY = e.clientY;
+        origX = rect.left; origY = rect.top;
+        content.style.position = 'fixed';
+        content.style.margin = '0';
+        content.style.left = origX + 'px';
+        content.style.top = origY + 'px';
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        content.style.left = (origX + e.clientX - startX) + 'px';
+        content.style.top = (origY + e.clientY - startY) + 'px';
+      });
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.style.cursor = 'grab';
+      });
+    }
+  }
+
+  // 床2ハイトマップ
+  const floor2HeightmapLabel = document.getElementById('floor2HeightmapLabel');
+  const floor2HeightmapInput = document.getElementById('floor2HeightmapInput');
+  floor2HeightmapLabel?.addEventListener('click', () => floor2HeightmapInput?.click());
+  floor2HeightmapInput?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    applyHeightmapForFloor2(file);
+    if (window.presetManager?.saveMediaToLibrary) {
+      window.presetManager.saveMediaToLibrary(file, 'heightmap').then(() => {
+        loadHeightmap2Library();
+      }).catch(err => console.warn('heightmap library save failed:', err));
+    }
+  });
+  document.getElementById('floor2HeightmapClear')?.addEventListener('click', () => {
+    floor2DisplacementData = null;
+    const input = document.getElementById('floor2HeightmapInput');
+    if (input) input.value = '';
+    if (floor2Plane) {
+      const p = floor2Plane.geometry.parameters;
+      floor2Plane.geometry.dispose();
+      floor2Plane.geometry = new THREE.PlaneGeometry(p.width, p.height, 64, 64);
+    }
+    applyFloor2Curvature();
+  });
+  document.getElementById('floor2DisplacementScale')?.addEventListener('input', (e) => {
+    floor2DisplacementScale = parseFloat(e.target.value);
+    const v = e.target.value;
+    const modalVal = document.getElementById('floor2DisplacementScaleValueModal');
+    if (modalVal) modalVal.textContent = v;
+    applyFloor2Curvature();
+  });
+  document.getElementById('floor2CliffDepth')?.addEventListener('input', (e) => {
+    floor2CliffDepth = parseFloat(e.target.value);
+    const v = e.target.value;
+    const modalVal = document.getElementById('floor2CliffDepthValueModal');
+    if (modalVal) modalVal.textContent = v;
+    updateFloor2Cliffs();
+  });
+
+  function applyHeightmapForFloor2(fileOrBlob) {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      floor2DisplacementData = ctx.getImageData(0, 0, img.width, img.height);
+      if (floor2Plane) {
+        const p = floor2Plane.geometry.parameters;
+        floor2Plane.geometry.dispose();
+        floor2Plane.geometry = new THREE.PlaneGeometry(p.width, p.height, 256, 256);
+      }
+      applyFloor2Curvature();
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(fileOrBlob);
+  }
+  window.applyHeightmapForFloor2 = applyHeightmapForFloor2;
+
+  async function loadHeightmap2Library() {
+    const grid = document.getElementById('heightmap2LibraryGrid');
+    if (!grid || !window.presetManager?.getAllMediaByType) return;
+    grid.innerHTML = '';
+    try {
+      const items = await window.presetManager.getAllMediaByType('heightmap');
+      if (items.length === 0) {
+        grid.innerHTML = '<div class="media-grid-empty">ライブラリは空です</div>';
+        return;
+      }
+      items.sort((a, b) => b.createdAt - a.createdAt);
+      items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'media-grid-item';
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(item.blob);
+        img.style.height = '60px';
+        const name = document.createElement('div');
+        name.className = 'media-name';
+        name.textContent = item.name;
+        const delBtn = document.createElement('button');
+        delBtn.className = 'media-delete-btn';
+        delBtn.textContent = '\u00d7';
+        delBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await window.presetManager.deleteMediaFromLibrary(item.id);
+          loadHeightmap2Library();
+        });
+        div.appendChild(delBtn);
+        div.appendChild(img);
+        div.appendChild(name);
+        div.addEventListener('click', () => {
+          applyHeightmapForFloor2(item.blob);
+        });
+        grid.appendChild(div);
+      });
+    } catch (err) {
+      console.warn('heightmap2 library load failed:', err);
+    }
+  }
+
   // ============================================
   // 床3画像のイベントリスナー
   // ============================================
@@ -4300,6 +4556,7 @@ function setupEventListeners() {
       const value = parseFloat(e.target.value);
       floor3HeightValue.textContent = value;
       if (floor3Plane) floor3Plane.position.y = value;
+      if (floor3CliffMesh) floor3CliffMesh.position.y = value;
     });
   }
 
@@ -4358,6 +4615,161 @@ function setupEventListeners() {
         floor3Plane.scale.x = e.target.checked ? -1 : 1;
       }
     });
+  }
+
+  // 床3 起伏設定モーダル
+  function openDisplacement3Modal() {
+    const bg = document.getElementById('displacement3ModalBg');
+    const modal = document.getElementById('displacement3Modal');
+    if (bg) bg.style.display = 'block';
+    if (modal) modal.style.display = 'flex';
+    document.getElementById('canvas-container')?.classList.add('preview-above-modal');
+    loadHeightmap3Library();
+  }
+  function closeDisplacement3Modal() {
+    const bg = document.getElementById('displacement3ModalBg');
+    const modal = document.getElementById('displacement3Modal');
+    if (bg) bg.style.display = 'none';
+    if (modal) modal.style.display = 'none';
+    document.getElementById('canvas-container')?.classList.remove('preview-above-modal');
+  }
+  document.getElementById('floor3DisplacementOpenBtn')?.addEventListener('click', openDisplacement3Modal);
+  document.getElementById('displacement3ModalClose')?.addEventListener('click', closeDisplacement3Modal);
+  document.getElementById('displacement3ModalBg')?.addEventListener('click', closeDisplacement3Modal);
+
+  // 床3モーダルドラッグ
+  {
+    const modal = document.getElementById('displacement3Modal');
+    const content = modal?.querySelector('.modal-content');
+    const handle = modal?.querySelector('h3');
+    if (handle && content) {
+      handle.style.cursor = 'grab';
+      let dragging = false, startX, startY, origX, origY;
+      handle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        handle.style.cursor = 'grabbing';
+        const rect = content.getBoundingClientRect();
+        startX = e.clientX; startY = e.clientY;
+        origX = rect.left; origY = rect.top;
+        content.style.position = 'fixed';
+        content.style.margin = '0';
+        content.style.left = origX + 'px';
+        content.style.top = origY + 'px';
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        content.style.left = (origX + e.clientX - startX) + 'px';
+        content.style.top = (origY + e.clientY - startY) + 'px';
+      });
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.style.cursor = 'grab';
+      });
+    }
+  }
+
+  // 床3ハイトマップ
+  const floor3HeightmapLabel = document.getElementById('floor3HeightmapLabel');
+  const floor3HeightmapInput = document.getElementById('floor3HeightmapInput');
+  floor3HeightmapLabel?.addEventListener('click', () => floor3HeightmapInput?.click());
+  floor3HeightmapInput?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    applyHeightmapForFloor3(file);
+    if (window.presetManager?.saveMediaToLibrary) {
+      window.presetManager.saveMediaToLibrary(file, 'heightmap').then(() => {
+        loadHeightmap3Library();
+      }).catch(err => console.warn('heightmap library save failed:', err));
+    }
+  });
+  document.getElementById('floor3HeightmapClear')?.addEventListener('click', () => {
+    floor3DisplacementData = null;
+    const input = document.getElementById('floor3HeightmapInput');
+    if (input) input.value = '';
+    if (floor3Plane) {
+      const p = floor3Plane.geometry.parameters;
+      floor3Plane.geometry.dispose();
+      floor3Plane.geometry = new THREE.PlaneGeometry(p.width, p.height, 64, 64);
+    }
+    applyFloor3Curvature();
+  });
+  document.getElementById('floor3DisplacementScale')?.addEventListener('input', (e) => {
+    floor3DisplacementScale = parseFloat(e.target.value);
+    const v = e.target.value;
+    const modalVal = document.getElementById('floor3DisplacementScaleValueModal');
+    if (modalVal) modalVal.textContent = v;
+    applyFloor3Curvature();
+  });
+  document.getElementById('floor3CliffDepth')?.addEventListener('input', (e) => {
+    floor3CliffDepth = parseFloat(e.target.value);
+    const v = e.target.value;
+    const modalVal = document.getElementById('floor3CliffDepthValueModal');
+    if (modalVal) modalVal.textContent = v;
+    updateFloor3Cliffs();
+  });
+
+  function applyHeightmapForFloor3(fileOrBlob) {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      floor3DisplacementData = ctx.getImageData(0, 0, img.width, img.height);
+      if (floor3Plane) {
+        const p = floor3Plane.geometry.parameters;
+        floor3Plane.geometry.dispose();
+        floor3Plane.geometry = new THREE.PlaneGeometry(p.width, p.height, 256, 256);
+      }
+      applyFloor3Curvature();
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(fileOrBlob);
+  }
+  window.applyHeightmapForFloor3 = applyHeightmapForFloor3;
+
+  async function loadHeightmap3Library() {
+    const grid = document.getElementById('heightmap3LibraryGrid');
+    if (!grid || !window.presetManager?.getAllMediaByType) return;
+    grid.innerHTML = '';
+    try {
+      const items = await window.presetManager.getAllMediaByType('heightmap');
+      if (items.length === 0) {
+        grid.innerHTML = '<div class="media-grid-empty">ライブラリは空です</div>';
+        return;
+      }
+      items.sort((a, b) => b.createdAt - a.createdAt);
+      items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'media-grid-item';
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(item.blob);
+        img.style.height = '60px';
+        const name = document.createElement('div');
+        name.className = 'media-name';
+        name.textContent = item.name;
+        const delBtn = document.createElement('button');
+        delBtn.className = 'media-delete-btn';
+        delBtn.textContent = '\u00d7';
+        delBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await window.presetManager.deleteMediaFromLibrary(item.id);
+          loadHeightmap3Library();
+        });
+        div.appendChild(delBtn);
+        div.appendChild(img);
+        div.appendChild(name);
+        div.addEventListener('click', () => {
+          applyHeightmapForFloor3(item.blob);
+        });
+        grid.appendChild(div);
+      });
+    } catch (err) {
+      console.warn('heightmap3 library load failed:', err);
+    }
   }
 
   // ============================================
@@ -4996,6 +5408,8 @@ function setupEventListeners() {
     skyDome: loadSkyDomeImage,
     innerSky: loadInnerSkyImage,
     floor: loadFloorImage,
+    floor2: loadFloor2Image,
+    floor3: loadFloor3Image,
     leftWall: loadLeftWallImage,
     centerWall: loadCenterWallImage,
     rightWall: loadRightWallImage,
@@ -5009,6 +5423,8 @@ function setupEventListeners() {
     audio: ['audio'],
     skyDome: ['image', 'video'],
     floor: ['image', 'video'],
+    floor2: ['image', 'video'],
+    floor3: ['image', 'video'],
     leftWall: ['image', 'video'],
     rightWall: ['image', 'video'],
     backWall: ['image', 'video'],
@@ -5102,6 +5518,19 @@ function setupEventListeners() {
                 img.src = url;
                 item.appendChild(img);
               }
+
+              const dlBtn = document.createElement('button');
+              dlBtn.className = 'media-download-btn';
+              dlBtn.innerHTML = '<i class="fa-solid fa-download"></i>';
+              dlBtn.title = 'ダウンロード';
+              dlBtn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = record.name;
+                a.click();
+              });
+              item.appendChild(dlBtn);
 
               const deleteBtn = document.createElement('button');
               deleteBtn.className = 'media-delete-btn';
@@ -5210,6 +5639,8 @@ function setupEventListeners() {
         if (p) {
           p.material.uniforms.chromaKeyColor.value.set(e.target.value);
           syncDepthMaterialUniforms(p);
+          // 床のクロマキー変更時は影プレーンにも同期
+          if (prefix === 'floor') syncShadowPlaneFloorTexture();
         }
       });
       thresholdInput.addEventListener('input', (e) => {
@@ -5219,6 +5650,8 @@ function setupEventListeners() {
         if (p) {
           p.material.uniforms.chromaKeyThreshold.value = value;
           syncDepthMaterialUniforms(p);
+          // 床のクロマキー変更時は影プレーンにも同期
+          if (prefix === 'floor') syncShadowPlaneFloorTexture();
         }
       });
     });
@@ -7599,6 +8032,7 @@ function loadFloorImageFile(file) {
       // ShaderMaterialのuniformsにテクスチャを適用
       floorPlane.material.uniforms.map.value = floorTexture;
       syncDepthMaterialUniforms(floorPlane);
+      syncShadowPlaneFloorTexture();
       floorPlane.visible = true;
       floorIsVideo = false;
 
@@ -7642,6 +8076,7 @@ function loadFloorVideo(file) {
 
     floorPlane.material.uniforms.map.value = floorTexture;
     syncDepthMaterialUniforms(floorPlane);
+    syncShadowPlaneFloorTexture();
     floorPlane.visible = true;
     floorIsVideo = true;
 
@@ -7957,6 +8392,7 @@ function clearFloorImage() {
 
   floorPlane.material.uniforms.map.value = null;
   syncDepthMaterialUniforms(floorPlane);
+  syncShadowPlaneFloorTexture();
   floorPlane.visible = false;
 
   // アスペクト比をリセット
@@ -8003,6 +8439,14 @@ function loadFloor2ImageFile(file) {
       floor2Texture = new THREE.Texture(img);
       floor2Texture.needsUpdate = true;
       floor2Aspect = img.width / img.height;
+      // アルファチャンネルを抽出（側面生成用）
+      const alphaCanvas = document.createElement('canvas');
+      alphaCanvas.width = img.width;
+      alphaCanvas.height = img.height;
+      const alphaCtx = alphaCanvas.getContext('2d');
+      alphaCtx.drawImage(img, 0, 0);
+      floor2AlphaData = alphaCtx.getImageData(0, 0, img.width, img.height);
+      updateFloor2Cliffs();
       floor2Plane.material.uniforms.map.value = floor2Texture;
       syncDepthMaterialUniforms(floor2Plane);
       floor2Plane.visible = true;
@@ -8079,8 +8523,9 @@ function updateFloor2ImageSize(size) {
   if (!floor2Plane) return;
   const width = size * floor2Aspect;
   const height = size;
+  const segs = floor2DisplacementData ? 256 : 64;
   floor2Plane.geometry.dispose();
-  floor2Plane.geometry = new THREE.PlaneGeometry(width, height, 64, 64);
+  floor2Plane.geometry = new THREE.PlaneGeometry(width, height, segs, segs);
   applyFloor2Curvature();
 }
 
@@ -8088,19 +8533,181 @@ function applyFloor2Curvature() {
   if (!floor2Plane) return;
   const geom = floor2Plane.geometry;
   const pos = geom.attributes.position;
+  const params = geom.parameters;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const y = pos.getY(i);
-    const z = -floor2Curvature * (x * x + y * y);
+    let z = -floor2Curvature * (x * x + y * y);
+    if (floor2DisplacementData && floor2DisplacementScale > 0) {
+      const u = (x / params.width) + 0.5;
+      const v = 1.0 - ((y / params.height) + 0.5);
+      const px = Math.min(Math.max(Math.floor(u * floor2DisplacementData.width), 0), floor2DisplacementData.width - 1);
+      const py = Math.min(Math.max(Math.floor(v * floor2DisplacementData.height), 0), floor2DisplacementData.height - 1);
+      const idx = (py * floor2DisplacementData.width + px) * 4;
+      const height = floor2DisplacementData.data[idx] / 255;
+      z += height * floor2DisplacementScale;
+    }
     pos.setZ(i, z);
   }
   pos.needsUpdate = true;
   geom.computeVertexNormals();
+  updateFloor2Cliffs();
+}
+
+function updateFloor2Cliffs() {
+  if (floor2CliffMesh) {
+    scene.remove(floor2CliffMesh);
+    floor2CliffMesh.geometry.dispose();
+    floor2CliffMesh.material.dispose();
+    floor2CliffMesh = null;
+  }
+  if (!floor2Plane || !floor2AlphaData || floor2CliffDepth <= 0) return;
+
+  const geom = floor2Plane.geometry;
+  const pos = geom.attributes.position;
+  const params = geom.parameters;
+  const W = params.widthSegments;
+  const H = params.heightSegments;
+  const stride = W + 1;
+  const vertCount = stride * (H + 1);
+
+  const isTerrain = new Uint8Array(vertCount);
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const vi = iy * stride + ix;
+      const x = pos.getX(vi), y = pos.getY(vi);
+      const u = (x / params.width) + 0.5;
+      const v = 1.0 - ((y / params.height) + 0.5);
+      const px = Math.min(Math.max(Math.floor(u * floor2AlphaData.width), 0), floor2AlphaData.width - 1);
+      const py = Math.min(Math.max(Math.floor(v * floor2AlphaData.height), 0), floor2AlphaData.height - 1);
+      const idx = (py * floor2AlphaData.width + px) * 4 + 3;
+      isTerrain[vi] = floor2AlphaData.data[idx] > 128 ? 1 : 0;
+    }
+  }
+
+  const isBoundary = new Uint8Array(vertCount);
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const vi = iy * stride + ix;
+      if (!isTerrain[vi]) continue;
+      if ((ix > 0 && !isTerrain[vi - 1]) || (ix < W && !isTerrain[vi + 1]) ||
+          (iy > 0 && !isTerrain[vi - stride]) || (iy < H && !isTerrain[vi + stride])) {
+        isBoundary[vi] = 1;
+      }
+    }
+  }
+
+  const edgeSet = new Set();
+  const edges = [];
+  function addEdge(a, b) {
+    const key = a < b ? a * vertCount + b : b * vertCount + a;
+    if (edgeSet.has(key)) return;
+    edgeSet.add(key);
+    edges.push([a, b]);
+  }
+
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix < W; ix++) {
+      const a = iy * stride + ix, b = a + 1;
+      if (isTerrain[a] !== isTerrain[b]) addEdge(a, b);
+    }
+  }
+  for (let iy = 0; iy < H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const a = iy * stride + ix, b = a + stride;
+      if (isTerrain[a] !== isTerrain[b]) addEdge(a, b);
+    }
+  }
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix < W; ix++) {
+      const a = iy * stride + ix, b = a + 1;
+      if (isBoundary[a] && isBoundary[b]) addEdge(a, b);
+    }
+  }
+  for (let iy = 0; iy < H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const a = iy * stride + ix, b = a + stride;
+      if (isBoundary[a] && isBoundary[b]) addEdge(a, b);
+    }
+  }
+
+  if (edges.length === 0) return;
+
+  const triVerts = edges.length * 6;
+  const posArr = new Float32Array(triVerts * 3);
+  const nrmArr = new Float32Array(triVerts * 3);
+  const uvArr = new Float32Array(triVerts * 2);
+  let vi = 0;
+
+  for (const [idxA, idxB] of edges) {
+    const ax = pos.getX(idxA), ay = pos.getY(idxA);
+    const bx = pos.getX(idxB), by = pos.getY(idxB);
+    const az_top = pos.getZ(idxA), bz_top = pos.getZ(idxB);
+    const az_base = az_top - floor2CliffDepth;
+    const bz_base = bz_top - floor2CliffDepth;
+
+    let au, av, bu, bv;
+    if (isTerrain[idxA] && !isTerrain[idxB]) {
+      au = (ax / params.width) + 0.5; av = (ay / params.height) + 0.5;
+      bu = au; bv = av;
+    } else if (!isTerrain[idxA] && isTerrain[idxB]) {
+      bu = (bx / params.width) + 0.5; bv = (by / params.height) + 0.5;
+      au = bu; av = bv;
+    } else {
+      au = (ax / params.width) + 0.5; av = (ay / params.height) + 0.5;
+      bu = (bx / params.width) + 0.5; bv = (by / params.height) + 0.5;
+    }
+
+    const edgeX = bx - ax, edgeY = by - ay;
+    const edgeLen = Math.sqrt(edgeX * edgeX + edgeY * edgeY) || 1;
+    const nx = -edgeY / edgeLen, ny = edgeX / edgeLen;
+
+    posArr[vi*3]=ax; posArr[vi*3+1]=ay; posArr[vi*3+2]=az_top;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=au; uvArr[vi*2+1]=av; vi++;
+    posArr[vi*3]=bx; posArr[vi*3+1]=by; posArr[vi*3+2]=bz_top;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=bu; uvArr[vi*2+1]=bv; vi++;
+    posArr[vi*3]=bx; posArr[vi*3+1]=by; posArr[vi*3+2]=bz_base;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=bu; uvArr[vi*2+1]=bv; vi++;
+
+    posArr[vi*3]=ax; posArr[vi*3+1]=ay; posArr[vi*3+2]=az_top;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=au; uvArr[vi*2+1]=av; vi++;
+    posArr[vi*3]=bx; posArr[vi*3+1]=by; posArr[vi*3+2]=bz_base;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=bu; uvArr[vi*2+1]=bv; vi++;
+    posArr[vi*3]=ax; posArr[vi*3+1]=ay; posArr[vi*3+2]=az_base;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=au; uvArr[vi*2+1]=av; vi++;
+  }
+
+  const cliffGeom = new THREE.BufferGeometry();
+  cliffGeom.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  cliffGeom.setAttribute('normal', new THREE.BufferAttribute(nrmArr, 3));
+  cliffGeom.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
+
+  const cliffMat = new THREE.MeshStandardMaterial({
+    map: floor2Texture || null,
+    color: floor2Texture ? 0xffffff : 0x6b5a4a,
+    side: THREE.DoubleSide,
+    roughness: 0.8,
+    metalness: 0.1
+  });
+
+  floor2CliffMesh = new THREE.Mesh(cliffGeom, cliffMat);
+  floor2CliffMesh.position.copy(floor2Plane.position);
+  floor2CliffMesh.rotation.copy(floor2Plane.rotation);
+  floor2CliffMesh.scale.copy(floor2Plane.scale);
+  scene.add(floor2CliffMesh);
 }
 
 function clearFloor2Image() {
   window.currentMediaRefs.floor2 = null;
   clearFloor2Media();
+  floor2AlphaData = null;
+  updateFloor2Cliffs();
   floor2Plane.material.uniforms.map.value = null;
   syncDepthMaterialUniforms(floor2Plane);
   floor2Plane.visible = false;
@@ -8139,6 +8746,14 @@ function loadFloor3ImageFile(file) {
       floor3Texture = new THREE.Texture(img);
       floor3Texture.needsUpdate = true;
       floor3Aspect = img.width / img.height;
+      // アルファチャンネルを抽出（側面生成用）
+      const alphaCanvas = document.createElement('canvas');
+      alphaCanvas.width = img.width;
+      alphaCanvas.height = img.height;
+      const alphaCtx = alphaCanvas.getContext('2d');
+      alphaCtx.drawImage(img, 0, 0);
+      floor3AlphaData = alphaCtx.getImageData(0, 0, img.width, img.height);
+      updateFloor3Cliffs();
       floor3Plane.material.uniforms.map.value = floor3Texture;
       syncDepthMaterialUniforms(floor3Plane);
       floor3Plane.visible = true;
@@ -8215,8 +8830,9 @@ function updateFloor3ImageSize(size) {
   if (!floor3Plane) return;
   const width = size * floor3Aspect;
   const height = size;
+  const segs = floor3DisplacementData ? 256 : 64;
   floor3Plane.geometry.dispose();
-  floor3Plane.geometry = new THREE.PlaneGeometry(width, height, 64, 64);
+  floor3Plane.geometry = new THREE.PlaneGeometry(width, height, segs, segs);
   applyFloor3Curvature();
 }
 
@@ -8224,19 +8840,181 @@ function applyFloor3Curvature() {
   if (!floor3Plane) return;
   const geom = floor3Plane.geometry;
   const pos = geom.attributes.position;
+  const params = geom.parameters;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const y = pos.getY(i);
-    const z = -floor3Curvature * (x * x + y * y);
+    let z = -floor3Curvature * (x * x + y * y);
+    if (floor3DisplacementData && floor3DisplacementScale > 0) {
+      const u = (x / params.width) + 0.5;
+      const v = 1.0 - ((y / params.height) + 0.5);
+      const px = Math.min(Math.max(Math.floor(u * floor3DisplacementData.width), 0), floor3DisplacementData.width - 1);
+      const py = Math.min(Math.max(Math.floor(v * floor3DisplacementData.height), 0), floor3DisplacementData.height - 1);
+      const idx = (py * floor3DisplacementData.width + px) * 4;
+      const height = floor3DisplacementData.data[idx] / 255;
+      z += height * floor3DisplacementScale;
+    }
     pos.setZ(i, z);
   }
   pos.needsUpdate = true;
   geom.computeVertexNormals();
+  updateFloor3Cliffs();
+}
+
+function updateFloor3Cliffs() {
+  if (floor3CliffMesh) {
+    scene.remove(floor3CliffMesh);
+    floor3CliffMesh.geometry.dispose();
+    floor3CliffMesh.material.dispose();
+    floor3CliffMesh = null;
+  }
+  if (!floor3Plane || !floor3AlphaData || floor3CliffDepth <= 0) return;
+
+  const geom = floor3Plane.geometry;
+  const pos = geom.attributes.position;
+  const params = geom.parameters;
+  const W = params.widthSegments;
+  const H = params.heightSegments;
+  const stride = W + 1;
+  const vertCount = stride * (H + 1);
+
+  const isTerrain = new Uint8Array(vertCount);
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const vi = iy * stride + ix;
+      const x = pos.getX(vi), y = pos.getY(vi);
+      const u = (x / params.width) + 0.5;
+      const v = 1.0 - ((y / params.height) + 0.5);
+      const px = Math.min(Math.max(Math.floor(u * floor3AlphaData.width), 0), floor3AlphaData.width - 1);
+      const py = Math.min(Math.max(Math.floor(v * floor3AlphaData.height), 0), floor3AlphaData.height - 1);
+      const idx = (py * floor3AlphaData.width + px) * 4 + 3;
+      isTerrain[vi] = floor3AlphaData.data[idx] > 128 ? 1 : 0;
+    }
+  }
+
+  const isBoundary = new Uint8Array(vertCount);
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const vi = iy * stride + ix;
+      if (!isTerrain[vi]) continue;
+      if ((ix > 0 && !isTerrain[vi - 1]) || (ix < W && !isTerrain[vi + 1]) ||
+          (iy > 0 && !isTerrain[vi - stride]) || (iy < H && !isTerrain[vi + stride])) {
+        isBoundary[vi] = 1;
+      }
+    }
+  }
+
+  const edgeSet = new Set();
+  const edges = [];
+  function addEdge(a, b) {
+    const key = a < b ? a * vertCount + b : b * vertCount + a;
+    if (edgeSet.has(key)) return;
+    edgeSet.add(key);
+    edges.push([a, b]);
+  }
+
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix < W; ix++) {
+      const a = iy * stride + ix, b = a + 1;
+      if (isTerrain[a] !== isTerrain[b]) addEdge(a, b);
+    }
+  }
+  for (let iy = 0; iy < H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const a = iy * stride + ix, b = a + stride;
+      if (isTerrain[a] !== isTerrain[b]) addEdge(a, b);
+    }
+  }
+  for (let iy = 0; iy <= H; iy++) {
+    for (let ix = 0; ix < W; ix++) {
+      const a = iy * stride + ix, b = a + 1;
+      if (isBoundary[a] && isBoundary[b]) addEdge(a, b);
+    }
+  }
+  for (let iy = 0; iy < H; iy++) {
+    for (let ix = 0; ix <= W; ix++) {
+      const a = iy * stride + ix, b = a + stride;
+      if (isBoundary[a] && isBoundary[b]) addEdge(a, b);
+    }
+  }
+
+  if (edges.length === 0) return;
+
+  const triVerts = edges.length * 6;
+  const posArr = new Float32Array(triVerts * 3);
+  const nrmArr = new Float32Array(triVerts * 3);
+  const uvArr = new Float32Array(triVerts * 2);
+  let vi = 0;
+
+  for (const [idxA, idxB] of edges) {
+    const ax = pos.getX(idxA), ay = pos.getY(idxA);
+    const bx = pos.getX(idxB), by = pos.getY(idxB);
+    const az_top = pos.getZ(idxA), bz_top = pos.getZ(idxB);
+    const az_base = az_top - floor3CliffDepth;
+    const bz_base = bz_top - floor3CliffDepth;
+
+    let au, av, bu, bv;
+    if (isTerrain[idxA] && !isTerrain[idxB]) {
+      au = (ax / params.width) + 0.5; av = (ay / params.height) + 0.5;
+      bu = au; bv = av;
+    } else if (!isTerrain[idxA] && isTerrain[idxB]) {
+      bu = (bx / params.width) + 0.5; bv = (by / params.height) + 0.5;
+      au = bu; av = bv;
+    } else {
+      au = (ax / params.width) + 0.5; av = (ay / params.height) + 0.5;
+      bu = (bx / params.width) + 0.5; bv = (by / params.height) + 0.5;
+    }
+
+    const edgeX = bx - ax, edgeY = by - ay;
+    const edgeLen = Math.sqrt(edgeX * edgeX + edgeY * edgeY) || 1;
+    const nx = -edgeY / edgeLen, ny = edgeX / edgeLen;
+
+    posArr[vi*3]=ax; posArr[vi*3+1]=ay; posArr[vi*3+2]=az_top;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=au; uvArr[vi*2+1]=av; vi++;
+    posArr[vi*3]=bx; posArr[vi*3+1]=by; posArr[vi*3+2]=bz_top;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=bu; uvArr[vi*2+1]=bv; vi++;
+    posArr[vi*3]=bx; posArr[vi*3+1]=by; posArr[vi*3+2]=bz_base;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=bu; uvArr[vi*2+1]=bv; vi++;
+
+    posArr[vi*3]=ax; posArr[vi*3+1]=ay; posArr[vi*3+2]=az_top;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=au; uvArr[vi*2+1]=av; vi++;
+    posArr[vi*3]=bx; posArr[vi*3+1]=by; posArr[vi*3+2]=bz_base;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=bu; uvArr[vi*2+1]=bv; vi++;
+    posArr[vi*3]=ax; posArr[vi*3+1]=ay; posArr[vi*3+2]=az_base;
+    nrmArr[vi*3]=nx; nrmArr[vi*3+1]=ny; nrmArr[vi*3+2]=0;
+    uvArr[vi*2]=au; uvArr[vi*2+1]=av; vi++;
+  }
+
+  const cliffGeom = new THREE.BufferGeometry();
+  cliffGeom.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  cliffGeom.setAttribute('normal', new THREE.BufferAttribute(nrmArr, 3));
+  cliffGeom.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
+
+  const cliffMat = new THREE.MeshStandardMaterial({
+    map: floor3Texture || null,
+    color: floor3Texture ? 0xffffff : 0x6b5a4a,
+    side: THREE.DoubleSide,
+    roughness: 0.8,
+    metalness: 0.1
+  });
+
+  floor3CliffMesh = new THREE.Mesh(cliffGeom, cliffMat);
+  floor3CliffMesh.position.copy(floor3Plane.position);
+  floor3CliffMesh.rotation.copy(floor3Plane.rotation);
+  floor3CliffMesh.scale.copy(floor3Plane.scale);
+  scene.add(floor3CliffMesh);
 }
 
 function clearFloor3Image() {
   window.currentMediaRefs.floor3 = null;
   clearFloor3Media();
+  floor3AlphaData = null;
+  updateFloor3Cliffs();
   floor3Plane.material.uniforms.map.value = null;
   syncDepthMaterialUniforms(floor3Plane);
   floor3Plane.visible = false;
@@ -10232,6 +11010,7 @@ function loadVideoFromURL(slotName, url, loadFn) {
           floorAspect = video.videoWidth / video.videoHeight;
           const sizeEl = document.getElementById('floorImageSize');
           if (sizeEl) updateFloorImageSize(parseFloat(sizeEl.value));
+          syncShadowPlaneFloorTexture();
         }
         if (slotName === 'floor2') {
           floor2Texture = texture;
@@ -10345,6 +11124,10 @@ async function loadViewerData() {
     // 起伏・側面パラメータを直接同期
     if (s.floorDisplacementScale !== undefined) { floorDisplacementScale = parseFloat(s.floorDisplacementScale); }
     if (s.floorCliffDepth !== undefined) { floorCliffDepth = parseFloat(s.floorCliffDepth); }
+    if (s.floor2DisplacementScale !== undefined) { floor2DisplacementScale = parseFloat(s.floor2DisplacementScale); }
+    if (s.floor2CliffDepth !== undefined) { floor2CliffDepth = parseFloat(s.floor2CliffDepth); }
+    if (s.floor3DisplacementScale !== undefined) { floor3DisplacementScale = parseFloat(s.floor3DisplacementScale); }
+    if (s.floor3CliffDepth !== undefined) { floor3CliffDepth = parseFloat(s.floor3CliffDepth); }
   }
 
   // メディアを読み込み
@@ -10430,6 +11213,44 @@ async function loadViewerData() {
       }
     } catch (e) {
       console.error('[Viewer] Failed to load heightmap:', e);
+    }
+  }
+
+  // 床2ハイトマップを読み込み
+  if (m.heightmap2) {
+    try {
+      let blob;
+      if (m.heightmap2.url) {
+        const resp = await fetch(m.heightmap2.url);
+        blob = await resp.blob();
+      } else if (m.heightmap2.data) {
+        blob = base64ToBlob(m.heightmap2.data, m.heightmap2.mimeType);
+      }
+      if (blob) {
+        window.applyHeightmapForFloor2(blob);
+        console.log('[Viewer] heightmap2 loaded');
+      }
+    } catch (e) {
+      console.error('[Viewer] Failed to load heightmap2:', e);
+    }
+  }
+
+  // 床3ハイトマップを読み込み
+  if (m.heightmap3) {
+    try {
+      let blob;
+      if (m.heightmap3.url) {
+        const resp = await fetch(m.heightmap3.url);
+        blob = await resp.blob();
+      } else if (m.heightmap3.data) {
+        blob = base64ToBlob(m.heightmap3.data, m.heightmap3.mimeType);
+      }
+      if (blob) {
+        window.applyHeightmapForFloor3(blob);
+        console.log('[Viewer] heightmap3 loaded');
+      }
+    } catch (e) {
+      console.error('[Viewer] Failed to load heightmap3:', e);
     }
   }
 
