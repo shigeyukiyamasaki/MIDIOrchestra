@@ -121,6 +121,19 @@ window.getLoadedMediaBlob = async function(slot) {
     panel5Wall: { video: () => panel5WallVideo, plane: () => panel5WallPlane, isVideo: () => panel5WallIsVideo },
     panel6Wall: { video: () => panel6WallVideo, plane: () => panel6WallPlane, isVideo: () => panel6WallIsVideo },
   };
+  // ハイトマップはImageDataから直接blob化
+  if (slot === 'heightmap') {
+    if (!floorDisplacementData) { console.log('[Fallback] heightmap: no data'); return null; }
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = floorDisplacementData.width;
+      canvas.height = floorDisplacementData.height;
+      canvas.getContext('2d').putImageData(floorDisplacementData, 0, 0);
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      return { blob, name: 'heightmap.png', mimeType: 'image/png' };
+    } catch(e) { console.error('[Fallback] heightmap: canvas failed', e); return null; }
+  }
+
   const info = slotMap[slot];
   if (!info) { console.log(`[Fallback] ${slot}: not in slotMap`); return null; }
   const plane = info.plane();
@@ -4079,7 +4092,8 @@ function setupEventListeners() {
     if (modalVal) modalVal.textContent = v;
     updateFloorCliffs();
   });
-  // ハイトマップをファイル/Blobから適用する共通関数
+  // ハイトマップをファイル/Blobから適用する共通関数（グローバルからも使う）
+  window.applyHeightmapFromFile = applyHeightmapFromFile;
   function applyHeightmapFromFile(fileOrBlob) {
     const img = new Image();
     img.onload = () => {
@@ -10327,6 +10341,10 @@ async function loadViewerData() {
     if (s.lightningFlashOpacity !== undefined) { lightningFlashOpacity = parseFloat(s.lightningFlashOpacity); }
     if (s.lightningFlashDecay !== undefined) { lightningFlashDecay = parseFloat(s.lightningFlashDecay); }
     if (s.lightningRandomness !== undefined) { lightningRandomness = parseFloat(s.lightningRandomness); }
+
+    // 起伏・側面パラメータを直接同期
+    if (s.floorDisplacementScale !== undefined) { floorDisplacementScale = parseFloat(s.floorDisplacementScale); }
+    if (s.floorCliffDepth !== undefined) { floorCliffDepth = parseFloat(s.floorCliffDepth); }
   }
 
   // メディアを読み込み
@@ -10393,6 +10411,25 @@ async function loadViewerData() {
         const file = new File([blob], m[key].name, { type: m[key].mimeType });
         loadFn(file);
       }
+    }
+  }
+
+  // ハイトマップを読み込み
+  if (m.heightmap) {
+    try {
+      let blob;
+      if (m.heightmap.url) {
+        const resp = await fetch(m.heightmap.url);
+        blob = await resp.blob();
+      } else if (m.heightmap.data) {
+        blob = base64ToBlob(m.heightmap.data, m.heightmap.mimeType);
+      }
+      if (blob) {
+        window.applyHeightmapFromFile(blob);
+        console.log('[Viewer] heightmap loaded');
+      }
+    } catch (e) {
+      console.error('[Viewer] Failed to load heightmap:', e);
     }
   }
 

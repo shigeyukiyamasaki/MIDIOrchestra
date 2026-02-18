@@ -386,6 +386,8 @@ function collectCurrentSettings() {
   s.floorChromaColor = getColorValue('floorChromaColor');
   s.floorChromaThreshold = getRangeValue('floorChromaThreshold');
   s.floorCurvature = getRangeValue('floorCurvature');
+  s.floorDisplacementScale = getRangeValue('floorDisplacementScale');
+  s.floorCliffDepth = getRangeValue('floorCliffDepth');
 
   // 床2
   s.floor2ImageSize = getRangeValue('floor2ImageSize');
@@ -638,6 +640,8 @@ function applySettings(s) {
   setColorValue('floorChromaColor', s.floorChromaColor);
   setRangeValue('floorChromaThreshold', s.floorChromaThreshold);
   setRangeValue('floorCurvature', s.floorCurvature);
+  setRangeValue('floorDisplacementScale', s.floorDisplacementScale);
+  setRangeValue('floorCliffDepth', s.floorCliffDepth);
 
   // 床2
   setRangeValue('floor2ImageSize', s.floor2ImageSize);
@@ -689,7 +693,7 @@ function applySettings(s) {
     'gridOpacity','gridSize','gridColor','aspectRatioSelect',
     'midiDelay','audioDelay','loopStartEnabled','loopStartTime','loopEndEnabled','loopEndTime','fadeOutDuration','shadowEnvironment','weatherType',
     'skyDomeOpacity','skyDomeRange','skyDomeRadius',
-    'floorImageSize','floorImageOpacity','floorImageFlip','floorChromaColor','floorChromaThreshold','floorCurvature',
+    'floorImageSize','floorImageOpacity','floorImageFlip','floorChromaColor','floorChromaThreshold','floorCurvature','floorDisplacementScale','floorCliffDepth',
     'floor2ImageSize','floor2Height','floor2ImageOpacity','floor2ImageFlip','floor2ChromaColor','floor2ChromaThreshold','floor2Curvature',
     'leftWallImageSize','leftWallImageOpacity','leftWallImageFlip','leftWallChromaColor','leftWallChromaThreshold',
     'rightWallImageSize','rightWallImageOpacity','rightWallImageFlip','rightWallChromaColor','rightWallChromaThreshold',
