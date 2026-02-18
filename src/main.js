@@ -377,6 +377,7 @@ let weatherWindDir = 0;  // 風向(度) 0=+Z方向
 let lightningFrequency = 0;  // 0=無効, 1-10 (回/分の目安)
 let lightningIntensity = 0.5; // フラッシュ強度 0.1-1.0
 let lightningColor = '#ffffff'; // 稲光の色
+let lightningAmbientColor = '#ffffff'; // 周囲の色（グロー）
 let lightningFlashOpacity = 0.5; // フラッシュ濃度 0.1-1.0
 let lightningFlashDecay = 0.3;   // フラッシュ減衰時間(秒) 0.01-2.0
 let lightningRandomness = 0.5;   // 間隔のばらつき 0=均等, 1=最大
@@ -1305,15 +1306,17 @@ function createChromaKeyMaterial(opacity = 0.8) {
   return mat;
 }
 
-// 影受けプレーン用マテリアル（ShadowMaterial + onBeforeCompile で床テクスチャの透明/クロマキー領域を除外）
+// 影受けプレーン用マテリアル（ステンシルバッファで床の不透明部分のみに影を描画）
+// 床1/床2/床3すべてが stencilRef=1 を書くため、いずれかの床が不透明な箇所に影が出る
 function createShadowPlaneMaterial() {
-  const mat = new THREE.ShadowMaterial({
+  return new THREE.ShadowMaterial({
     opacity: 0.3,
     depthWrite: false,
     polygonOffset: true,
     polygonOffsetFactor: -6,
     polygonOffsetUnit: -6,
     // ステンシル: 床の不透明部分（ステンシル=1）のみ影を描画
+    // stencilWrite=true でテストを有効化、writeMask=0x00 で書き込みは防止
     stencilWrite: true,
     stencilWriteMask: 0x00,
     stencilRef: 1,
@@ -1322,67 +1325,6 @@ function createShadowPlaneMaterial() {
     stencilZFail: THREE.KeepStencilOp,
     stencilZPass: THREE.KeepStencilOp,
   });
-
-  // onBeforeCompile用のuniform参照をuserDataに保持
-  mat.userData.floorMap = { value: null };
-  mat.userData.hasFloorMap = { value: 0.0 };
-  mat.userData.chromaKeyColor = { value: new THREE.Color(0x00ff00) };
-  mat.userData.chromaKeyThreshold = { value: 0.0 };
-
-  mat.onBeforeCompile = (shader) => {
-    // uniformsを登録
-    shader.uniforms.floorMap = mat.userData.floorMap;
-    shader.uniforms.hasFloorMap = mat.userData.hasFloorMap;
-    shader.uniforms.chromaKeyColor = mat.userData.chromaKeyColor;
-    shader.uniforms.chromaKeyThreshold = mat.userData.chromaKeyThreshold;
-
-    // 頂点シェーダー: vUvを追加
-    shader.vertexShader = shader.vertexShader.replace(
-      'void main() {',
-      'varying vec2 vUv;\nvoid main() {\n  vUv = uv;'
-    );
-
-    // フラグメントシェーダー: uniform宣言を追加
-    shader.fragmentShader = shader.fragmentShader.replace(
-      'uniform vec3 color;',
-      `uniform vec3 color;
-uniform sampler2D floorMap;
-uniform float hasFloorMap;
-uniform vec3 chromaKeyColor;
-uniform float chromaKeyThreshold;
-varying vec2 vUv;`
-    );
-
-    // フラグメントシェーダー: main()の先頭に床テクスチャチェックを挿入
-    shader.fragmentShader = shader.fragmentShader.replace(
-      'void main() {',
-      `void main() {
-  if (hasFloorMap > 0.5) {
-    vec4 floorColor = texture2D(floorMap, vUv);
-    if (floorColor.a < 0.01) discard;
-    if (chromaKeyThreshold > 0.0) {
-      float dist = distance(floorColor.rgb, chromaKeyColor);
-      if (dist < chromaKeyThreshold) discard;
-    }
-  }`
-    );
-  };
-
-  return mat;
-}
-
-// 影プレーンの床テクスチャ・クロマキー情報を同期
-function syncShadowPlaneFloorTexture() {
-  if (!shadowPlane) return;
-  const ud = shadowPlane.material.userData;
-  if (!ud || !ud.floorMap) return;
-  ud.floorMap.value = floorTexture || null;
-  ud.hasFloorMap.value = floorTexture ? 1.0 : 0.0;
-  // 床のクロマキー設定を同期
-  if (floorPlane && floorPlane.material.uniforms) {
-    ud.chromaKeyColor.value.copy(floorPlane.material.uniforms.chromaKeyColor.value);
-    ud.chromaKeyThreshold.value = floorPlane.material.uniforms.chromaKeyThreshold.value;
-  }
 }
 
 // 天候パーティクルシステムの構築・再構築
@@ -3696,6 +3638,11 @@ function setupEventListeners() {
         scene.remove(bolt);
         bolt.geometry.dispose();
         bolt.material.dispose();
+        if (bolt._glow) {
+          scene.remove(bolt._glow);
+          bolt._glow.geometry.dispose();
+          bolt._glow.material.dispose();
+        }
       }
       lightningBolts = [];
       lightningLastTime = 0;
@@ -3708,6 +3655,9 @@ function setupEventListeners() {
   });
   document.getElementById('lightningColor')?.addEventListener('input', (e) => {
     lightningColor = e.target.value;
+  });
+  document.getElementById('lightningAmbientColor')?.addEventListener('input', (e) => {
+    lightningAmbientColor = e.target.value;
   });
   document.getElementById('lightningFlashOpacity')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
@@ -5640,7 +5590,7 @@ function setupEventListeners() {
           p.material.uniforms.chromaKeyColor.value.set(e.target.value);
           syncDepthMaterialUniforms(p);
           // 床のクロマキー変更時は影プレーンにも同期
-          if (prefix === 'floor') syncShadowPlaneFloorTexture();
+
         }
       });
       thresholdInput.addEventListener('input', (e) => {
@@ -5651,7 +5601,7 @@ function setupEventListeners() {
           p.material.uniforms.chromaKeyThreshold.value = value;
           syncDepthMaterialUniforms(p);
           // 床のクロマキー変更時は影プレーンにも同期
-          if (prefix === 'floor') syncShadowPlaneFloorTexture();
+
         }
       });
     });
@@ -7465,6 +7415,23 @@ function triggerBeatFlash() {
 
 // ── 雷エフェクト ──
 
+let lightningGlowTexture = null;
+function getLightningGlowTexture() {
+  if (lightningGlowTexture) return lightningGlowTexture;
+  const size = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.3, 'rgba(255,255,255,0.4)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  lightningGlowTexture = new THREE.CanvasTexture(c);
+  return lightningGlowTexture;
+}
+
 function buildLightningBolt(branch = false, branchOrigin = null) {
   // スカイドームの半径を取得（DOM値 or デフォルト2000）
   const radiusEl = document.getElementById('skyDomeRadius');
@@ -7533,11 +7500,31 @@ function buildLightningBolt(branch = false, branchOrigin = null) {
     depthWrite: false,
   });
   const bolt = new THREE.LineSegments(geom, mat);
+
+  // グロー（周囲の色）
+  const glowPositions = [];
+  for (const p of points) glowPositions.push(p.x, p.y, p.z);
+  const glowGeom = new THREE.BufferGeometry();
+  glowGeom.setAttribute('position', new THREE.Float32BufferAttribute(glowPositions, 3));
+  const glowMat = new THREE.PointsMaterial({
+    color: new THREE.Color(lightningAmbientColor),
+    map: getLightningGlowTexture(),
+    size: branch ? domeRadius * 0.06 : domeRadius * 0.1,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: branch ? 0.3 : 0.5,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const glowPoints = new THREE.Points(glowGeom, glowMat);
+  bolt._glow = glowPoints;
+
   bolt._branches = branches;
   bolt._createdAt = performance.now();
   bolt._lifetime = 200 + Math.random() * 200; // 200-400ms
 
   scene.add(bolt);
+  scene.add(glowPoints);
   for (const b of branches) scene.add(b);
 
   return bolt;
@@ -7627,6 +7614,11 @@ function updateLightning() {
       scene.remove(bolt);
       bolt.geometry.dispose();
       bolt.material.dispose();
+      if (bolt._glow) {
+        scene.remove(bolt._glow);
+        bolt._glow.geometry.dispose();
+        bolt._glow.material.dispose();
+      }
       lightningBolts.splice(i, 1);
     }
   }
@@ -8032,7 +8024,7 @@ function loadFloorImageFile(file) {
       // ShaderMaterialのuniformsにテクスチャを適用
       floorPlane.material.uniforms.map.value = floorTexture;
       syncDepthMaterialUniforms(floorPlane);
-      syncShadowPlaneFloorTexture();
+
       floorPlane.visible = true;
       floorIsVideo = false;
 
@@ -8076,7 +8068,6 @@ function loadFloorVideo(file) {
 
     floorPlane.material.uniforms.map.value = floorTexture;
     syncDepthMaterialUniforms(floorPlane);
-    syncShadowPlaneFloorTexture();
     floorPlane.visible = true;
     floorIsVideo = true;
 
@@ -8392,7 +8383,6 @@ function clearFloorImage() {
 
   floorPlane.material.uniforms.map.value = null;
   syncDepthMaterialUniforms(floorPlane);
-  syncShadowPlaneFloorTexture();
   floorPlane.visible = false;
 
   // アスペクト比をリセット
@@ -11010,7 +11000,7 @@ function loadVideoFromURL(slotName, url, loadFn) {
           floorAspect = video.videoWidth / video.videoHeight;
           const sizeEl = document.getElementById('floorImageSize');
           if (sizeEl) updateFloorImageSize(parseFloat(sizeEl.value));
-          syncShadowPlaneFloorTexture();
+    
         }
         if (slotName === 'floor2') {
           floor2Texture = texture;
@@ -11117,6 +11107,7 @@ async function loadViewerData() {
     if (s.lightningFrequency !== undefined) { lightningFrequency = parseInt(s.lightningFrequency); }
     if (s.lightningIntensity !== undefined) { lightningIntensity = parseFloat(s.lightningIntensity); }
     if (s.lightningColor !== undefined) { lightningColor = s.lightningColor; }
+    if (s.lightningAmbientColor !== undefined) { lightningAmbientColor = s.lightningAmbientColor; }
     if (s.lightningFlashOpacity !== undefined) { lightningFlashOpacity = parseFloat(s.lightningFlashOpacity); }
     if (s.lightningFlashDecay !== undefined) { lightningFlashDecay = parseFloat(s.lightningFlashDecay); }
     if (s.lightningRandomness !== undefined) { lightningRandomness = parseFloat(s.lightningRandomness); }
