@@ -677,7 +677,7 @@ button:disabled {
   top: 420px; /* JS syncImagePanelHeight で自動更新 */
   left: 310px;
   right: 750px;
-  bottom: 330px;
+  bottom: 330px; /* JS syncDisplayPanelHeight で自動更新 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -751,7 +751,7 @@ button:disabled {
   bottom: 0;
   left: 310px;
   right: 750px;
-  max-height: 330px;
+  max-height: 50vh;
   background: rgba(0, 0, 0, 0.8);
   display: flex;
   flex-direction: column;
@@ -955,12 +955,16 @@ button:disabled {
 }
 
 /* 設定パネル */
-#settings-list,
-#image-list {
+#settings-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 10px;
+}
+#image-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .setting-category {

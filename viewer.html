@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>MIDI Orchestra Viewer</title>
-  <link rel="stylesheet" href="style.css?v=20260213c">
+  <link rel="stylesheet" href="style.css?v=20260219a">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     /* ビューアーモード: 編集パネルを非表示、キャンバスを全画面化 */
@@ -644,6 +644,11 @@
         <input type="range" id="noteYOffset" min="-100" max="200" step="1" value="0">
         <span id="noteYOffsetValue">0</span>
       </div>
+      <div class="setting-item">
+        <label>ノート回転</label>
+        <input type="range" id="noteFlowAngle" min="0" max="360" step="1" value="0">
+        <span id="noteFlowAngleValue">0</span>
+      </div>
     </div>
     <div class="display-section">
       <div class="setting-category">レイアウト</div>
@@ -949,6 +954,6 @@
     }
   </script>
   <script src="src/presetManager.js?v=20260218b"></script>
-  <script type="module" src="src/main.js?v=20260218zf"></script>
+  <script type="module" src="src/main.js?v=20260219a"></script>
 </body>
 </html>

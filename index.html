@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Orchestra Visualizer</title>
-  <link rel="stylesheet" href="style.css?v=20260217d">
+  <link rel="stylesheet" href="style.css?v=20260219a">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
@@ -942,6 +942,11 @@
         <input type="range" id="noteYOffset" min="-100" max="200" step="1" value="0">
         <span id="noteYOffsetValue">0</span>
       </div>
+      <div class="setting-item">
+        <label>ノート回転</label>
+        <input type="range" id="noteFlowAngle" min="0" max="360" step="1" value="0">
+        <span id="noteFlowAngleValue">0</span>
+      </div>
     </div>
     <div class="display-section">
       <h4 class="setting-category">タイムライン</h4>
@@ -1157,6 +1162,6 @@
 
   <script src="src/presetManager.js?v=20260218b"></script>
   <script src="src/viewerExport.js?v=20260218b"></script>
-  <script type="module" src="src/main.js?v=20260218zf"></script>
+  <script type="module" src="src/main.js?v=20260219a"></script>
 </body>
 </html>

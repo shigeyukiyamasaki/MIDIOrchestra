@@ -25,6 +25,8 @@ const state = {
 
 // Three.js オブジェクト
 let scene, camera, renderer, controls;
+let noteGroup = null;   // ノート・タイムライン・アイコンをまとめるグループ
+let noteFlowAngle = 0;  // ノート流れ角度（度）
 let timelinePlane;      // 現在位置を示す平面
 let gridHelper;         // グリッド
 let floorPlane;         // 床画像用平面
@@ -2198,7 +2200,9 @@ function setupThreeJS() {
   timelinePlane.rotation.y = Math.PI / 2;
   // 初期位置：下端を床に揃える（高さ150の半分=75をfloorYに加算）
   timelinePlane.position.set(0, floorY + 75, 0);
-  scene.add(timelinePlane);
+  noteGroup = new THREE.Group();
+  scene.add(noteGroup);
+  noteGroup.add(timelinePlane);
 
   // ウィンドウリサイズ対応
   window.addEventListener('resize', onWindowResize);
@@ -2209,8 +2213,9 @@ function setupThreeJS() {
   // ページロード完了時にもレイアウト更新（横向きリロード対応）
   window.addEventListener('load', () => {
     syncImagePanelHeight();
+    syncDisplayPanelHeight();
     updateViewerSideControlsWidth();
-    setTimeout(() => { syncImagePanelHeight(); updateViewerSideControlsWidth(); }, 500);
+    setTimeout(() => { syncImagePanelHeight(); syncDisplayPanelHeight(); updateViewerSideControlsWidth(); }, 500);
   });
 }
 
@@ -2255,6 +2260,14 @@ function syncImagePanelHeight() {
   if (!imagePanel || !canvasContainer) return;
   const panelBottom = imagePanel.offsetTop + imagePanel.offsetHeight;
   canvasContainer.style.top = panelBottom + 'px';
+}
+
+// 表示設定パネルの高さに合わせてキャンバスコンテナのbottomを自動調整
+function syncDisplayPanelHeight() {
+  const displayPanel = document.getElementById('display-settings-panel');
+  const canvasContainer = document.getElementById('canvas-container');
+  if (!displayPanel || !canvasContainer) return;
+  canvasContainer.style.bottom = displayPanel.offsetHeight + 'px';
 }
 
 // ビューワー用: DOM値から壁面パネルの3Dオブジェクトを一括同期
@@ -2319,6 +2332,7 @@ function syncWallSettingsFromDOM() {
 
 function onWindowResize() {
   syncImagePanelHeight();
+  syncDisplayPanelHeight();
   const container = document.getElementById('canvas-container');
   const { width, height } = calculateCanvasSize(container);
 
@@ -2938,6 +2952,14 @@ function setupEventListeners() {
     document.getElementById('noteYOffsetValue').textContent = value;
     CONFIG.noteYOffset = value;
     debouncedRebuildNotes();
+  });
+
+  // ノート回転
+  document.getElementById('noteFlowAngle')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('noteFlowAngleValue').textContent = v;
+    noteFlowAngle = v;
+    if (noteGroup) noteGroup.rotation.y = v * Math.PI / 180;
   });
 
   // 幕の透明度
@@ -5725,14 +5747,14 @@ function clearMidi() {
 
   // ノートオブジェクトを削除
   state.noteObjects.forEach(obj => {
-    scene.remove(obj);
+    noteGroup.remove(obj);
     if (obj.geometry) obj.geometry.dispose();
     if (obj.material) obj.material.dispose();
   });
   state.noteObjects = [];
 
   // アイコンスプライトを削除
-  state.iconSprites.forEach(sprite => scene.remove(sprite));
+  state.iconSprites.forEach(sprite => noteGroup.remove(sprite));
   state.iconSprites = [];
 
   // 波紋を削除
@@ -6359,7 +6381,7 @@ function updateOrchestraHighlights() {
 function createNoteObjects() {
   // 既存のノートオブジェクトを削除（メモリ解放）
   state.noteObjects.forEach(obj => {
-    scene.remove(obj);
+    noteGroup.remove(obj);
     if (obj.geometry) obj.geometry.dispose();
     if (obj.material) obj.material.dispose();
   });
@@ -6464,7 +6486,7 @@ function createNoteObjects() {
         originalY: y,          // 元のY座標を保存（曲率補正用）
       };
 
-      scene.add(mesh);
+      noteGroup.add(mesh);
       state.noteObjects.push(mesh);
     });
   });
@@ -6489,65 +6511,9 @@ function createNoteObjects() {
   noteEdgeZ = -totalDepth / 2;
   noteEdgeZPositive = totalDepth / 2;
 
-  // 左側面画像の位置を調整（幕に垂直、手前側に配置、床基準）
-  if (leftWallPlane) {
-    const currentSize = leftWallPlane.geometry.parameters.height;
-    const xVal = parseFloat(document.getElementById('leftWallImageX')?.value || 0);
-    const zVal = parseFloat(document.getElementById('leftWallImageZ')?.value || -150);
-    leftWallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
-    const rotY = parseFloat(document.getElementById('leftWallImageRotY')?.value || 0);
-    leftWallPlane.rotation.y = rotY * Math.PI / 180;
-  }
-
-  // 右側面画像の位置を調整（幕に垂直、奥側に配置、床基準）
-  if (rightWallPlane) {
-    const currentSize = rightWallPlane.geometry.parameters.height;
-    const xVal = parseFloat(document.getElementById('rightWallImageX')?.value || 0);
-    const zVal = parseFloat(document.getElementById('rightWallImageZ')?.value || 150);
-    rightWallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
-    const rotY = parseFloat(document.getElementById('rightWallImageRotY')?.value || 0);
-    rightWallPlane.rotation.y = rotY * Math.PI / 180;
-  }
-
-  // センター画像の位置を調整（幕に垂直、中央に配置、床基準）
-  if (centerWallPlane) {
-    const currentSize = centerWallPlane.geometry.parameters.height;
-    const xVal = parseFloat(document.getElementById('centerWallImageX')?.value || 0);
-    const zVal = parseFloat(document.getElementById('centerWallImageZ')?.value || 0);
-    centerWallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
-    const rotY = parseFloat(document.getElementById('centerWallImageRotY')?.value || 0);
-    centerWallPlane.rotation.y = rotY * Math.PI / 180;
-  }
-
-  // 奥側画像の位置を調整（スライダーの値を維持）
-  if (backWallPlane) {
-    const currentSize = backWallPlane.geometry.parameters.height;
-    const xVal = parseFloat(document.getElementById('backWallImageX')?.value || 0);
-    const zVal = parseFloat(document.getElementById('backWallImageZ')?.value || 0);
-    backWallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
-    const rotY = parseFloat(document.getElementById('backWallImageRotY')?.value || 90);
-    backWallPlane.rotation.y = rotY * Math.PI / 180;
-  }
-
-  // パネル5画像の位置を調整
-  if (panel5WallPlane) {
-    const currentSize = panel5WallPlane.geometry.parameters.height;
-    const xVal = parseFloat(document.getElementById('panel5WallImageX')?.value || 0);
-    const zVal = parseFloat(document.getElementById('panel5WallImageZ')?.value || 0);
-    panel5WallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
-    const rotY = parseFloat(document.getElementById('panel5WallImageRotY')?.value || 0);
-    panel5WallPlane.rotation.y = rotY * Math.PI / 180;
-  }
-
-  // パネル6画像の位置を調整
-  if (panel6WallPlane) {
-    const currentSize = panel6WallPlane.geometry.parameters.height;
-    const xVal = parseFloat(document.getElementById('panel6WallImageX')?.value || 0);
-    const zVal = parseFloat(document.getElementById('panel6WallImageZ')?.value || 0);
-    panel6WallPlane.position.set(xVal, floorY + currentSize / 2, zVal);
-    const rotY = parseFloat(document.getElementById('panel6WallImageRotY')?.value || 0);
-    panel6WallPlane.rotation.y = rotY * Math.PI / 180;
-  }
+  // 壁面・床パネルの位置/回転/透明度をDOM値から一括同期
+  // （ここにインラインで書くとsyncWallSettingsFromDOMとの二重管理になるため関数に委譲）
+  syncWallSettingsFromDOM();
 
   // カメラ位置はMIDI読み込み時に変更しない（setupThreeJSで設定した位置を維持）
 
@@ -6559,7 +6525,7 @@ function createNoteObjects() {
 // ============================================
 function create3DInstrumentIcons() {
   // 既存のアイコンを削除
-  state.iconSprites.forEach(sprite => scene.remove(sprite));
+  state.iconSprites.forEach(sprite => noteGroup.remove(sprite));
   state.iconSprites = [];
 
   const midi = state.midi;
@@ -6644,7 +6610,7 @@ function create3DInstrumentIcons() {
     };
 
     sprite.layers.set(1); // ノートと同じレイヤー（ブルーム対象）
-    scene.add(sprite);
+    noteGroup.add(sprite);
     state.iconSprites.push(sprite);
   });
 
@@ -6709,7 +6675,7 @@ function createRipple(y, z, color) {
     maxScale: 6,
   };
 
-  scene.add(ripple);
+  noteGroup.add(ripple);
   state.ripples.push(ripple);
 }
 
@@ -6723,7 +6689,7 @@ function updateRipples(delta) {
 
     if (progress >= 1) {
       // 波紋を削除
-      scene.remove(ripple);
+      noteGroup.remove(ripple);
       ripple.geometry.dispose();
       ripple.material.dispose();
       state.ripples.splice(i, 1);
@@ -6807,7 +6773,7 @@ function createPopIcon(y, z, instrumentId) {
   };
 
   sprite.layers.set(1); // ノートと同じレイヤー（ブルーム制御対象）
-  scene.add(sprite);
+  noteGroup.add(sprite);
   state.popIcons.push(sprite);
 }
 
@@ -6821,7 +6787,7 @@ function updatePopIcons(delta) {
 
     if (progress >= 1) {
       // アイコンを削除
-      scene.remove(icon);
+      noteGroup.remove(icon);
       icon.material.map.dispose();
       icon.material.dispose();
       state.popIcons.splice(i, 1);
@@ -7688,7 +7654,7 @@ function updateNoteOpacity(opacity) {
 // 波紋をクリア
 function clearRipples() {
   state.ripples.forEach(ripple => {
-    scene.remove(ripple);
+    noteGroup.remove(ripple);
     ripple.geometry.dispose();
     ripple.material.dispose();
   });
@@ -11119,6 +11085,12 @@ async function loadViewerData() {
     if (s.floor2CliffDepth !== undefined) { floor2CliffDepth = parseFloat(s.floor2CliffDepth); }
     if (s.floor3DisplacementScale !== undefined) { floor3DisplacementScale = parseFloat(s.floor3DisplacementScale); }
     if (s.floor3CliffDepth !== undefined) { floor3CliffDepth = parseFloat(s.floor3CliffDepth); }
+
+    // ノート回転を直接同期
+    if (s.noteFlowAngle !== undefined) {
+      noteFlowAngle = parseInt(s.noteFlowAngle);
+      if (noteGroup) noteGroup.rotation.y = noteFlowAngle * Math.PI / 180;
+    }
   }
 
   // メディアを読み込み

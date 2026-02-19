@@ -78,6 +78,14 @@ if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) ||
 
 レイヤー1に入れないとブルーム無効時でも常にブルームが適用され、条件分岐に含めないと除外処理自体が実行されない。
 
+### 3Dオブジェクトの状態同期は関数に集約すること
+
+壁パネルの位置・回転・透明度などをDOM値から反映する処理は `syncWallSettingsFromDOM()` に集約されている。
+他の関数（`createNoteObjects()` 等）から壁パネルの状態を更新する必要がある場合は、
+**インラインで計算を書かず、必ず `syncWallSettingsFromDOM()` を呼ぶこと**。
+
+インラインで同じ計算を書くと、新しいパラメータ追加時に片方だけ更新してもう片方を忘れるバグが発生する。
+
 ### メディアスロット追加時のチェックリスト
 
 詳細は [media-slot-addition skill](.claude/skills/media-slot-addition/skill.md) を参照。
