@@ -1308,25 +1308,41 @@ function createChromaKeyMaterial(opacity = 0.8) {
   return mat;
 }
 
-// 影受けプレーン用マテリアル（ステンシルバッファで床の不透明部分のみに影を描画）
-// 床1/床2/床3すべてが stencilRef=1 を書くため、いずれかの床が不透明な箇所に影が出る
+// 影受けプレーン用マテリアル（ShadowMaterial + onBeforeCompile で床テクスチャマスクを注入）
 function createShadowPlaneMaterial() {
-  return new THREE.ShadowMaterial({
+  const mat = new THREE.ShadowMaterial({
     opacity: 0.3,
     depthWrite: false,
     polygonOffset: true,
     polygonOffsetFactor: -6,
     polygonOffsetUnit: -6,
-    // ステンシル: 床の不透明部分（ステンシル=1）のみ影を描画
-    // stencilWrite=true でテストを有効化、writeMask=0x00 で書き込みは防止
-    stencilWrite: true,
-    stencilWriteMask: 0x00,
-    stencilRef: 1,
-    stencilFunc: THREE.EqualStencilFunc,
-    stencilFail: THREE.KeepStencilOp,
-    stencilZFail: THREE.KeepStencilOp,
-    stencilZPass: THREE.KeepStencilOp,
   });
+
+  // カスタムuniformsをuserDataに保持（外部からアクセス可能）
+  mat.userData.floorMap = { value: null };
+  mat.userData.chromaKeyColor = { value: new THREE.Color(0x00ff00) };
+  mat.userData.chromaKeyThreshold = { value: 0 };
+
+  mat.onBeforeCompile = (shader) => {
+    // uniformsをシェーダーに注入
+    shader.uniforms.floorMap = mat.userData.floorMap;
+    shader.uniforms.chromaKeyColor = mat.userData.chromaKeyColor;
+    shader.uniforms.chromaKeyThreshold = mat.userData.chromaKeyThreshold;
+
+    // 頂点シェーダーにUV varying追加
+    shader.vertexShader = shader.vertexShader.replace(
+      'void main() {',
+      'varying vec2 vFloorUv;\nvoid main() {\nvFloorUv = uv;'
+    );
+
+    // フラグメントシェーダーに床テクスチャチェックを注入
+    shader.fragmentShader = shader.fragmentShader.replace(
+      'void main() {',
+      'uniform sampler2D floorMap;\nuniform vec3 chromaKeyColor;\nuniform float chromaKeyThreshold;\nvarying vec2 vFloorUv;\nvoid main() {\n  vec4 floorTex = texture2D(floorMap, vFloorUv);\n  float chromaDist = distance(floorTex.rgb, chromaKeyColor);\n  if (chromaDist < chromaKeyThreshold) discard;\n  if (floorTex.a < 0.01) discard;'
+    );
+  };
+
+  return mat;
 }
 
 // 天候パーティクルシステムの構築・再構築
@@ -2000,11 +2016,7 @@ function setupThreeJS() {
   floorMaterial.side = THREE.FrontSide; // 裏面を非表示
   floorMaterial.shadowSide = THREE.DoubleSide; // 影パスでは両面描画
   floorMaterial.depthWrite = true; // 水面が床の下にあるとき正しく隠れるように
-  // ステンシル: 不透明ピクセル（discard されない箇所）にステンシル=1を書く
-  floorMaterial.stencilWrite = true;
-  floorMaterial.stencilRef = 1;
-  floorMaterial.stencilFunc = THREE.AlwaysStencilFunc;
-  floorMaterial.stencilZPass = THREE.ReplaceStencilOp;
+  // ステンシルは使用しない（影マスクはshadowPlaneシェーダーがfloorMapを参照して処理）
   floorPlane = new THREE.Mesh(floorGeometry, floorMaterial);
   floorPlane.rotation.x = -Math.PI / 2; // 水平に寝かせる
   floorPlane.position.y = -50; // グリッドと同じ高さ
@@ -2020,10 +2032,7 @@ function setupThreeJS() {
   floor2Material.side = THREE.FrontSide;
   floor2Material.shadowSide = THREE.DoubleSide;
   floor2Material.depthWrite = true;
-  floor2Material.stencilWrite = true;
-  floor2Material.stencilRef = 1;
-  floor2Material.stencilFunc = THREE.AlwaysStencilFunc;
-  floor2Material.stencilZPass = THREE.ReplaceStencilOp;
+  // floor2はステンシルに書き込まない（shadowPlaneはfloor1のステンシルのみ使用）
   floor2Plane = new THREE.Mesh(floor2Geometry, floor2Material);
   floor2Plane.rotation.x = -Math.PI / 2;
   floor2Plane.position.y = -49.9;
@@ -2039,10 +2048,7 @@ function setupThreeJS() {
   floor3Material.side = THREE.FrontSide;
   floor3Material.shadowSide = THREE.DoubleSide;
   floor3Material.depthWrite = true;
-  floor3Material.stencilWrite = true;
-  floor3Material.stencilRef = 1;
-  floor3Material.stencilFunc = THREE.AlwaysStencilFunc;
-  floor3Material.stencilZPass = THREE.ReplaceStencilOp;
+  // floor3はステンシルに書き込まない（shadowPlaneはfloor1のステンシルのみ使用）
   floor3Plane = new THREE.Mesh(floor3Geometry, floor3Material);
   floor3Plane.rotation.x = -Math.PI / 2;
   floor3Plane.position.y = -49.8;
@@ -2268,6 +2274,14 @@ function syncDisplayPanelHeight() {
   const canvasContainer = document.getElementById('canvas-container');
   if (!displayPanel || !canvasContainer) return;
   canvasContainer.style.bottom = displayPanel.offsetHeight + 'px';
+}
+
+// 影受けプレーンの表示を更新（影ON/OFF＋床1の有無を考慮）
+// shadowPlaneは床1の高さに配置されるため、床1のvisibilityのみに連動
+function updateShadowPlaneVisibility() {
+  const floor1Visible = floorPlane && floorPlane.visible;
+  if (shadowPlane) shadowPlane.visible = shadowEnabled && floor1Visible;
+  if (waterShadowPlane) waterShadowPlane.visible = shadowEnabled && waterSurfaceEnabled;
 }
 
 // ビューワー用: DOM値から壁面パネルの3Dオブジェクトを一括同期
@@ -3586,8 +3600,7 @@ function setupEventListeners() {
   // 影ON/OFF
   document.getElementById('shadowEnabled')?.addEventListener('change', (e) => {
     shadowEnabled = e.target.checked;
-    if (shadowPlane) shadowPlane.visible = shadowEnabled;
-    if (waterShadowPlane) waterShadowPlane.visible = shadowEnabled && waterSurfaceEnabled;
+    updateShadowPlaneVisibility();
   });
   // 影の環境（屋内/屋外）
   document.querySelectorAll('input[name="shadowEnvironment"]').forEach(radio => {
@@ -5611,8 +5624,10 @@ function setupEventListeners() {
         if (p) {
           p.material.uniforms.chromaKeyColor.value.set(e.target.value);
           syncDepthMaterialUniforms(p);
-          // 床のクロマキー変更時は影プレーンにも同期
-
+          // 床1のクロマキー変更時は影プレーンにも同期
+          if (prefix === 'floor' && shadowPlane) {
+            shadowPlane.material.userData.chromaKeyColor.value.set(e.target.value);
+          }
         }
       });
       thresholdInput.addEventListener('input', (e) => {
@@ -5622,8 +5637,10 @@ function setupEventListeners() {
         if (p) {
           p.material.uniforms.chromaKeyThreshold.value = value;
           syncDepthMaterialUniforms(p);
-          // 床のクロマキー変更時は影プレーンにも同期
-
+          // 床1のクロマキー変更時は影プレーンにも同期
+          if (prefix === 'floor' && shadowPlane) {
+            shadowPlane.material.userData.chromaKeyThreshold.value = value;
+          }
         }
       });
     });
@@ -7990,8 +8007,11 @@ function loadFloorImageFile(file) {
       // ShaderMaterialのuniformsにテクスチャを適用
       floorPlane.material.uniforms.map.value = floorTexture;
       syncDepthMaterialUniforms(floorPlane);
+      // 影プレーンに床テクスチャを同期
+      if (shadowPlane) shadowPlane.material.userData.floorMap.value = floorTexture;
 
       floorPlane.visible = true;
+      updateShadowPlaneVisibility();
       floorIsVideo = false;
 
       // 現在のサイズでジオメトリを更新（アスペクト比を適用）
@@ -8034,7 +8054,10 @@ function loadFloorVideo(file) {
 
     floorPlane.material.uniforms.map.value = floorTexture;
     syncDepthMaterialUniforms(floorPlane);
+    // 影プレーンに床テクスチャを同期
+    if (shadowPlane) shadowPlane.material.userData.floorMap.value = floorTexture;
     floorPlane.visible = true;
+    updateShadowPlaneVisibility();
     floorIsVideo = true;
 
     floorVideo.play().catch(e => console.warn('Floor video autoplay blocked:', e));
@@ -8349,7 +8372,10 @@ function clearFloorImage() {
 
   floorPlane.material.uniforms.map.value = null;
   syncDepthMaterialUniforms(floorPlane);
+  // 影プレーンの床テクスチャもクリア
+  if (shadowPlane) shadowPlane.material.userData.floorMap.value = null;
   floorPlane.visible = false;
+  updateShadowPlaneVisibility();
 
   // アスペクト比をリセット
   floorAspect = 1;
@@ -8406,6 +8432,7 @@ function loadFloor2ImageFile(file) {
       floor2Plane.material.uniforms.map.value = floor2Texture;
       syncDepthMaterialUniforms(floor2Plane);
       floor2Plane.visible = true;
+      updateShadowPlaneVisibility();
       floor2IsVideo = false;
       const currentSize = parseFloat(document.getElementById('floor2ImageSize')?.value || 300);
       updateFloor2ImageSize(currentSize);
@@ -8439,6 +8466,7 @@ function loadFloor2Video(file) {
     floor2Plane.material.uniforms.map.value = floor2Texture;
     syncDepthMaterialUniforms(floor2Plane);
     floor2Plane.visible = true;
+    updateShadowPlaneVisibility();
     floor2IsVideo = true;
     floor2Video.play().catch(e => console.warn('Floor2 video autoplay blocked:', e));
     const currentSize = parseFloat(document.getElementById('floor2ImageSize')?.value || 300);
@@ -8667,6 +8695,7 @@ function clearFloor2Image() {
   floor2Plane.material.uniforms.map.value = null;
   syncDepthMaterialUniforms(floor2Plane);
   floor2Plane.visible = false;
+  updateShadowPlaneVisibility();
   floor2Aspect = 1;
   const input = document.getElementById('floor2ImageInput');
   if (input) input.value = '';
@@ -8713,6 +8742,7 @@ function loadFloor3ImageFile(file) {
       floor3Plane.material.uniforms.map.value = floor3Texture;
       syncDepthMaterialUniforms(floor3Plane);
       floor3Plane.visible = true;
+      updateShadowPlaneVisibility();
       floor3IsVideo = false;
       const currentSize = parseFloat(document.getElementById('floor3ImageSize')?.value || 300);
       updateFloor3ImageSize(currentSize);
@@ -8746,6 +8776,7 @@ function loadFloor3Video(file) {
     floor3Plane.material.uniforms.map.value = floor3Texture;
     syncDepthMaterialUniforms(floor3Plane);
     floor3Plane.visible = true;
+    updateShadowPlaneVisibility();
     floor3IsVideo = true;
     floor3Video.play().catch(e => console.warn('Floor3 video autoplay blocked:', e));
     const currentSize = parseFloat(document.getElementById('floor3ImageSize')?.value || 300);
@@ -8974,6 +9005,7 @@ function clearFloor3Image() {
   floor3Plane.material.uniforms.map.value = null;
   syncDepthMaterialUniforms(floor3Plane);
   floor3Plane.visible = false;
+  updateShadowPlaneVisibility();
   floor3Aspect = 1;
   const input = document.getElementById('floor3ImageInput');
   if (input) input.value = '';
@@ -10960,13 +10992,17 @@ function loadVideoFromURL(slotName, url, loadFn) {
         texture.magFilter = THREE.LinearFilter;
         plane.material.uniforms.map.value = texture;
         plane.visible = true;
+        if (slotName === 'floor' || slotName === 'floor2' || slotName === 'floor3') {
+          updateShadowPlaneVisibility();
+        }
 
         if (slotName === 'floor') {
           floorTexture = texture;
           floorAspect = video.videoWidth / video.videoHeight;
+          // 影プレーンに床テクスチャを同期
+          if (shadowPlane) shadowPlane.material.userData.floorMap.value = texture;
           const sizeEl = document.getElementById('floorImageSize');
           if (sizeEl) updateFloorImageSize(parseFloat(sizeEl.value));
-    
         }
         if (slotName === 'floor2') {
           floor2Texture = texture;
@@ -11229,6 +11265,7 @@ async function loadViewerData() {
       // ビューワーではimage-panelガード内のイベントリスナーが存在しないため、
       // DOM値を直接3Dオブジェクトに反映する
       syncWallSettingsFromDOM();
+      updateShadowPlaneVisibility();
     }, 500);
   }
 
