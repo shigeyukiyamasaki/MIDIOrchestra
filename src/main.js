@@ -5872,7 +5872,7 @@ function setupAudioVisualizer() {
 
   // 既存を削除
   if (vizBarsGroup) {
-    scene.remove(vizBarsGroup);
+    (noteGroup || scene).remove(vizBarsGroup);
     vizBarsGroup.traverse(child => {
       if (child.geometry) child.geometry.dispose();
       if (child.material) child.material.dispose();
@@ -6024,9 +6024,9 @@ function setupAudioVisualizer() {
 
   // グループ位置（タイムライン幕の中心に配置）
   const tlOffset = document.getElementById('timelineX')?.value || 0;
-  const groupY = timelinePlane ? timelinePlane.position.y : floorY + 75;
+  const groupY = (timelinePlane ? timelinePlane.position.y : floorY + 75) + (CONFIG.noteYOffset || 0);
   vizBarsGroup.position.set(parseInt(tlOffset), groupY, 0);
-  scene.add(vizBarsGroup);
+  (noteGroup || scene).add(vizBarsGroup);
   vizPrevValues.fill(0);
   console.log('Audio visualizer initialized: ' + style);
 }
@@ -6049,9 +6049,9 @@ function updateAudioVisualizer() {
   const tlOffset = document.getElementById('timelineX')?.value || 0;
   vizBarsGroup.position.x = parseInt(tlOffset);
 
-  // タイムライン幕の中心に追従
+  // タイムライン幕の中心に追従（高さオフセットも加算）
   if (timelinePlane) {
-    vizBarsGroup.position.y = timelinePlane.position.y;
+    vizBarsGroup.position.y = timelinePlane.position.y + (CONFIG.noteYOffset || 0);
   }
 
   const scaleVal = parseFloat(document.getElementById('audioVisualizerScale')?.value || 1);
@@ -6065,7 +6065,7 @@ function updateAudioVisualizer() {
   // --- 対数マッピングで全バーの値を計算 ---
   const binCount = analyser.frequencyBinCount;
   const freqPerBin = audioContext.sampleRate / analyser.fftSize;
-  const minFreq = 50, maxFreq = 16000;
+  const minFreq = 50, maxFreq = 8000;
   const values = new Float32Array(barCount);
   for (let i = 0; i < barCount; i++) {
     const f0 = minFreq * Math.pow(maxFreq / minFreq, i / barCount);
@@ -6074,7 +6074,11 @@ function updateAudioVisualizer() {
     const bin1 = Math.min(binCount - 1, Math.ceil(f1 / freqPerBin));
     let sum = 0, cnt = 0;
     for (let b = bin0; b <= bin1; b++) { sum += vizFrequencyData[b]; cnt++; }
-    const raw = cnt > 0 ? (sum / cnt) / 255 : 0;
+    let raw = cnt > 0 ? (sum / cnt) / 255 : 0;
+    // 高域ブースト: 周波数が上がるほどゲインを加算（高域のエネルギー不足を補正）
+    const freqRatio = i / barCount;
+    const boost = 1.0 + freqRatio * freqRatio * 4.0;
+    raw = Math.min(raw * boost, 1.0);
     const smoothed = vizPrevValues[i] * 0.35 + raw * 0.65;
     vizPrevValues[i] = smoothed;
     values[i] = smoothed;
