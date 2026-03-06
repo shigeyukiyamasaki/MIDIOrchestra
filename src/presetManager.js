@@ -432,6 +432,8 @@ function collectCurrentSettings() {
     try { s.pitchFilters = JSON.parse(pitchRaw); } catch(e) {}
   }
 
+  s._imageSizeMode = 'width';
+
   // 自動収集: 各パネル内のid付きinput/selectで未収集のものを自動追加
   ['controls', 'settings-container', 'image-panel', 'display-settings-panel', 'sunlight-panel'].forEach(containerId => {
     const container = document.getElementById(containerId);
@@ -500,6 +502,17 @@ function setRadioValue(name, value) {
 }
 
 function applySettings(s) {
+  // 旧プリセット（高さ基準）→ 新方式（幅基準）マイグレーション検出
+  if (!s._imageSizeMode || s._imageSizeMode !== 'width') {
+    window._pendingImageSizeMigration = {
+      floorImageSize: true, floor2ImageSize: true, floor3ImageSize: true,
+      leftWallImageSize: true, rightWallImageSize: true, centerWallImageSize: true,
+      backWallImageSize: true, panel5WallImageSize: true, panel6WallImageSize: true,
+    };
+  } else {
+    window._pendingImageSizeMigration = null;
+  }
+
   // デュアルレンジスライダー（カメラ）
   const sliders = document.querySelectorAll('.dual-range');
   sliders.forEach(slider => {
@@ -712,6 +725,7 @@ function applySettings(s) {
     'rightWallImageSize','rightWallImageOpacity','rightWallImageFlip','rightWallChromaColor','rightWallChromaThreshold',
     'backWallImageSize','backWallImageX','backWallImageOpacity','backWallImageFlip','backWallChromaColor','backWallChromaThreshold',
     'noteBloomEnabled',
+    '_imageSizeMode',
   ]);
   Object.keys(s).forEach(key => {
     if (handled.has(key) || key.startsWith('cameraRange') || key.startsWith('bloomThreshold') || key === 'pitchFilters') return;

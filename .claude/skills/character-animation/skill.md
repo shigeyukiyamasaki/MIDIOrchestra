@@ -17,8 +17,10 @@ description: |
 MP4変換する場合は、先にこの工程で4倍に拡大してから変換する。
 
 ```bash
-ffmpeg -i input.png -vf "scale=iw*4:ih*4:flags=neighbor" -update 1 -y output.png
+ffmpeg -i input.png -vf "format=rgba,scale=iw*4:ih*4:flags=neighbor" -update 1 -y output.png
 ```
+
+> **注意**: `format=rgba` を必ず入れること。pal8（パレットカラー/インデックスカラー）のPNGをそのままスケーリングすると、パレット再量子化でディザリングノイズが入る。先にrgbaに変換してから拡大すればノイズは発生しない。
 
 ### なぜ4倍拡大が必要か
 

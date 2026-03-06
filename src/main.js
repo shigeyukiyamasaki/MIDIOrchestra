@@ -64,6 +64,25 @@ let centerWallAspect = 1; // センター画像のアスペクト比
 let backWallAspect = 1; // 奥側画像のアスペクト比
 let panel5WallAspect = 1; // パネル5画像のアスペクト比
 let panel6WallAspect = 1; // パネル6画像のアスペクト比
+
+// 旧プリセット（高さ基準）→ 新方式（幅基準）のスライダー値マイグレーション
+function migrateImageSizeToWidth(slotId, aspect) {
+  if (!window._pendingImageSizeMigration?.[slotId]) return;
+  if (aspect <= 0 || aspect === 1) return;
+  const el = document.getElementById(slotId);
+  if (!el) return;
+  const oldValue = parseFloat(el.value);
+  const newValue = oldValue * aspect;
+  el.value = newValue;
+  const valueEl = document.getElementById(slotId + 'Value');
+  if (valueEl) valueEl.textContent = Math.round(newValue);
+  if (window.VIEWER_DATA?.settings) {
+    window.VIEWER_DATA.settings[slotId] = newValue;
+    window.VIEWER_DATA.settings._imageSizeMode = 'width';
+  }
+  delete window._pendingImageSizeMigration[slotId];
+}
+
 let floorY = -50;
 let floorCurvature = 0; // 床の曲率（0=フラット）       // 床のY位置（共有用、グリッドと同じ）
 let floorDisplacementData = null; // ハイトマップのImageData
@@ -98,6 +117,9 @@ let vizConnectedElement = null; // AnalyserNode接続中のaudioElement参照
 let vizBarsGroup = null;         // THREE.Group for visualizer bars
 let vizFrequencyData = null;     // Uint8Array for frequency data
 let vizPrevValues = new Float32Array(64); // smoothing用前フレーム値
+
+// モバイル判定（グローバル定数）
+const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 // フェードアウト（終点ループ用）
 let crossfadeStartTime = -1;
@@ -737,6 +759,38 @@ async function init() {
   setupEventListeners();
   initColorPickerHueFix();
   await preloadCustomIcons(); // カスタムアイコンを事前読み込み
+  // モバイル対策: ページ復帰時にaudio/videoを自動再開
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.isPlaying) {
+      state.lastFrameTime = performance.now();
+      if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+      }
+      // audioElementが停止していたら再開
+      if (audioElement && audioElement.paused) {
+        const audioTime = state.currentTime - syncConfig.audioDelay;
+        if (audioTime >= 0) audioElement.currentTime = audioTime;
+        audioElement.play().catch(() => {});
+      }
+      resumeAllVideos();
+    }
+  });
+
+  // モバイル対策: 画面タッチでaudioを復帰（ユーザージェスチャーコンテキスト）
+  function resumeAudioOnGesture() {
+    if (!state.isPlaying) return;
+    if (audioContext && audioContext.state === 'suspended') {
+      audioContext.resume().catch(() => {});
+    }
+    if (audioElement && audioElement.paused) {
+      const audioTime = state.currentTime - syncConfig.audioDelay;
+      if (audioTime >= 0) audioElement.currentTime = audioTime;
+      audioElement.play().catch(() => {});
+    }
+  }
+  document.addEventListener('touchstart', resumeAudioOnGesture, { passive: true });
+  document.addEventListener('click', resumeAudioOnGesture);
+
   animate();
 
   // プリセットシステム初期化
@@ -1848,25 +1902,27 @@ function setupThreeJS() {
   camera.layers.enable(1); // ノートレイヤーも描画対象に
   window.appCamera = camera;
 
-  // レンダラー
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  // レンダラー（モバイル: antialias無効 + pixelRatio上限2でGPUメモリ節約）
+  renderer = new THREE.WebGLRenderer({ antialias: !isMobileDevice });
   renderer.setSize(width, height);
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(isMobileDevice ? Math.min(window.devicePixelRatio, 2) : window.devicePixelRatio);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
   // EffectComposer（ブルーム用） - ステンシルバッファ付きレンダーターゲット
+  // モバイル: ブルーム解像度を半分にしてGPUメモリ節約（ブルームはぼかし効果なので低解像度でも品質に影響しにくい）
+  const bloomScale = isMobileDevice ? 0.5 : 1;
   const composerRT = new THREE.WebGLRenderTarget(
-    width * renderer.getPixelRatio(),
-    height * renderer.getPixelRatio(),
+    width * renderer.getPixelRatio() * bloomScale,
+    height * renderer.getPixelRatio() * bloomScale,
     { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, stencilBuffer: true }
   );
   composer = new THREE.EffectComposer(renderer, composerRT);
   const renderPass = new THREE.RenderPass(scene, camera);
   composer.addPass(renderPass);
   bloomPass = new THREE.UnrealBloomPass(
-    new THREE.Vector2(width, height),
+    new THREE.Vector2(width * bloomScale, height * bloomScale),
     0,    // strength（初期0=オフ）
     0.4,  // radius
     0.8   // threshold
@@ -1916,8 +1972,8 @@ function setupThreeJS() {
   scene.add(directionalLight);
   sunLight = directionalLight;
   sunLight.castShadow = true;
-  sunLight.shadow.mapSize.width = 2048;
-  sunLight.shadow.mapSize.height = 2048;
+  sunLight.shadow.mapSize.width = isMobileDevice ? 1024 : 2048;
+  sunLight.shadow.mapSize.height = isMobileDevice ? 1024 : 2048;
   sunLight.shadow.camera.left = -500;
   sunLight.shadow.camera.right = 500;
   sunLight.shadow.camera.top = 500;
@@ -2011,7 +2067,11 @@ function setupThreeJS() {
   scene.add(gridHelper);
 
   // 床画像用平面（初期は非表示）- セグメント分割で曲面対応
-  const floorGeometry = new THREE.PlaneGeometry(300, 300, 64, 64);
+  const mSegs = 64;      // 通常メッシュ
+  const mSegsHi = 256;   // ハイトマップ付きメッシュ
+  const mSegsWater = 128; // 水面
+  const mSegsCloud = 256; // 雲の影
+  const floorGeometry = new THREE.PlaneGeometry(300, 300, mSegs, mSegs);
   const floorMaterial = createChromaKeyMaterial(1);
   floorMaterial.side = THREE.FrontSide; // 裏面を非表示
   floorMaterial.shadowSide = THREE.DoubleSide; // 影パスでは両面描画
@@ -2027,7 +2087,7 @@ function setupThreeJS() {
   scene.add(floorPlane);
 
   // 床2画像用平面（床の少し上に配置）
-  const floor2Geometry = new THREE.PlaneGeometry(300, 300, 64, 64);
+  const floor2Geometry = new THREE.PlaneGeometry(300, 300, mSegs, mSegs);
   const floor2Material = createChromaKeyMaterial(1);
   floor2Material.side = THREE.FrontSide;
   floor2Material.shadowSide = THREE.DoubleSide;
@@ -2043,7 +2103,7 @@ function setupThreeJS() {
   scene.add(floor2Plane);
 
   // 床3画像用平面（床の少し上に配置）
-  const floor3Geometry = new THREE.PlaneGeometry(300, 300, 64, 64);
+  const floor3Geometry = new THREE.PlaneGeometry(300, 300, mSegs, mSegs);
   const floor3Material = createChromaKeyMaterial(1);
   floor3Material.side = THREE.FrontSide;
   floor3Material.shadowSide = THREE.DoubleSide;
@@ -2059,7 +2119,7 @@ function setupThreeJS() {
   scene.add(floor3Plane);
 
   // 水面プレーン（2層構成: ティント層 + サーフェス層）
-  const waterGeometry = new THREE.PlaneGeometry(500, 500, 128, 128);
+  const waterGeometry = new THREE.PlaneGeometry(500, 500, mSegsWater, mSegsWater);
 
   // ティント層（乗算ブレンド: 背景を水色に染める）
   waterTintMaterial = createWaterTintMaterial();
@@ -2090,8 +2150,8 @@ function setupThreeJS() {
   waterShadowPlane.visible = false;
   scene.add(waterShadowPlane);
 
-  // 雲の影メッシュ（床面max10000対応、曲率用256x256セグメント）
-  const cloudGeom = new THREE.PlaneGeometry(10000, 10000, 256, 256);
+  // 雲の影メッシュ（床面max10000対応、曲率用セグメント）
+  const cloudGeom = new THREE.PlaneGeometry(10000, 10000, mSegsCloud, mSegsCloud);
   const cloudMat = new THREE.MeshBasicMaterial({
     map: generateCloudTexture(),
     transparent: true,
@@ -2182,7 +2242,7 @@ function setupThreeJS() {
 
   // 影受け用カスタムプレーン（床の直上に配置）- セグメント分割で曲面対応
   // 床テクスチャの透明/クロマキー領域では影を描画しない
-  const shadowGeom = new THREE.PlaneGeometry(3000, 3000, 64, 64);
+  const shadowGeom = new THREE.PlaneGeometry(3000, 3000, mSegs, mSegs);
   const shadowMat = createShadowPlaneMaterial();
   shadowPlane = new THREE.Mesh(shadowGeom, shadowMat);
   shadowPlane.rotation.x = -Math.PI / 2;
@@ -5848,6 +5908,8 @@ function loadAudio(file) {
 // ============================================
 function setupAudioVisualizer() {
   if (!audioElement || !scene) return;
+  // モバイル: createMediaElementSourceテスト中（popIcon無効化で音声安定化済み）
+  // if (isMobileDevice) return;
 
   // AudioContext接続（audioElementが差し替わったら再接続）
   if (!audioContext) {
@@ -5862,7 +5924,6 @@ function setupAudioVisualizer() {
     analyser.connect(audioContext.destination);
   }
   if (vizConnectedElement !== audioElement) {
-    // 前のソースを切断
     if (audioSource) { try { audioSource.disconnect(); } catch(e) {} }
     audioSource = audioContext.createMediaElementSource(audioElement);
     audioSource.connect(analyser);
@@ -6371,7 +6432,9 @@ function updateOrchestraHighlights() {
   // 各トラックが現在鳴っているかチェック
   const playingTrackNames = new Set();
 
-  state.noteObjects.forEach(mesh => {
+  for (let i = 0, len = state.noteObjects.length; i < len; i++) {
+    const mesh = state.noteObjects[i];
+    if (isMobileDevice && !mesh.visible) continue;
     const { trackIndex, startTime, endTime } = mesh.userData;
     if (currentTime >= startTime + md && currentTime <= endTime + md) {
       const trackInfo = state.tracks[trackIndex];
@@ -6379,7 +6442,7 @@ function updateOrchestraHighlights() {
         playingTrackNames.add(trackInfo.name);
       }
     }
-  });
+  }
 
   // 各トラックアイテムの状態を更新
   document.querySelectorAll('.track-item').forEach(item => {
@@ -6842,22 +6905,28 @@ function checkNoteRipples() {
   const currentTime = state.currentTime;
   const md = syncConfig.midiDelay;
 
-  state.noteObjects.forEach((mesh, index) => {
+  for (let i = 0, len = state.noteObjects.length; i < len; i++) {
+    const mesh = state.noteObjects[i];
     const { startTime, originalColor, trackIndex } = mesh.userData;
-    const noteId = index;
+
+    // モバイル: 時間的に遠いノートはスキップ（±2秒の範囲のみチェック）
+    if (isMobileDevice) {
+      const dt = startTime + md - currentTime;
+      if (dt < -2 || dt > 2) continue;
+    }
 
     // ノートがちょうどタイムラインを通過したとき（開始時）
-    if (!state.triggeredNotes.has(noteId) && currentTime >= startTime + md && currentTime < startTime + md + 0.05) {
-      state.triggeredNotes.add(noteId);
+    if (!state.triggeredNotes.has(i) && currentTime >= startTime + md && currentTime < startTime + md + 0.05) {
+      state.triggeredNotes.add(i);
 
       // 波紋エフェクト
       if (settings.rippleEnabled) {
         createRipple(mesh.position.y, mesh.position.z, originalColor);
       }
 
-      // 幕から飛び出すアイコン
+      // 幕から飛び出すアイコン（モバイルではスキップ: Sprite蓄積で音声停止するため）
       const trackInfo = state.tracks[trackIndex];
-      if (trackInfo) {
+      if (!isMobileDevice && trackInfo) {
         createPopIcon(mesh.position.y, mesh.position.z, trackInfo.instrumentId);
       }
 
@@ -6868,7 +6937,7 @@ function checkNoteRipples() {
       if (trackInfo) {
         const instrumentId = trackInfo.instrumentId;
         if (instrumentId === 'bassdrum' || instrumentId === 'drums' || instrumentId === 'timpani') {
-          const velocity = mesh.userData.velocity || 0.8; // 0-1の範囲
+          const velocity = mesh.userData.velocity || 0.8;
           triggerBassDrumEffects(velocity);
         }
       }
@@ -6877,15 +6946,15 @@ function checkNoteRipples() {
       if (settings.bounceScale > 0) {
         mesh.userData.bounceTime = 0;
         mesh.userData.isBouncing = true;
-        mesh.userData.baseY = mesh.position.y; // 元のY位置を保存
+        mesh.userData.baseY = mesh.position.y;
       }
     }
 
     // リセット用：ノートが再びタイムライン前に戻ったら
     if (currentTime < startTime + md) {
-      state.triggeredNotes.delete(noteId);
+      state.triggeredNotes.delete(i);
     }
-  });
+  }
 }
 
 // ============================================
@@ -7998,6 +8067,7 @@ function loadFloorImageFile(file) {
 
       // アスペクト比を保存
       floorAspect = img.width / img.height;
+      migrateImageSizeToWidth('floorImageSize', floorAspect);
 
       // アルファチャンネルを抽出（側面生成用）
       const alphaCanvas = document.createElement('canvas');
@@ -8055,6 +8125,7 @@ function loadFloorVideo(file) {
     floorTexture.magFilter = THREE.LinearFilter;
 
     floorAspect = floorVideo.videoWidth / floorVideo.videoHeight;
+    migrateImageSizeToWidth('floorImageSize', floorAspect);
 
     floorPlane.material.uniforms.map.value = floorTexture;
     syncDepthMaterialUniforms(floorPlane);
@@ -8110,9 +8181,9 @@ function clearFloorMedia() {
 function updateFloorImageSize(size) {
   if (!floorPlane) return;
 
-  // アスペクト比を維持してジオメトリを再作成（セグメント分割）
-  const width = size * floorAspect;
-  const height = size;
+  // アスペクト比を維持してジオメトリを再作成（幅基準）
+  const width = size;
+  const height = size / floorAspect;
   const segs = floorDisplacementData ? 256 : 64;
   floorPlane.geometry.dispose();
   floorPlane.geometry = new THREE.PlaneGeometry(width, height, segs, segs);
@@ -8425,6 +8496,7 @@ function loadFloor2ImageFile(file) {
       floor2Texture = new THREE.Texture(img);
       floor2Texture.needsUpdate = true;
       floor2Aspect = img.width / img.height;
+      migrateImageSizeToWidth('floor2ImageSize', floor2Aspect);
       // アルファチャンネルを抽出（側面生成用）
       const alphaCanvas = document.createElement('canvas');
       alphaCanvas.width = img.width;
@@ -8467,6 +8539,7 @@ function loadFloor2Video(file) {
     floor2Texture.minFilter = THREE.LinearFilter;
     floor2Texture.magFilter = THREE.LinearFilter;
     floor2Aspect = floor2Video.videoWidth / floor2Video.videoHeight;
+    migrateImageSizeToWidth('floor2ImageSize', floor2Aspect);
     floor2Plane.material.uniforms.map.value = floor2Texture;
     syncDepthMaterialUniforms(floor2Plane);
     floor2Plane.visible = true;
@@ -8509,8 +8582,8 @@ function clearFloor2Media() {
 
 function updateFloor2ImageSize(size) {
   if (!floor2Plane) return;
-  const width = size * floor2Aspect;
-  const height = size;
+  const width = size;
+  const height = size / floor2Aspect;
   const segs = floor2DisplacementData ? 256 : 64;
   floor2Plane.geometry.dispose();
   floor2Plane.geometry = new THREE.PlaneGeometry(width, height, segs, segs);
@@ -8735,6 +8808,7 @@ function loadFloor3ImageFile(file) {
       floor3Texture = new THREE.Texture(img);
       floor3Texture.needsUpdate = true;
       floor3Aspect = img.width / img.height;
+      migrateImageSizeToWidth('floor3ImageSize', floor3Aspect);
       // アルファチャンネルを抽出（側面生成用）
       const alphaCanvas = document.createElement('canvas');
       alphaCanvas.width = img.width;
@@ -8777,6 +8851,7 @@ function loadFloor3Video(file) {
     floor3Texture.minFilter = THREE.LinearFilter;
     floor3Texture.magFilter = THREE.LinearFilter;
     floor3Aspect = floor3Video.videoWidth / floor3Video.videoHeight;
+    migrateImageSizeToWidth('floor3ImageSize', floor3Aspect);
     floor3Plane.material.uniforms.map.value = floor3Texture;
     syncDepthMaterialUniforms(floor3Plane);
     floor3Plane.visible = true;
@@ -8819,8 +8894,8 @@ function clearFloor3Media() {
 
 function updateFloor3ImageSize(size) {
   if (!floor3Plane) return;
-  const width = size * floor3Aspect;
-  const height = size;
+  const width = size;
+  const height = size / floor3Aspect;
   const segs = floor3DisplacementData ? 256 : 64;
   floor3Plane.geometry.dispose();
   floor3Plane.geometry = new THREE.PlaneGeometry(width, height, segs, segs);
@@ -9049,6 +9124,7 @@ function loadLeftWallImageFile(file) {
       leftWallTexture.needsUpdate = true;
 
       leftWallAspect = img.width / img.height;
+      migrateImageSizeToWidth('leftWallImageSize', leftWallAspect);
 
       leftWallPlane.material.uniforms.map.value = leftWallTexture;
       syncDepthMaterialUniforms(leftWallPlane);
@@ -9094,6 +9170,7 @@ function loadLeftWallVideo(file) {
     leftWallTexture.magFilter = THREE.LinearFilter;
 
     leftWallAspect = leftWallVideo.videoWidth / leftWallVideo.videoHeight;
+    migrateImageSizeToWidth('leftWallImageSize', leftWallAspect);
 
     leftWallPlane.material.uniforms.map.value = leftWallTexture;
     syncDepthMaterialUniforms(leftWallPlane);
@@ -9149,9 +9226,9 @@ function clearLeftWallMedia() {
 function updateLeftWallImageSize(size) {
   if (!leftWallPlane) return;
 
-  // アスペクト比を維持してジオメトリを再作成（高さ基準）
-  const width = size * leftWallAspect;
-  const height = size;
+  // アスペクト比を維持してジオメトリを再作成（幅基準）
+  const width = size;
+  const height = size / leftWallAspect;
   leftWallPlane.geometry.dispose();
   leftWallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
@@ -9221,6 +9298,7 @@ function loadRightWallImageFile(file) {
       rightWallTexture.needsUpdate = true;
 
       rightWallAspect = img.width / img.height;
+      migrateImageSizeToWidth('rightWallImageSize', rightWallAspect);
 
       rightWallPlane.material.uniforms.map.value = rightWallTexture;
       syncDepthMaterialUniforms(rightWallPlane);
@@ -9266,6 +9344,7 @@ function loadRightWallVideo(file) {
     rightWallTexture.magFilter = THREE.LinearFilter;
 
     rightWallAspect = rightWallVideo.videoWidth / rightWallVideo.videoHeight;
+    migrateImageSizeToWidth('rightWallImageSize', rightWallAspect);
 
     rightWallPlane.material.uniforms.map.value = rightWallTexture;
     syncDepthMaterialUniforms(rightWallPlane);
@@ -9321,9 +9400,9 @@ function clearRightWallMedia() {
 function updateRightWallImageSize(size) {
   if (!rightWallPlane) return;
 
-  // アスペクト比を維持してジオメトリを再作成（高さ基準）
-  const width = size * rightWallAspect;
-  const height = size;
+  // アスペクト比を維持してジオメトリを再作成（幅基準）
+  const width = size;
+  const height = size / rightWallAspect;
   rightWallPlane.geometry.dispose();
   rightWallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
@@ -9393,6 +9472,7 @@ function loadCenterWallImageFile(file) {
       centerWallTexture.needsUpdate = true;
 
       centerWallAspect = img.width / img.height;
+      migrateImageSizeToWidth('centerWallImageSize', centerWallAspect);
 
       centerWallPlane.material.uniforms.map.value = centerWallTexture;
       syncDepthMaterialUniforms(centerWallPlane);
@@ -9438,6 +9518,7 @@ function loadCenterWallVideo(file) {
     centerWallTexture.magFilter = THREE.LinearFilter;
 
     centerWallAspect = centerWallVideo.videoWidth / centerWallVideo.videoHeight;
+    migrateImageSizeToWidth('centerWallImageSize', centerWallAspect);
 
     centerWallPlane.material.uniforms.map.value = centerWallTexture;
     syncDepthMaterialUniforms(centerWallPlane);
@@ -9493,8 +9574,8 @@ function clearCenterWallMedia() {
 function updateCenterWallImageSize(size) {
   if (!centerWallPlane) return;
 
-  const width = size * centerWallAspect;
-  const height = size;
+  const width = size;
+  const height = size / centerWallAspect;
   centerWallPlane.geometry.dispose();
   centerWallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
@@ -9559,6 +9640,7 @@ function loadBackWallImageFile(file) {
       backWallTexture.needsUpdate = true;
 
       backWallAspect = img.width / img.height;
+      migrateImageSizeToWidth('backWallImageSize', backWallAspect);
 
       backWallPlane.material.uniforms.map.value = backWallTexture;
       syncDepthMaterialUniforms(backWallPlane);
@@ -9604,6 +9686,7 @@ function loadBackWallVideo(file) {
     backWallTexture.magFilter = THREE.LinearFilter;
 
     backWallAspect = backWallVideo.videoWidth / backWallVideo.videoHeight;
+    migrateImageSizeToWidth('backWallImageSize', backWallAspect);
 
     backWallPlane.material.uniforms.map.value = backWallTexture;
     syncDepthMaterialUniforms(backWallPlane);
@@ -9659,9 +9742,9 @@ function clearBackWallMedia() {
 function updateBackWallImageSize(size) {
   if (!backWallPlane) return;
 
-  // アスペクト比を維持してジオメトリを再作成（高さ基準）
-  const width = size * backWallAspect;
-  const height = size;
+  // アスペクト比を維持してジオメトリを再作成（幅基準）
+  const width = size;
+  const height = size / backWallAspect;
   backWallPlane.geometry.dispose();
   backWallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
@@ -9731,6 +9814,7 @@ function loadPanel5WallImageFile(file) {
       panel5WallTexture.needsUpdate = true;
 
       panel5WallAspect = img.width / img.height;
+      migrateImageSizeToWidth('panel5WallImageSize', panel5WallAspect);
 
       panel5WallPlane.material.uniforms.map.value = panel5WallTexture;
       syncDepthMaterialUniforms(panel5WallPlane);
@@ -9776,6 +9860,7 @@ function loadPanel5WallVideo(file) {
     panel5WallTexture.magFilter = THREE.LinearFilter;
 
     panel5WallAspect = panel5WallVideo.videoWidth / panel5WallVideo.videoHeight;
+    migrateImageSizeToWidth('panel5WallImageSize', panel5WallAspect);
 
     panel5WallPlane.material.uniforms.map.value = panel5WallTexture;
     syncDepthMaterialUniforms(panel5WallPlane);
@@ -9831,9 +9916,9 @@ function clearPanel5WallMedia() {
 function updatePanel5WallImageSize(size) {
   if (!panel5WallPlane) return;
 
-  // アスペクト比を維持してジオメトリを再作成（高さ基準）
-  const width = size * panel5WallAspect;
-  const height = size;
+  // アスペクト比を維持してジオメトリを再作成（幅基準）
+  const width = size;
+  const height = size / panel5WallAspect;
   panel5WallPlane.geometry.dispose();
   panel5WallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
@@ -9902,6 +9987,7 @@ function loadPanel6WallImageFile(file) {
       panel6WallTexture.needsUpdate = true;
 
       panel6WallAspect = img.width / img.height;
+      migrateImageSizeToWidth('panel6WallImageSize', panel6WallAspect);
 
       panel6WallPlane.material.uniforms.map.value = panel6WallTexture;
       syncDepthMaterialUniforms(panel6WallPlane);
@@ -9947,6 +10033,7 @@ function loadPanel6WallVideo(file) {
     panel6WallTexture.magFilter = THREE.LinearFilter;
 
     panel6WallAspect = panel6WallVideo.videoWidth / panel6WallVideo.videoHeight;
+    migrateImageSizeToWidth('panel6WallImageSize', panel6WallAspect);
 
     panel6WallPlane.material.uniforms.map.value = panel6WallTexture;
     syncDepthMaterialUniforms(panel6WallPlane);
@@ -10002,9 +10089,9 @@ function clearPanel6WallMedia() {
 function updatePanel6WallImageSize(size) {
   if (!panel6WallPlane) return;
 
-  // アスペクト比を維持してジオメトリを再作成（高さ基準）
-  const width = size * panel6WallAspect;
-  const height = size;
+  // アスペクト比を維持してジオメトリを再作成（幅基準）
+  const width = size;
+  const height = size / panel6WallAspect;
   panel6WallPlane.geometry.dispose();
   panel6WallPlane.geometry = new THREE.PlaneGeometry(width, height);
 
@@ -10067,6 +10154,54 @@ function resumeAllVideos() {
   });
 }
 
+// モバイル対策: audio中断時のオーバーレイ表示
+function showAudioInterruptOverlay() {
+  if (document.getElementById('audioInterruptOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'audioInterruptOverlay';
+  overlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.7);color:#fff;padding:20px 32px;border-radius:12px;font-size:18px;z-index:9999;pointer-events:none;text-align:center;';
+  overlay.textContent = '画面をタップして再開';
+  document.body.appendChild(overlay);
+}
+function hideAudioInterruptOverlay() {
+  const el = document.getElementById('audioInterruptOverlay');
+  if (el) el.remove();
+}
+
+// Wake Lock API: iOSの画面スリープとプロセス一時停止を抑制
+let wakeLock = null;
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+      // 再生中なら再取得
+      if (state.isPlaying) acquireWakeLock();
+    });
+  } catch(e) {}
+}
+function releaseWakeLock() {
+  if (wakeLock) {
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
+}
+
+// Media Session API: OSに音声再生中であることを通知
+function updateMediaSession() {
+  if (!('mediaSession' in navigator)) return;
+  try {
+    const title = document.getElementById('midiFileName')?.textContent || 'MIDI Orchestra';
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: title,
+      artist: 'MIDI Orchestra',
+    });
+    navigator.mediaSession.setActionHandler('play', () => { if (!state.isPlaying) play(); });
+    navigator.mediaSession.setActionHandler('pause', () => { if (state.isPlaying) pause(); });
+  } catch(e) {}
+}
+
 function togglePlay() {
   if (state.isPlaying) {
     pause();
@@ -10118,9 +10253,14 @@ function play() {
   }
   // モバイル対応: ユーザー操作を契機に全動画をplay
   resumeAllVideos();
+  // Wake Lock: iOSのプロセス一時停止を抑制
+  acquireWakeLock();
+  // Media Session: OSに音声再生中であることを通知
+  updateMediaSession();
 }
 
 function pause() {
+  releaseWakeLock();
   state.isPlaying = false;
   document.getElementById('playBtn').innerHTML = '<i class="fa-solid fa-play"></i>';
   const vp = document.getElementById('viewerPlayBtn');
@@ -10136,6 +10276,7 @@ function pause() {
 }
 
 function stop() {
+  releaseWakeLock();
   state.isPlaying = false;
   state.currentTime = 0;
   state.triggeredNotes.clear();
@@ -10601,10 +10742,20 @@ function animate() {
   // 再生中なら時間を進める
   if (state.isPlaying && state.midi) {
     const now = performance.now();
-    const delta = (now - state.lastFrameTime) / 1000;
+    const rawDelta = (now - state.lastFrameTime) / 1000;
     state.lastFrameTime = now;
+    // モバイル対策: rAF停止後の巨大なタイムジャンプを防止
+    let delta = rawDelta;
+    if (delta > 0.5) delta = 0.016;
 
     state.currentTime += delta;
+
+    // AudioContext suspend時はresume
+    if (audioElement && state.isPlaying && !audioDelayTimer) {
+      if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+      }
+    }
 
     // 継続的ドリフト補正（2秒ごと）
     if (audioElement && !audioElement.paused && !audioDelayTimer) {
@@ -10635,11 +10786,17 @@ function animate() {
         const progress = Math.min(1, elapsed / fadeOutDuration);
         audioElement.volume = 1 - progress;
       }
-      // オーバーラップ：終点の0.1秒前に次の音源を先行再生
-      if (timeToLoop <= fadeOutDuration && timeToLoop > 0 && !overlapAudio && audioSrcUrl) {
+      // オーバーラップ：終点の0.1秒前に次の音源を先行再生（デスクトップのみ）
+      // モバイルではrAFからのplay()がユーザージェスチャー要件で失敗し音が消えるため無効化
+      if (!isMobileDevice && timeToLoop <= fadeOutDuration && timeToLoop > 0 && !overlapAudio && audioSrcUrl) {
         overlapAudio = new Audio(audioSrcUrl);
+        overlapAudio.crossOrigin = 'anonymous';
         overlapAudio.volume = 1;
         overlapAudio.currentTime = (state.loopStartEnabled && state.loopStartTime > 0) ? state.loopStartTime : 0;
+        if (audioContext) {
+          window._overlapSource = audioContext.createMediaElementSource(overlapAudio);
+          window._overlapSource.connect(analyser);
+        }
         overlapAudio.play();
       }
     }
@@ -10654,25 +10811,21 @@ function animate() {
         if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
         crossfadeStartTime = -1;
         if (overlapAudio) {
-          // オーバーラップ音源に切り替え
+          // オーバーラップ音源に切り替え（既にAudioContext接続済み）
+          if (audioSource) { try { audioSource.disconnect(); } catch(e) {} }
           audioElement.pause();
           audioElement.src = '';
           audioElement = overlapAudio;
           overlapAudio = null;
-        } else {
-          audioElement.volume = 1;
-          if (syncConfig.audioDelay > 0) {
-            audioElement.pause();
-            audioElement.currentTime = loopStartSec;
-            audioDelayTimer = setTimeout(() => {
-              if (state.isPlaying && audioElement) {
-                audioElement.play();
-              }
-              audioDelayTimer = null;
-            }, syncConfig.audioDelay * 1000);
-          } else {
-            audioElement.currentTime = loopStartSec;
+          // 作成時に接続済みのソースノードを引き継ぐ
+          if (window._overlapSource) {
+            audioSource = window._overlapSource;
+            window._overlapSource = null;
+            vizConnectedElement = audioElement;
           }
+        } else {
+          // シンプルseek
+          audioElement.currentTime = loopStartSec;
         }
       }
     }
@@ -10792,13 +10945,12 @@ function animate() {
   // スペクトラム更新
   updateAudioVisualizer();
 
+  // ブルーム描画
   if (composer && bloomPass && bloomEnabled && bloomPass.strength > 0) {
     if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
-      // ノートをブルームから除外して描画
       camera.layers.disable(1);
       composer.render();
       camera.layers.enable(1);
-      // ノートだけを上から描画
       const savedBg = scene.background;
       scene.background = null;
       camera.layers.set(1);
@@ -10874,58 +11026,70 @@ function updateNotePositions() {
   const delayOffset = syncConfig.midiDelay * CONFIG.timeScale;
   const timeOffset = state.currentTime * CONFIG.timeScale;
   const curv = floorCurvature;
-  state.noteObjects.forEach(mesh => {
+  // モバイル: 画面外ノートをスキップ（CPU負荷削減）
+  const mCull = isMobileDevice;
+  const ct = state.currentTime;
+  const md = syncConfig.midiDelay;
+  for (let i = 0, len = state.noteObjects.length; i < len; i++) {
+    const mesh = state.noteObjects[i];
+    if (mCull) {
+      const { startTime, endTime } = mesh.userData;
+      // 5秒以上前に終了 or 30秒以上先に開始 → 非表示スキップ
+      if (endTime + md < ct - 5 || startTime + md > ct + 30) {
+        if (mesh.visible) mesh.visible = false;
+        continue;
+      }
+      if (!mesh.visible) mesh.visible = true;
+    }
     const x = mesh.userData.originalX - timeOffset + delayOffset + tlOffset;
     mesh.position.x = x;
     if (curv !== 0) {
-      // 床と同じ放物面: 距離の2乗に比例して沈む
       mesh.position.y = mesh.userData.originalY - curv * (x * x + mesh.position.z * mesh.position.z);
     } else {
       mesh.position.y = mesh.userData.originalY;
     }
-  });
+  }
 }
 
 function updateNoteHighlights() {
   const currentTime = state.currentTime;
   const md = syncConfig.midiDelay;
 
-  state.noteObjects.forEach(mesh => {
-    const { startTime, endTime, originalColor } = mesh.userData;
+  for (let i = 0, len = state.noteObjects.length; i < len; i++) {
+    const mesh = state.noteObjects[i];
+    if (isMobileDevice && !mesh.visible) continue;
+    const { startTime, endTime } = mesh.userData;
     const isPlaying = currentTime >= startTime + md && currentTime <= endTime + md;
 
     if (isPlaying) {
-      // 再生中のノートは明るく＋発光
-      mesh.material.emissive = new THREE.Color(0xffffff);
+      mesh.material.emissive.setHex(0xffffff);
       mesh.material.emissiveIntensity = 0.5;
     } else {
-      // それ以外は通常
-      mesh.material.emissive = new THREE.Color(0x000000);
+      mesh.material.emissive.setHex(0x000000);
       mesh.material.emissiveIntensity = 0;
     }
-  });
+  }
 }
 
 // ノートのバウンスを更新
 function updateNoteBounce(delta) {
-  state.noteObjects.forEach(mesh => {
+  for (let i = 0, len = state.noteObjects.length; i < len; i++) {
+    const mesh = state.noteObjects[i];
+    if (isMobileDevice && !mesh.visible) continue;
     if (mesh.userData.isBouncing) {
       mesh.userData.bounceTime += delta;
       const progress = mesh.userData.bounceTime / settings.bounceDuration;
 
       if (progress >= 1) {
-        // バウンス終了
         mesh.userData.isBouncing = false;
-        mesh.position.y = mesh.userData.baseY; // 元の位置に戻す
+        mesh.position.y = mesh.userData.baseY;
       } else {
-        // 縦方向バウンスアニメーション
-        // sin波で上に跳ねて戻る
         const bounce = Math.sin(progress * Math.PI);
-        const bounceHeight = bounce * settings.bounceScale * 3; // 高さ調整
+        const bounceHeight = bounce * settings.bounceScale * 3;
         mesh.position.y = mesh.userData.baseY + bounceHeight;
       }
     }
-  });
+  }
 }
 
 // ============================================
@@ -10959,7 +11123,8 @@ function loadVideoFromURL(slotName, url, loadFn) {
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
     video.setAttribute('muted', '');
-    video.preload = 'auto';
+    // モバイル: preload='metadata'で先読みバッファを抑制（メモリ節約）
+    video.preload = isMobileDevice ? 'metadata' : 'auto';
     // DOMに追加（モバイルSafariで再生に必要）
     video.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1;';
     document.body.appendChild(video);
@@ -11003,6 +11168,7 @@ function loadVideoFromURL(slotName, url, loadFn) {
         if (slotName === 'floor') {
           floorTexture = texture;
           floorAspect = video.videoWidth / video.videoHeight;
+          migrateImageSizeToWidth('floorImageSize', floorAspect);
           // 影プレーンに床テクスチャを同期
           if (shadowPlane) shadowPlane.material.userData.floorMap.value = texture;
           const sizeEl = document.getElementById('floorImageSize');
@@ -11011,12 +11177,14 @@ function loadVideoFromURL(slotName, url, loadFn) {
         if (slotName === 'floor2') {
           floor2Texture = texture;
           floor2Aspect = video.videoWidth / video.videoHeight;
+          migrateImageSizeToWidth('floor2ImageSize', floor2Aspect);
           const sizeEl = document.getElementById('floor2ImageSize');
           if (sizeEl) updateFloor2ImageSize(parseFloat(sizeEl.value));
         }
         if (slotName === 'floor3') {
           floor3Texture = texture;
           floor3Aspect = video.videoWidth / video.videoHeight;
+          migrateImageSizeToWidth('floor3ImageSize', floor3Aspect);
           const sizeEl = document.getElementById('floor3ImageSize');
           if (sizeEl) updateFloor3ImageSize(parseFloat(sizeEl.value));
         }
@@ -11281,6 +11449,11 @@ async function loadViewerData() {
       loadingBlur.classList.add('fade-out');
       setTimeout(() => loadingBlur.remove(), 1000);
     }, 800);
+  }
+
+  // メモリ解放: base64データを保持し続ける必要がないため解放
+  if (window.VIEWER_DATA && window.VIEWER_DATA.media) {
+    window.VIEWER_DATA.media = null;
   }
 
   // モバイル対応: 初回タッチ時に全動画を再生開始
