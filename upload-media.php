@@ -19,7 +19,7 @@ if (!preg_match('/^[a-zA-Z0-9_-]{1,50}$/', $song)) {
 }
 
 $slot = $_POST['slot'] ?? '';
-$validSlots = ['midi', 'audio', 'skyDome', 'innerSky', 'floor', 'leftWall', 'centerWall', 'rightWall', 'backWall'];
+$validSlots = ['midi', 'audio', 'skyDome', 'innerSky', 'floor', 'floor2', 'floor3', 'leftWall', 'centerWall', 'rightWall', 'backWall', 'panel5Wall', 'panel6Wall', 'heightmap', 'heightmap2', 'heightmap3', 'glb'];
 if (!in_array($slot, $validSlots)) {
     http_response_code(400);
     echo json_encode(['error' => 'Invalid slot name']);

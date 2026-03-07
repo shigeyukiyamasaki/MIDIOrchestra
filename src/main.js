@@ -127,7 +127,10 @@ let fadeOutDuration = 0.1; // フェードアウト秒数（0.1〜1.0）
 let overlapAudio = null;  // オーバーラップ用の先行再生Audio
 
 // プリセット用メディア参照
-window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, floor2: null, floor3: null, leftWall: null, rightWall: null, centerWall: null, backWall: null, panel5Wall: null, panel6Wall: null };
+window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, floor2: null, floor3: null, leftWall: null, rightWall: null, centerWall: null, backWall: null, panel5Wall: null, panel6Wall: null, glb: null };
+
+// GLBモデル
+let glbModel = null;
 
 // 床・壁面の動画対応
 let floorVideo = null, floorIsVideo = false;
@@ -177,6 +180,11 @@ window.getLoadedMediaBlob = async function(slot) {
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
       return { blob, name: 'heightmap2.png', mimeType: 'image/png' };
     } catch(e) { console.error('[Fallback] heightmap2: canvas failed', e); return null; }
+  }
+  if (slot === 'glb') {
+    // GLBモデルはメモリにblobを保持できないので、DB参照のみ（fallbackなし）
+    console.log('[Fallback] glb: no in-memory fallback');
+    return null;
   }
   if (slot === 'heightmap3') {
     if (!floor3DisplacementData) { console.log('[Fallback] heightmap3: no data'); return null; }
@@ -5436,6 +5444,126 @@ function setupEventListeners() {
     }
   });
 
+  // ============================================
+  // GLBモデルのイベントリスナー
+  // ============================================
+
+  // ファイルラベルクリック
+  document.getElementById('glbFileLabel')?.addEventListener('click', () => {
+    document.getElementById('glbFileInput')?.click();
+  });
+
+  // ファイル選択
+  document.getElementById('glbFileInput')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (window.presetManager) window.presetManager.handleFileUpload(file, 'glb');
+      loadGlbModel(file);
+    }
+    e.target.value = '';
+  });
+
+  // 位置X
+  document.getElementById('glbPosX')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('glbPosXValue').textContent = value;
+    if (glbModel) glbModel.position.x = value;
+  });
+
+  // 位置Y
+  document.getElementById('glbPosY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('glbPosYValue').textContent = value;
+    if (glbModel) glbModel.position.y = value;
+  });
+
+  // 位置Z
+  document.getElementById('glbPosZ')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('glbPosZValue').textContent = value;
+    if (glbModel) glbModel.position.z = value;
+  });
+
+  // スケール
+  document.getElementById('glbScale')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('glbScaleValue').textContent = value;
+    if (glbModel) {
+      const s = value / 100;
+      glbModel.scale.set(s, s, s);
+    }
+  });
+
+  // 回転Y
+  document.getElementById('glbRotY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('glbRotYValue').textContent = value;
+    if (glbModel) glbModel.rotation.y = value * Math.PI / 180;
+  });
+
+  // 色合い
+  document.getElementById('glbHue')?.addEventListener('input', (e) => {
+    document.getElementById('glbHueValue').textContent = e.target.value;
+    applyGlbColorAdjustments();
+  });
+
+  // 明るさ
+  document.getElementById('glbBrightness')?.addEventListener('input', (e) => {
+    document.getElementById('glbBrightnessValue').textContent = e.target.value;
+    applyGlbColorAdjustments();
+  });
+
+  // コントラスト
+  document.getElementById('glbContrast')?.addEventListener('input', (e) => {
+    document.getElementById('glbContrastValue').textContent = e.target.value;
+    applyGlbColorAdjustments();
+  });
+
+  // クロマキー
+  document.getElementById('glbChromaColor')?.addEventListener('input', (e) => {
+    glbColorUniforms.chromaKeyColor.value.set(e.target.value);
+  });
+  document.getElementById('glbChromaThreshold')?.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    document.getElementById('glbChromaThresholdValue').textContent = val;
+    glbColorUniforms.chromaKeyThreshold.value = val;
+  });
+
+  // クリア
+  document.getElementById('glbClear')?.addEventListener('click', () => {
+    clearGlbModel();
+  });
+
+  // GLBドロップゾーン（独自実装：.glb/.gltf拡張子チェック）
+  const glbDropZone = document.getElementById('glbDropZone');
+  if (glbDropZone) {
+    glbDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      glbDropZone.classList.add('drag-over');
+    });
+    glbDropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      glbDropZone.classList.remove('drag-over');
+    });
+    glbDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      glbDropZone.classList.remove('drag-over');
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        const file = files[0];
+        if (file.name.match(/\.(glb|gltf)$/i)) {
+          if (window.presetManager) window.presetManager.handleFileUpload(file, 'glb');
+          loadGlbModel(file);
+        } else {
+          console.warn('GLBまたはGLTFファイルをドロップしてください');
+        }
+      }
+    });
+  }
+
   } // image-panel guard end
 
   // ============================================
@@ -5461,6 +5589,7 @@ function setupEventListeners() {
     backWall: loadBackWallImage,
     panel5Wall: loadPanel5WallImage,
     panel6Wall: loadPanel6WallImage,
+    glb: loadGlbModel,
   };
 
   const slotMediaTypes = {
@@ -5475,6 +5604,7 @@ function setupEventListeners() {
     backWall: ['image', 'video'],
     panel5Wall: ['image', 'video'],
     panel6Wall: ['image', 'video'],
+    glb: ['model'],
   };
 
   function cleanupMediaLibraryURLs() {
@@ -5498,7 +5628,7 @@ function setupEventListeners() {
 
         cleanupMediaLibraryURLs();
         mediaLibraryGrid.innerHTML = '';
-        const isListMode = mediaLibraryTargetSlot === 'midi' || mediaLibraryTargetSlot === 'audio';
+        const isListMode = mediaLibraryTargetSlot === 'midi' || mediaLibraryTargetSlot === 'audio' || mediaLibraryTargetSlot === 'glb';
         mediaLibraryGrid.classList.toggle('media-list', isListMode);
 
         if (allMedia.length === 0) {
@@ -5514,7 +5644,7 @@ function setupEventListeners() {
             if (isListMode) {
               const icon = document.createElement('span');
               icon.className = 'media-list-icon';
-              icon.innerHTML = record.type === 'midi' ? '<i class="fa-solid fa-music"></i>' : '<i class="fa-solid fa-volume-high"></i>';
+              icon.innerHTML = record.type === 'midi' ? '<i class="fa-solid fa-music"></i>' : record.type === 'model' ? '<i class="fa-solid fa-cube"></i>' : '<i class="fa-solid fa-volume-high"></i>';
               item.appendChild(icon);
 
               const name = document.createElement('span');
@@ -10137,6 +10267,274 @@ function clearPanel6WallImage() {
 }
 
 // ============================================
+// GLBモデル関連関数
+// ============================================
+
+function loadGlbModel(file) {
+  if (!THREE.GLTFLoader) {
+    console.error('THREE.GLTFLoader is not available. Check CDN script loading.');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const arrayBuffer = e.target.result;
+    console.log('GLB file read, size:', arrayBuffer.byteLength);
+
+    const loader = new THREE.GLTFLoader();
+    loader.parse(arrayBuffer, '', (gltf) => {
+      // 既存モデルがあればクリア
+      if (glbModel) {
+        scene.remove(glbModel);
+        glbModel.traverse((child) => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(m => m.dispose());
+            } else {
+              child.material.dispose();
+            }
+          }
+        });
+      }
+
+      glbModel = gltf.scene;
+
+      // バウンディングボックスでサイズを計算し、自動スケーリング
+      const box = new THREE.Box3().setFromObject(glbModel);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+      console.log('GLB model bounding box:', size, 'maxDim:', maxDim);
+
+      // ビューワー設定のフォールバック（DOMがない場合）
+      const vs = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
+      const getVal = (id, def) => {
+        const el = document.getElementById(id);
+        if (el) return parseFloat(el.value);
+        if (vs && vs[id] !== undefined) return parseFloat(vs[id]);
+        return def;
+      };
+
+      // スケール値を決定
+      const scaleSlider = document.getElementById('glbScale');
+      let scaleValue = scaleSlider ? parseInt(scaleSlider.value) : (vs && vs.glbScale !== undefined ? parseInt(vs.glbScale) : 100);
+
+      // デフォルト値(100)のときのみ自動調整（プリセット復元時やビューワーでも動作）
+      if (maxDim > 0 && scaleValue === 100) {
+        const targetSize = 50;
+        const autoScale = targetSize / maxDim;
+        scaleValue = Math.min(100000, Math.max(1, Math.round(autoScale * 100)));
+        if (scaleSlider) {
+          scaleSlider.value = scaleValue;
+          const valSpan = document.getElementById('glbScaleValue');
+          if (valSpan) valSpan.textContent = scaleValue;
+        }
+      }
+
+      scene.add(glbModel);
+
+      // DOM値またはビューワー設定から位置・スケール・回転を反映
+      const posX = getVal('glbPosX', 0);
+      const posY = getVal('glbPosY', 0);
+      const posZ = getVal('glbPosZ', 0);
+      const scale = scaleValue / 100;
+      const rotY = getVal('glbRotY', 0);
+
+      glbModel.position.set(posX, posY, posZ);
+      glbModel.scale.set(scale, scale, scale);
+      glbModel.rotation.y = rotY * Math.PI / 180;
+
+      // 影を受ける設定
+      glbModel.traverse((child) => {
+        if (child.isMesh) {
+          child.receiveShadow = true;
+        }
+      });
+
+      // 色調整: DOMまたはビューワー設定からユニフォームに反映
+      glbColorUniforms.glbHue.value = getVal('glbHue', 0) / 360;
+      glbColorUniforms.glbBrightness.value = getVal('glbBrightness', 0) / 100;
+      glbColorUniforms.glbContrast.value = getVal('glbContrast', 0) / 100;
+
+      // シェーダーオーバーライドを設定して色調整を適用
+      applyGlbColorAdjustments();
+      setupGlbShaderOverride();
+
+      // ドロップゾーンのテキスト更新
+      const text = document.getElementById('glbDropZoneText');
+      if (text) text.textContent = file.name;
+
+      onWindowResize();
+      console.log('GLB model loaded:', file.name, 'children:', glbModel.children.length);
+    }, (error) => {
+      console.error('GLB parse error:', error);
+    });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function clearGlbModel() {
+  if (glbModel) {
+    scene.remove(glbModel);
+    glbModel.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+    glbModel = null;
+  }
+
+  window.currentMediaRefs.glb = null;
+
+  // UI リセット
+  const fileInput = document.getElementById('glbFileInput');
+  if (fileInput) fileInput.value = '';
+  const text = document.getElementById('glbDropZoneText');
+  if (text) {
+    text.innerHTML = 'GLBをドロップ<br>または';
+    text.style.display = 'block';
+  }
+
+  console.log('GLB model cleared');
+}
+
+// GLBシェーダー用uniform共有オブジェクト
+const glbColorUniforms = {
+  glbHue: { value: 0.0 },
+  glbBrightness: { value: 0.0 },
+  glbContrast: { value: 0.0 },
+  chromaKeyColor: { value: new THREE.Color(0x00ff00) },
+  chromaKeyThreshold: { value: 0.0 },
+  cloudTex: { value: null },
+  cloudOffset: { value: new THREE.Vector2(0, 0) },
+  cloudRepeat: { value: new THREE.Vector2(2, 2) },
+  cloudOpacity: { value: 0.0 },
+  cloudPlaneSize: { value: 10000.0 },
+  cloudWarmTint: { value: 0.0 },
+};
+
+function applyGlbColorAdjustments() {
+  if (!glbModel) return;
+  const vs = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
+  const getV = (id, def) => {
+    const el = document.getElementById(id);
+    if (el) return parseFloat(el.value);
+    if (vs && vs[id] !== undefined) return parseFloat(vs[id]);
+    return def;
+  };
+  glbColorUniforms.glbHue.value = getV('glbHue', 0) / 360;
+  glbColorUniforms.glbBrightness.value = getV('glbBrightness', 0) / 100;
+  glbColorUniforms.glbContrast.value = getV('glbContrast', 0) / 100;
+  glbColorUniforms.chromaKeyThreshold.value = getV('glbChromaThreshold', 0);
+  // クロマキーカラーはDOMまたはビューワー設定から取得
+  const chromaEl = document.getElementById('glbChromaColor');
+  if (chromaEl) {
+    glbColorUniforms.chromaKeyColor.value.set(chromaEl.value);
+  } else if (vs && vs.glbChromaColor) {
+    glbColorUniforms.chromaKeyColor.value.set(vs.glbChromaColor);
+  }
+}
+
+function setupGlbShaderOverride() {
+  if (!glbModel) return;
+  glbModel.traverse((child) => {
+    if (child.isMesh && child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach(m => {
+        m.onBeforeCompile = (shader) => {
+          shader.uniforms.glbHue = glbColorUniforms.glbHue;
+          shader.uniforms.glbBrightness = glbColorUniforms.glbBrightness;
+          shader.uniforms.glbContrast = glbColorUniforms.glbContrast;
+          shader.uniforms.glbChromaKeyColor = glbColorUniforms.chromaKeyColor;
+          shader.uniforms.glbChromaKeyThreshold = glbColorUniforms.chromaKeyThreshold;
+          shader.uniforms.cloudTex = glbColorUniforms.cloudTex;
+          shader.uniforms.cloudOffset = glbColorUniforms.cloudOffset;
+          shader.uniforms.cloudRepeat = glbColorUniforms.cloudRepeat;
+          shader.uniforms.cloudOpacity = glbColorUniforms.cloudOpacity;
+          shader.uniforms.cloudPlaneSize = glbColorUniforms.cloudPlaneSize;
+          shader.uniforms.cloudWarmTint = glbColorUniforms.cloudWarmTint;
+
+          // uniform宣言を追加
+          shader.fragmentShader =
+            'uniform float glbHue;\nuniform float glbBrightness;\nuniform float glbContrast;\n' +
+            'uniform vec3 glbChromaKeyColor;\nuniform float glbChromaKeyThreshold;\n' +
+            'uniform sampler2D cloudTex;\nuniform vec2 cloudOffset;\nuniform vec2 cloudRepeat;\nuniform float cloudOpacity;\nuniform float cloudPlaneSize;\nuniform float cloudWarmTint;\n' +
+            shader.fragmentShader;
+
+          // varying追加（ワールド座標をフラグメントシェーダーに渡す）
+          shader.vertexShader = 'varying vec3 vWorldPos;\n' + shader.vertexShader;
+          shader.vertexShader = shader.vertexShader.replace(
+            '#include <worldpos_vertex>',
+            '#include <worldpos_vertex>\nvWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;'
+          );
+          shader.fragmentShader = 'varying vec3 vWorldPos;\n' + shader.fragmentShader;
+
+          // クロマキー: ライティング前のdiffuseColorで判定（画像と同じ精度）
+          shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <map_fragment>',
+            '#include <map_fragment>\n' +
+            'if (glbChromaKeyThreshold > 0.0) {\n' +
+            '  float chromaDist = distance(diffuseColor.rgb, glbChromaKeyColor);\n' +
+            '  if (chromaDist < glbChromaKeyThreshold) discard;\n' +
+            '}\n'
+          );
+
+          // 最終出力色をHSV変換して色合い/明るさ/コントラストを適用 + 雲影投影
+          shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <dithering_fragment>',
+            [
+              '// 雲影投影 + 日向コントラスト',
+              'if (cloudOpacity > 0.0) {',
+              '  vec2 cloudUV = vec2(vWorldPos.x, -vWorldPos.z) / cloudPlaneSize + 0.5;',
+              '  cloudUV = cloudUV * cloudRepeat + cloudOffset;',
+              '  float cloudVal = texture2D(cloudTex, cloudUV).a;',
+              '  float shadowFactor = mix(1.0, 1.0 - cloudVal, cloudOpacity);',
+              '  gl_FragColor.rgb *= shadowFactor;',
+              '  // 日向コントラスト（雲影がない部分を暖色に）',
+              '  if (cloudWarmTint > 0.0) {',
+              '    float sunlight = 1.0 - cloudVal;',
+              '    vec3 wc = gl_FragColor.rgb;',
+              '    wc.r = min(wc.r + cloudWarmTint * 0.08 * sunlight, 1.0);',
+              '    wc.g = min(wc.g + cloudWarmTint * 0.03 * sunlight, 1.0);',
+              '    wc.b = max(wc.b - cloudWarmTint * 0.05 * sunlight, 0.0);',
+              '    float lum = dot(wc, vec3(0.299, 0.587, 0.114));',
+              '    wc += wc * cloudWarmTint * 0.4 * (0.5 + lum) * sunlight;',
+              '    gl_FragColor.rgb = min(wc, 1.0);',
+              '  }',
+              '}',
+              '// GLB color adjustments',
+              '{',
+              '  vec3 c = gl_FragColor.rgb;',
+              '  vec4 K = vec4(0.0, -1.0/3.0, 2.0/3.0, -1.0);',
+              '  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));',
+              '  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));',
+              '  float d = q.x - min(q.w, q.y);',
+              '  float e = 1.0e-10;',
+              '  vec3 hsv = vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);',
+              '  hsv.x = fract(hsv.x + glbHue);',
+              '  hsv.z = clamp(hsv.z + glbBrightness, 0.0, 1.0);',
+              '  hsv.z = clamp(0.5 + (hsv.z - 0.5) * (1.0 + glbContrast * 2.0), 0.0, 1.0);',
+              '  vec4 K2 = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);',
+              '  vec3 p2 = abs(fract(hsv.xxx + K2.xyz) * 6.0 - K2.www);',
+              '  gl_FragColor.rgb = hsv.z * mix(K2.xxx, clamp(p2 - K2.xxx, 0.0, 1.0), hsv.y);',
+              '}',
+              '#include <dithering_fragment>',
+            ].join('\n')
+          );
+        };
+        m.needsUpdate = true;
+      });
+    }
+  });
+}
+
+// ============================================
 // 再生コントロール
 // ============================================
 // モバイル対応: 全動画要素を再生（ユーザー操作のコンテキストで呼ぶ）
@@ -10907,14 +11305,28 @@ function animate() {
     const rad = cloudShadowDirection * Math.PI / 180;
     cloudShadowPlane.material.map.offset.set(t * Math.cos(rad), t * Math.sin(rad));
     cloudShadowPlane.material.map.repeat.set(cloudShadowScale, cloudShadowScale);
+    // GLBモデルへの雲影投影用uniform同期
+    if (glbModel) {
+      glbColorUniforms.cloudTex.value = cloudShadowPlane.material.map;
+      glbColorUniforms.cloudOffset.value.copy(cloudShadowPlane.material.map.offset);
+      glbColorUniforms.cloudRepeat.value.copy(cloudShadowPlane.material.map.repeat);
+      glbColorUniforms.cloudOpacity.value = cloudShadowIntensity;
+      const geomParams = cloudShadowPlane.geometry.parameters;
+      if (geomParams) glbColorUniforms.cloudPlaneSize.value = geomParams.width || 10000;
+    }
   } else if (cloudShadowPlane) {
     cloudShadowPlane.visible = false;
+    if (glbModel) glbColorUniforms.cloudOpacity.value = 0.0;
   }
   // 日向コントラスト: 床の暖色シフト
-  if (floorPlane && floorPlane.material.uniforms.warmTint) {
+  {
     const warm = (cloudShadowContrast > 0 && cloudShadowEnabled && cloudShadowIntensity > 0)
       ? cloudShadowIntensity * cloudShadowContrast : 0;
-    floorPlane.material.uniforms.warmTint.value = warm;
+    if (floorPlane && floorPlane.material.uniforms.warmTint) {
+      floorPlane.material.uniforms.warmTint.value = warm;
+    }
+    // GLBモデルにも同期
+    glbColorUniforms.cloudWarmTint.value = warm;
   }
   if (floor2Plane && floor2Plane.material.uniforms.warmTint) {
     const warm = (cloudShadowContrast > 0 && cloudShadowEnabled && cloudShadowIntensity > 0)
@@ -11334,6 +11746,7 @@ async function loadViewerData() {
     { key: 'backWall', loadFn: loadBackWallImage },
     { key: 'panel5Wall', loadFn: loadPanel5WallImage },
     { key: 'panel6Wall', loadFn: loadPanel6WallImage },
+    { key: 'glb', loadFn: loadGlbModel },
   ];
 
   // メディア読み込み（URL参照の動画はストリーミング、それ以外はblob変換）
@@ -11438,6 +11851,25 @@ async function loadViewerData() {
       // DOM値を直接3Dオブジェクトに反映する
       syncWallSettingsFromDOM();
       updateShadowPlaneVisibility();
+      // ビューワーではGLBスライダーのDOM要素がないため、設定値を直接反映
+      if (glbModel && s) {
+        const posX = parseFloat(s.glbPosX || 0);
+        const posY = parseFloat(s.glbPosY || 0);
+        const posZ = parseFloat(s.glbPosZ || 0);
+        const scaleVal = parseFloat(s.glbScale || 100) / 100;
+        const rotY = parseFloat(s.glbRotY || 0);
+        glbModel.position.set(posX, posY, posZ);
+        glbModel.scale.set(scaleVal, scaleVal, scaleVal);
+        glbModel.rotation.y = rotY * Math.PI / 180;
+        // 色調整
+        const hue = parseFloat(s.glbHue || 0);
+        const brightness = parseFloat(s.glbBrightness || 0);
+        const contrast = parseFloat(s.glbContrast || 0);
+        glbColorUniforms.glbHue.value = hue / 360;
+        glbColorUniforms.glbBrightness.value = brightness / 100;
+        glbColorUniforms.glbContrast.value = contrast / 100;
+        console.log('[Viewer] GLB settings applied:', { posX, posY, posZ, scaleVal, rotY, hue, brightness, contrast });
+      }
     }, 500);
   }
 
@@ -11640,6 +12072,7 @@ window.appFunctions = {
   loadMidi, loadAudio, clearMidi, clearAudio,
   loadSkyDomeImage, loadInnerSkyImage, loadFloorImage, loadFloor2Image, loadFloor3Image, loadLeftWallImage, loadCenterWallImage, loadRightWallImage, loadBackWallImage, loadPanel5WallImage, loadPanel6WallImage,
   clearSkyDomeImage, clearInnerSkyImage, clearFloorImage, clearFloor2Image, clearFloor3Image, clearLeftWallImage, clearCenterWallImage, clearRightWallImage, clearBackWallImage, clearPanel5WallImage, clearPanel6WallImage,
+  loadGlbModel, clearGlbModel,
   updateTrackPanel, debouncedRebuildNotes,
 };
 

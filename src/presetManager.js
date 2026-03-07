@@ -817,6 +817,7 @@ async function loadPreset(presetId) {
   app.clearFloor3Image();
   app.clearPanel5WallImage();
   app.clearPanel6WallImage();
+  app.clearGlbModel();
 
   // MIDI/Audioクリア
   app.clearMidi();
@@ -843,6 +844,7 @@ async function loadPreset(presetId) {
     window.currentMediaRefs.floor3 = media.floor3 || null;
     window.currentMediaRefs.panel5Wall = media.panel5Wall || null;
     window.currentMediaRefs.panel6Wall = media.panel6Wall || null;
+    window.currentMediaRefs.glb = media.glb || null;
   }
 
   if (media.midi) {
@@ -912,6 +914,9 @@ async function loadPreset(presetId) {
   }
   if (media.panel6Wall) {
     await restoreMediaSlot(media.panel6Wall, app.loadPanel6WallImage, null);
+  }
+  if (media.glb) {
+    await restoreMediaSlot(media.glb, app.loadGlbModel, null);
   }
 
   console.log('Preset loaded:', preset.name);
@@ -1053,6 +1058,7 @@ async function handleFileUpload(file, slotName) {
 
   let type = 'image';
   if (file.name.match(/\.(mid|midi)$/i)) type = 'midi';
+  else if (file.name.match(/\.(glb|gltf)$/i)) type = 'model';
   else if (file.type.startsWith('audio/')) type = 'audio';
   else if (file.type.startsWith('video/')) type = 'video';
 
