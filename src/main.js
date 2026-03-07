@@ -1492,6 +1492,7 @@ function buildWeatherParticles() {
       transparent: true,
       opacity: 0.4,
       depthWrite: false,
+      depthTest: false,
     });
 
     weatherParticles = new THREE.LineSegments(geom, mat);
@@ -1517,10 +1518,12 @@ function buildWeatherParticles() {
       transparent: true,
       opacity: 0.5,
       depthWrite: false,
+      depthTest: false,
       sizeAttenuation: true,
     });
     rainSplash = new THREE.Points(splashGeom, splashMat);
     rainSplash.frustumCulled = false;
+    rainSplash.renderOrder = 9999;
     scene.add(rainSplash);
   } else {
     // 雪: Pointsで丸い粒
@@ -1551,6 +1554,7 @@ function buildWeatherParticles() {
       transparent: true,
       opacity: 0.8,
       depthWrite: false,
+      depthTest: false,
       sizeAttenuation: true,
     });
 
@@ -1558,6 +1562,7 @@ function buildWeatherParticles() {
   }
 
   weatherParticles.frustumCulled = false;
+  weatherParticles.renderOrder = 9999;
   // 現在の光源色・強度を反映
   if (sunLight && weatherParticles.material.color) {
     const scale = sunLight.intensity;
