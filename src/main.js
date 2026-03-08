@@ -5545,6 +5545,11 @@ function setupEventListeners() {
     document.getElementById('glbChromaThresholdValue').textContent = val;
     glbColorUniforms.chromaKeyThreshold.value = val;
   });
+  document.getElementById('glbPixelArt')?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    document.getElementById('glbPixelArtValue').textContent = val;
+    applyGlbPixelArt(val);
+  });
 
   // クリア
   document.getElementById('glbClear')?.addEventListener('click', () => {
@@ -10429,6 +10434,10 @@ function loadGlbModel(file) {
       applyGlbColorAdjustments();
       setupGlbShaderOverride();
 
+      // ピクセルアート設定を適用
+      const pixelVal = getVal('glbPixelArt', 0);
+      if (pixelVal > 0) applyGlbPixelArt(pixelVal);
+
       // ドロップゾーンのテキスト更新
       const text = document.getElementById('glbDropZoneText');
       if (text) text.textContent = file.name;
@@ -10440,6 +10449,110 @@ function loadGlbModel(file) {
     });
   };
   reader.readAsArrayBuffer(file);
+}
+
+// GLBをピクセルアート風にする（strength: 0=オフ, 大きいほどドット化+形状荒く）
+function applyGlbPixelArt(strength) {
+  if (!glbModel) return;
+  // テクスチャ解像度: 指数カーブ 1→512px, 64→64px, 128→8px
+  const resolution = strength <= 0 ? 0 : Math.round(512 * Math.pow(8 / 512, strength / 128));
+  glbModel.traverse((child) => {
+    if (!child.isMesh) return;
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+
+    // --- テクスチャ処理 ---
+    mats.forEach(mat => {
+      if (mat.map) {
+        if (!mat._originalMap) mat._originalMap = mat.map;
+        if (resolution <= 0) {
+          mat.map = mat._originalMap;
+        } else {
+          const img = mat._originalMap.image;
+          if (img) {
+            const canvas = document.createElement('canvas');
+            canvas.width = resolution;
+            canvas.height = resolution;
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, 0, 0, resolution, resolution);
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.magFilter = THREE.NearestFilter;
+            tex.minFilter = THREE.NearestFilter;
+            tex.wrapS = mat._originalMap.wrapS;
+            tex.wrapT = mat._originalMap.wrapT;
+            tex.flipY = mat._originalMap.flipY;
+            tex.needsUpdate = true;
+            mat.map = tex;
+          }
+        }
+      }
+      mat.needsUpdate = true;
+    });
+
+    // --- ジオメトリ量子化（頂点をグリッドにスナップ）---
+    const geom = child.geometry;
+    if (!geom || !geom.attributes.position) return;
+    // 初回: 元データを保存
+    if (!geom._originalPositions) {
+      geom._originalPositions = geom.attributes.position.array.slice();
+      if (geom.attributes.normal) geom._originalNormals = geom.attributes.normal.array.slice();
+      geom.computeBoundingBox();
+      const s = geom.boundingBox.getSize(new THREE.Vector3());
+      // 各軸のサイズを保存（軸ごとに独立してグリッド制限するため）
+      geom._origAxisSize = [s.x || 0.001, s.y || 0.001, s.z || 0.001];
+    }
+    const positions = geom.attributes.position;
+    if (strength <= 0) {
+      // 元に戻す
+      positions.array.set(geom._originalPositions);
+      positions.needsUpdate = true;
+      if (geom._originalNormals && geom.attributes.normal) {
+        geom.attributes.normal.array.set(geom._originalNormals);
+        geom.attributes.normal.needsUpdate = true;
+      }
+      geom.computeBoundingBox();
+      geom.computeBoundingSphere();
+      return;
+    }
+    // 各軸ごとにグリッドサイズを計算（軸の45%を上限として潰れ防止）
+    const factor = Math.pow(strength / 128, 2) * 0.15;
+    const ax = geom._origAxisSize;
+    const gx = Math.min(ax[0] * factor, ax[0] * 0.45);
+    const gy = Math.min(ax[1] * factor, ax[1] * 0.45);
+    const gz = Math.min(ax[2] * factor, ax[2] * 0.45);
+    // グリッドが極小なら量子化スキップ
+    const maxDim = Math.max(ax[0], ax[1], ax[2]);
+    if (gx < maxDim * 0.001 && gy < maxDim * 0.001 && gz < maxDim * 0.001) {
+      positions.array.set(geom._originalPositions);
+      positions.needsUpdate = true;
+      if (geom._originalNormals && geom.attributes.normal) {
+        geom.attributes.normal.array.set(geom._originalNormals);
+        geom.attributes.normal.needsUpdate = true;
+      }
+      return;
+    }
+    // flatShadingはonBeforeCompileと競合するため適用しない
+    const orig = geom._originalPositions;
+    for (let i = 0; i < positions.count; i++) {
+      const i3 = i * 3;
+      positions.array[i3]     = gx > 0.0001 ? Math.round(orig[i3]     / gx) * gx : orig[i3];
+      positions.array[i3 + 1] = gy > 0.0001 ? Math.round(orig[i3 + 1] / gy) * gy : orig[i3 + 1];
+      positions.array[i3 + 2] = gz > 0.0001 ? Math.round(orig[i3 + 2] / gz) * gz : orig[i3 + 2];
+    }
+    positions.needsUpdate = true;
+    geom.computeVertexNormals();
+    // NaN法線を元の値で補修（退化三角形対策）
+    if (geom._originalNormals && geom.attributes.normal) {
+      const normals = geom.attributes.normal.array;
+      const origN = geom._originalNormals;
+      for (let i = 0; i < normals.length; i++) {
+        if (isNaN(normals[i])) normals[i] = origN[i];
+      }
+      geom.attributes.normal.needsUpdate = true;
+    }
+    geom.computeBoundingBox();
+    geom.computeBoundingSphere();
+  });
 }
 
 function clearGlbModel() {
@@ -11959,7 +12072,10 @@ async function loadViewerData() {
         glbColorUniforms.glbHue.value = hue / 360;
         glbColorUniforms.glbBrightness.value = brightness / 100;
         glbColorUniforms.glbContrast.value = contrast / 100;
-        console.log('[Viewer] GLB settings applied:', { posX, posY, posZ, scaleVal, rotY, hue, brightness, contrast });
+        // ピクセルアート
+        const pixelArt = parseInt(s.glbPixelArt || 0);
+        if (pixelArt > 0) applyGlbPixelArt(pixelArt);
+        console.log('[Viewer] GLB settings applied:', { posX, posY, posZ, scaleVal, rotY, hue, brightness, contrast, pixelArt });
       }
     }, 500);
   }
