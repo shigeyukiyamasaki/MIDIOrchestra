@@ -84,6 +84,7 @@ function migrateImageSizeToWidth(slotId, aspect) {
 }
 
 let floorY = -50;
+let noteCenterY = 0; // ノート上下範囲の中心Y座標（スペクトラム配置用）
 let floorCurvature = 0; // 床の曲率（0=フラット）       // 床のY位置（共有用、グリッドと同じ）
 let floorDisplacementData = null; // ハイトマップのImageData
 let floorDisplacementScale = 0;   // 起伏スケール
@@ -5855,6 +5856,19 @@ function setupEventListeners() {
   audioDelayInput.addEventListener('input', (e) => {
     syncConfig.audioDelay = parseFloat(e.target.value);
     audioDelayValue.textContent = syncConfig.audioDelay.toFixed(2) + '秒';
+    // 再生中は即座に音源位置を再同期
+    if (audioElement && state.isPlaying) {
+      if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
+      const audioTime = state.currentTime - syncConfig.audioDelay;
+      if (audioTime >= 0) {
+        audioElement.currentTime = audioTime;
+        if (audioElement.paused) audioElement.play().catch(() => {});
+      } else {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+        audioDelayTimer = 'waiting'; // アニメーションループで再生開始
+      }
+    }
   });
 }
 
@@ -6218,10 +6232,9 @@ function setupAudioVisualizer() {
     }
   });
 
-  // グループ位置（タイムライン幕の中心に配置）
+  // グループ位置（ノート上下範囲の中心に配置）
   const tlOffset = document.getElementById('timelineX')?.value || 0;
-  const groupY = (timelinePlane ? timelinePlane.position.y : floorY + 75) + (CONFIG.noteYOffset || 0);
-  vizBarsGroup.position.set(parseInt(tlOffset), groupY, 0);
+  vizBarsGroup.position.set(parseInt(tlOffset), noteCenterY, 0);
   (noteGroup || scene).add(vizBarsGroup);
   vizPrevValues.fill(0);
   console.log('Audio visualizer initialized: ' + style);
@@ -6245,10 +6258,8 @@ function updateAudioVisualizer() {
   const tlOffset = document.getElementById('timelineX')?.value || 0;
   vizBarsGroup.position.x = parseInt(tlOffset);
 
-  // タイムライン幕の中心に追従（高さオフセットも加算）
-  if (timelinePlane) {
-    vizBarsGroup.position.y = timelinePlane.position.y + (CONFIG.noteYOffset || 0);
-  }
+  // ノート上下範囲の中心に追従
+  vizBarsGroup.position.y = noteCenterY;
 
   const scaleVal = parseFloat(document.getElementById('audioVisualizerScale')?.value || 1);
   const maxHeight = 100 * scaleVal;
@@ -6715,6 +6726,8 @@ function createNoteObjects() {
   const floorOffset = 5; // 床からの余白（ノートと同じ値）
   const noteRangeHeight = (maxPitch - minPitch) * CONFIG.pitchScale;
   const totalHeight = noteRangeHeight + 30;
+  // ノートの上下中心Y座標を保存（スペクトラム配置用）
+  noteCenterY = floorY + floorOffset + noteRangeHeight / 2 + CONFIG.noteYOffset;
   timelineTotalDepth = totalDepth; // グローバルに保存
 
   // 幕のジオメトリを再作成
@@ -10637,21 +10650,24 @@ function play() {
   }
   // 音源を再生（audioDelay適用）
   if (audioElement) {
-    if (audioDelayTimer) clearTimeout(audioDelayTimer);
-    if (state.currentTime < syncConfig.audioDelay) {
-      // まだ音源開始前 → 遅延分待ってから再生
-      const waitMs = (syncConfig.audioDelay - state.currentTime) * 1000;
-      audioElement.currentTime = 0;
-      audioDelayTimer = setTimeout(() => {
-        if (state.isPlaying && audioElement) {
-          audioElement.play();
-        }
-        audioDelayTimer = null;
-      }, waitMs);
-    } else {
+    if (audioDelayTimer) { clearTimeout(audioDelayTimer); audioDelayTimer = null; }
+    const audioTime = state.currentTime - syncConfig.audioDelay;
+    if (audioTime >= 0) {
       // 音源の開始位置を補正して即再生
-      audioElement.currentTime = state.currentTime - syncConfig.audioDelay;
+      audioElement.currentTime = audioTime;
       audioElement.play();
+    } else {
+      // まだ音源開始前 → ユーザージェスチャーコンテキストでplay+pauseして
+      // ブラウザのAutoplay Policyをクリアし、アニメーションループで再生開始
+      audioElement.currentTime = 0;
+      const vol = audioElement.volume;
+      audioElement.volume = 0;
+      audioElement.play().then(() => {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+        audioElement.volume = vol;
+      }).catch(() => { audioElement.volume = vol; });
+      audioDelayTimer = 'waiting'; // フラグとして使用
     }
   }
   // モバイル対応: ユーザー操作を契機に全動画をplay
@@ -10726,10 +10742,7 @@ function seekTo(time) {
       audioElement.currentTime = 0;
       audioElement.pause();
       if (state.isPlaying) {
-        audioDelayTimer = setTimeout(() => {
-          if (state.isPlaying && audioElement) audioElement.play();
-          audioDelayTimer = null;
-        }, (-audioTime) * 1000);
+        audioDelayTimer = 'waiting'; // アニメーションループで再生開始
       }
     }
   }
@@ -11152,6 +11165,13 @@ function animate() {
     if (delta > 0.5) delta = 0.016;
 
     state.currentTime += delta;
+
+    // audioDelay待機中：遅延期間が終わったら音源を再生開始
+    if (audioDelayTimer === 'waiting' && audioElement && state.currentTime >= syncConfig.audioDelay) {
+      audioDelayTimer = null;
+      audioElement.currentTime = Math.max(0, state.currentTime - syncConfig.audioDelay);
+      audioElement.play().catch(() => {});
+    }
 
     // AudioContext suspend時はresume
     if (audioElement && state.isPlaying && !audioDelayTimer) {
