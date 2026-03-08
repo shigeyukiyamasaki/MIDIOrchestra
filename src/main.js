@@ -11753,21 +11753,37 @@ async function loadViewerData() {
   const m = data.media || {};
 
   if (m.midi) {
-    const blob = base64ToBlob(m.midi.data, m.midi.mimeType);
-    const file = new File([blob], m.midi.name, { type: m.midi.mimeType });
-    await loadMidi(file);
-    document.getElementById('midiFileName').textContent = m.midi.name;
-    const midiClearBtn = document.getElementById('midiClearBtn');
-    if (midiClearBtn) midiClearBtn.style.display = '';
+    let blob;
+    if (m.midi.url) {
+      const resp = await fetch(m.midi.url);
+      blob = await resp.blob();
+    } else if (m.midi.data) {
+      blob = base64ToBlob(m.midi.data, m.midi.mimeType);
+    }
+    if (blob) {
+      const file = new File([blob], m.midi.name, { type: m.midi.mimeType });
+      await loadMidi(file);
+      document.getElementById('midiFileName').textContent = m.midi.name;
+      const midiClearBtn = document.getElementById('midiClearBtn');
+      if (midiClearBtn) midiClearBtn.style.display = '';
+    }
   }
 
   if (m.audio) {
-    const blob = base64ToBlob(m.audio.data, m.audio.mimeType);
-    const file = new File([blob], m.audio.name, { type: m.audio.mimeType });
-    loadAudio(file);
-    document.getElementById('audioFileName').textContent = m.audio.name;
-    const audioClearBtn = document.getElementById('audioClearBtn');
-    if (audioClearBtn) audioClearBtn.style.display = '';
+    let blob;
+    if (m.audio.url) {
+      const resp = await fetch(m.audio.url);
+      blob = await resp.blob();
+    } else if (m.audio.data) {
+      blob = base64ToBlob(m.audio.data, m.audio.mimeType);
+    }
+    if (blob) {
+      const file = new File([blob], m.audio.name, { type: m.audio.mimeType });
+      loadAudio(file);
+      document.getElementById('audioFileName').textContent = m.audio.name;
+      const audioClearBtn = document.getElementById('audioClearBtn');
+      if (audioClearBtn) audioClearBtn.style.display = '';
+    }
   }
 
   const imageSlots = [

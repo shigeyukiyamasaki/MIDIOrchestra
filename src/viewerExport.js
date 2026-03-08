@@ -2,7 +2,7 @@
 // Viewer Export - viewer-data.js 生成 & 公開
 // ============================================
 
-const MAX_EMBED_SIZE = 50 * 1024 * 1024; // 50MB: base64埋め込みの上限
+const MAX_EMBED_SIZE = 2 * 1024 * 1024; // 2MB: base64埋め込みの上限（超過分は個別アップロード）
 const MAX_UPLOAD_SIZE = 200 * 1024 * 1024; // 200MB: 個別アップロードの上限
 
 function blobToBase64(blob) {
