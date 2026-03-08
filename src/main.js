@@ -3249,6 +3249,17 @@ function setupEventListeners() {
     });
   }
 
+  // カメラ位置リセットボタン
+  document.getElementById('cameraResetBtn')?.addEventListener('click', () => {
+    if (!camera || !controls) return;
+    camera.position.set(-150, 150, 200);
+    controls.target.set(0, 0, 0);
+    if (cameraTargetXInput) { cameraTargetXInput.value = 0; cameraTargetXValue.textContent = 0; lastXOffset = 0; }
+    if (cameraTargetYInput) { cameraTargetYInput.value = 0; cameraTargetYValue.textContent = 0; lastYOffset = 0; }
+    if (cameraTargetZInput) { cameraTargetZInput.value = 0; cameraTargetZValue.textContent = 0; lastZOffset = 0; }
+    controls.update();
+  });
+
   // カメラ状態の復元関数（presetManagerから呼ばれる）
   window.restoreCameraState = function(posX, posY, posZ, targetX, targetY, targetZ, sliderX, sliderY, sliderZ) {
     if (!camera || !controls) return;
