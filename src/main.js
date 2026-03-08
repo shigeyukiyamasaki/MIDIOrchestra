@@ -10374,10 +10374,49 @@ function loadGlbModel(file) {
       glbModel.scale.set(scale, scale, scale);
       glbModel.rotation.y = rotY * Math.PI / 180;
 
-      // 影を受ける設定
+      // 影を落とす・受ける設定（クロマキー対応デプスマテリアル付き）
       glbModel.traverse((child) => {
         if (child.isMesh) {
+          child.castShadow = true;
           child.receiveShadow = true;
+          // クロマキーで透明にした部分が影を落とさないようcustomDepthMaterialを設定
+          const mat = Array.isArray(child.material) ? child.material[0] : child.material;
+          if (mat) {
+            child.customDepthMaterial = new THREE.ShaderMaterial({
+              uniforms: {
+                map: { value: mat.map || null },
+                baseColor: { value: mat.color ? mat.color.clone() : new THREE.Color(1, 1, 1) },
+                glbChromaKeyColor: glbColorUniforms.chromaKeyColor,
+                glbChromaKeyThreshold: glbColorUniforms.chromaKeyThreshold,
+              },
+              vertexShader: [
+                'varying vec2 vUv;',
+                'void main() {',
+                '  vUv = uv;',
+                '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+                '}',
+              ].join('\n'),
+              fragmentShader: [
+                '#include <packing>',
+                'uniform sampler2D map;',
+                'uniform vec3 baseColor;',
+                'uniform vec3 glbChromaKeyColor;',
+                'uniform float glbChromaKeyThreshold;',
+                'varying vec2 vUv;',
+                'void main() {',
+                '  vec4 texColor = texture2D(map, vUv);',
+                '  vec3 diffuse = texColor.rgb * baseColor;',
+                '  if (texColor.a < 0.01) discard;',
+                '  if (glbChromaKeyThreshold > 0.0) {',
+                '    float chromaDist = distance(diffuse, glbChromaKeyColor);',
+                '    if (chromaDist < glbChromaKeyThreshold) discard;',
+                '  }',
+                '  gl_FragColor = packDepthToRGBA(gl_FragCoord.z);',
+                '}',
+              ].join('\n'),
+              side: THREE.DoubleSide,
+            });
+          }
         }
       });
 
