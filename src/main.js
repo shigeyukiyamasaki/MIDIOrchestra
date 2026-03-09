@@ -3287,6 +3287,10 @@ function setupEventListeners() {
     controls.maxPolarAngle = Math.PI - (value / 100) * (Math.PI / 2);
   });
 
+  document.getElementById('disableZoom')?.addEventListener('change', (e) => {
+    controls.enableZoom = !e.target.checked;
+  });
+
   // === エフェクト設定（統合版）===
 
   // バスドラ専用: 幕フラッシュ
@@ -10683,7 +10687,7 @@ function clearGlbModel() {
 function loadPlyBackground(files) {
   if (!THREE.PLYLoader) {
     console.error('THREE.PLYLoader is not available. Check CDN script loading.');
-    return;
+    return Promise.resolve();
   }
 
   // グループがなければ新規作成（追加読み込み対応）
@@ -10700,7 +10704,6 @@ function loadPlyBackground(files) {
   }
 
   const loader = new THREE.PLYLoader();
-  let loadedCount = 0;
 
   const opacityEl = document.getElementById('plyBgOpacity');
   const vsData = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
@@ -10709,61 +10712,56 @@ function loadPlyBackground(files) {
   // ファイル名でソート（layer0, layer1, layer2の順）
   const sortedFiles = Array.from(files).sort((a, b) => a.name.localeCompare(b.name));
 
-  // 既存のスロット数を記録（追加読み込み時にインデックスを正しく計算するため）
-  const existingCount = plyBackground.children.length;
-  sortedFiles.forEach((file, fileIndex) => {
-    plyBackgroundFiles.push(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const arrayBuffer = e.target.result;
-      console.log(`PLY file read: ${file.name}, size: ${arrayBuffer.byteLength}`);
+  // 各ファイルを順次読み込み（Promiseチェーン）
+  const filePromises = sortedFiles.map((file) => {
+    return new Promise((resolve, reject) => {
+      plyBackgroundFiles.push(file.name);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const arrayBuffer = e.target.result;
+        console.log(`PLY file read: ${file.name}, size: ${arrayBuffer.byteLength}`);
 
-      const geometry = loader.parse(arrayBuffer);
+        const geometry = loader.parse(arrayBuffer);
 
-      const hasColor = !!geometry.attributes.color;
-      console.log('[PLY]', file.name,
-        '- vertices:', geometry.attributes.position?.count,
-        'faces:', geometry.index ? geometry.index.count / 3 : 0,
-        'hasColors:', hasColor);
+        const hasColor = !!geometry.attributes.color;
+        console.log('[PLY]', file.name,
+          '- vertices:', geometry.attributes.position?.count,
+          'faces:', geometry.index ? geometry.index.count / 3 : 0,
+          'hasColors:', hasColor);
 
-      // 公式と同じ: MeshBasicMaterial + DoubleSide（頂点カラーにライティング済み）
-      const material = new THREE.MeshBasicMaterial({
-        vertexColors: hasColor,
-        color: hasColor ? 0xffffff : 0xaaaaaa,
-        side: THREE.DoubleSide,
-        transparent: opacityValue < 1,
-        opacity: opacityValue,
-        depthWrite: opacityValue >= 1,
-      });
+        const material = new THREE.MeshBasicMaterial({
+          vertexColors: hasColor,
+          color: hasColor ? 0xffffff : 0xaaaaaa,
+          side: THREE.DoubleSide,
+          transparent: opacityValue < 1,
+          opacity: opacityValue,
+          depthWrite: opacityValue >= 1,
+        });
 
-      const mesh = new THREE.Mesh(geometry, material);
+        const mesh = new THREE.Mesh(geometry, material);
 
-      // 公式と同じ座標変換: rotateX(-PI/2) → rotateZ(-PI/2)
-      mesh.rotateX(-Math.PI / 2);
-      mesh.rotateZ(-Math.PI / 2);
+        mesh.rotateX(-Math.PI / 2);
+        mesh.rotateZ(-Math.PI / 2);
 
-      // パララックス用レイヤー深度を設定（ファイル名のlayer番号から判定）
-      // layer0=前景(depth=0), layer1=中景(depth=1), layer2=空(depth=2)
-      const layerMatch = file.name.match(/layer(\d+)/i);
-      const layerIndex = layerMatch ? parseInt(layerMatch[1]) : sortedFiles.indexOf(file);
-      mesh.userData.plyLayerDepth = layerIndex; // 0=近, 1=中, 2=遠
+        const layerMatch = file.name.match(/layer(\d+)/i);
+        const layerIndex = layerMatch ? parseInt(layerMatch[1]) : sortedFiles.indexOf(file);
+        mesh.userData.plyLayerDepth = layerIndex;
 
-      plyBackground.add(mesh);
+        plyBackground.add(mesh);
+        console.log(`PLY mesh added: ${file.name}`);
+        resolve();
+      };
+      reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+      reader.readAsArrayBuffer(file);
+    });
+  });
 
-      loadedCount++;
-      console.log(`PLY mesh added: ${file.name} (${loadedCount}/${sortedFiles.length})`);
-
-      if (loadedCount === sortedFiles.length) {
-        // UI更新
-        const dropText = document.getElementById('plyBgDropZoneText');
-        if (dropText) {
-          dropText.textContent = plyBackgroundFiles.join(', ');
-        }
-
-        console.log(`PLY background loaded: ${plyBackgroundFiles.length} total meshes`);
-      }
-    };
-    reader.readAsArrayBuffer(file);
+  return Promise.all(filePromises).then(() => {
+    const dropText = document.getElementById('plyBgDropZoneText');
+    if (dropText) {
+      dropText.textContent = plyBackgroundFiles.join(', ');
+    }
+    console.log(`PLY background loaded: ${plyBackgroundFiles.length} total meshes`);
   });
 }
 
