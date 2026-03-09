@@ -128,10 +128,16 @@ let fadeOutDuration = 0.1; // フェードアウト秒数（0.1〜1.0）
 let overlapAudio = null;  // オーバーラップ用の先行再生Audio
 
 // プリセット用メディア参照
-window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, floor2: null, floor3: null, leftWall: null, rightWall: null, centerWall: null, backWall: null, panel5Wall: null, panel6Wall: null, glb: null };
+window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, floor2: null, floor3: null, leftWall: null, rightWall: null, centerWall: null, backWall: null, panel5Wall: null, panel6Wall: null, glb: null, plyBg0: null, plyBg1: null, plyBg2: null };
 
 // GLBモデル
 let glbModel = null;
+
+// PLY背景
+let plyBackground = null;        // THREE.Group（PLYメッシュ3層を格納）
+let plyBackgroundFiles = [];     // 読み込んだPLYファイル名リスト
+let plyParallaxStrength = 0.05;  // パララックス強度（キャッシュ）
+let plyBgOffsetY = 0;            // PLY背景Y軸オフセット（キャッシュ）
 
 // 床・壁面の動画対応
 let floorVideo = null, floorIsVideo = false;
@@ -5586,6 +5592,87 @@ function setupEventListeners() {
     });
   }
 
+  // PLY背景ドロップゾーン
+  const plyBgDropZone = document.getElementById('plyBgDropZone');
+  if (plyBgDropZone) {
+    document.getElementById('plyBgFileLabel')?.addEventListener('click', () => {
+      document.getElementById('plyBgFileInput')?.click();
+    });
+
+    document.getElementById('plyBgFileInput')?.addEventListener('change', (e) => {
+      const files = e.target.files;
+      if (files.length > 0) {
+        savePlyToLibrary(files);
+        loadPlyBackground(files);
+      }
+      e.target.value = '';
+    });
+
+    plyBgDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      plyBgDropZone.classList.add('drag-over');
+    });
+    plyBgDropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      plyBgDropZone.classList.remove('drag-over');
+    });
+    plyBgDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      plyBgDropZone.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer.files).filter(f => f.name.match(/\.ply$/i));
+      if (files.length > 0) {
+        savePlyToLibrary(files);
+        loadPlyBackground(files);
+      } else {
+        console.warn('PLYファイルをドロップしてください');
+      }
+    });
+  }
+
+  // PLY背景スケール
+  document.getElementById('plyBgScale')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('plyBgScaleValue').textContent = value;
+    if (plyBackground) plyBackground.scale.setScalar(value);
+  });
+
+  // PLY背景透明度
+  document.getElementById('plyBgOpacity')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('plyBgOpacityValue').textContent = value;
+    if (plyBackground) {
+      plyBackground.traverse((child) => {
+        if (child.material) {
+          child.material.opacity = value;
+          child.material.depthWrite = value >= 1;
+          child.material.needsUpdate = true;
+        }
+      });
+    }
+  });
+
+  // PLY背景Yオフセット
+  document.getElementById('plyBgOffsetY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('plyBgOffsetYValue').textContent = value;
+    plyBgOffsetY = value;
+  });
+
+  // PLY背景パララックス
+  document.getElementById('plyBgParallax')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('plyBgParallaxValue').textContent = value;
+    plyParallaxStrength = value;
+  });
+
+  // PLY背景クリア
+  document.getElementById('plyBgClear')?.addEventListener('click', () => {
+    clearPlyBackground();
+  });
+
   } // image-panel guard end
 
   // ============================================
@@ -5612,6 +5699,9 @@ function setupEventListeners() {
     panel5Wall: loadPanel5WallImage,
     panel6Wall: loadPanel6WallImage,
     glb: loadGlbModel,
+    plyBg0: (file) => loadPlyBackground([file]),
+    plyBg1: (file) => loadPlyBackground([file]),
+    plyBg2: (file) => loadPlyBackground([file]),
   };
 
   const slotMediaTypes = {
@@ -10585,6 +10675,142 @@ function clearGlbModel() {
   console.log('GLB model cleared');
 }
 
+// ============================================
+// PLY背景
+// ============================================
+
+function loadPlyBackground(files) {
+  if (!THREE.PLYLoader) {
+    console.error('THREE.PLYLoader is not available. Check CDN script loading.');
+    return;
+  }
+
+  // グループがなければ新規作成（追加読み込み対応）
+  if (!plyBackground) {
+    plyBackground = new THREE.Group();
+    plyBackground.renderOrder = -998;
+    plyBackgroundFiles = [];
+
+    const vs = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
+    const scaleEl = document.getElementById('plyBgScale');
+    const scaleValue = scaleEl ? parseFloat(scaleEl.value) : (vs && vs.plyBgScale !== undefined ? parseFloat(vs.plyBgScale) : 200);
+    plyBackground.scale.setScalar(scaleValue);
+    scene.add(plyBackground);
+  }
+
+  const loader = new THREE.PLYLoader();
+  let loadedCount = 0;
+
+  const opacityEl = document.getElementById('plyBgOpacity');
+  const vsData = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
+  const opacityValue = opacityEl ? parseFloat(opacityEl.value) : (vsData && vsData.plyBgOpacity !== undefined ? parseFloat(vsData.plyBgOpacity) : 1);
+
+  // ファイル名でソート（layer0, layer1, layer2の順）
+  const sortedFiles = Array.from(files).sort((a, b) => a.name.localeCompare(b.name));
+
+  // 既存のスロット数を記録（追加読み込み時にインデックスを正しく計算するため）
+  const existingCount = plyBackground.children.length;
+  sortedFiles.forEach((file, fileIndex) => {
+    plyBackgroundFiles.push(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const arrayBuffer = e.target.result;
+      console.log(`PLY file read: ${file.name}, size: ${arrayBuffer.byteLength}`);
+
+      const geometry = loader.parse(arrayBuffer);
+
+      const hasColor = !!geometry.attributes.color;
+      console.log('[PLY]', file.name,
+        '- vertices:', geometry.attributes.position?.count,
+        'faces:', geometry.index ? geometry.index.count / 3 : 0,
+        'hasColors:', hasColor);
+
+      // 公式と同じ: MeshBasicMaterial + DoubleSide（頂点カラーにライティング済み）
+      const material = new THREE.MeshBasicMaterial({
+        vertexColors: hasColor,
+        color: hasColor ? 0xffffff : 0xaaaaaa,
+        side: THREE.DoubleSide,
+        transparent: opacityValue < 1,
+        opacity: opacityValue,
+        depthWrite: opacityValue >= 1,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+
+      // 公式と同じ座標変換: rotateX(-PI/2) → rotateZ(-PI/2)
+      mesh.rotateX(-Math.PI / 2);
+      mesh.rotateZ(-Math.PI / 2);
+
+      // パララックス用レイヤー深度を設定（ファイル名のlayer番号から判定）
+      // layer0=前景(depth=0), layer1=中景(depth=1), layer2=空(depth=2)
+      const layerMatch = file.name.match(/layer(\d+)/i);
+      const layerIndex = layerMatch ? parseInt(layerMatch[1]) : sortedFiles.indexOf(file);
+      mesh.userData.plyLayerDepth = layerIndex; // 0=近, 1=中, 2=遠
+
+      plyBackground.add(mesh);
+
+      loadedCount++;
+      console.log(`PLY mesh added: ${file.name} (${loadedCount}/${sortedFiles.length})`);
+
+      if (loadedCount === sortedFiles.length) {
+        // UI更新
+        const dropText = document.getElementById('plyBgDropZoneText');
+        if (dropText) {
+          dropText.textContent = plyBackgroundFiles.join(', ');
+        }
+
+        console.log(`PLY background loaded: ${plyBackgroundFiles.length} total meshes`);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function savePlyToLibrary(files) {
+  if (!window.presetManager) return;
+  const existingCount = plyBackground ? plyBackground.children.length : 0;
+  const sorted = Array.from(files).sort((a, b) => a.name.localeCompare(b.name));
+  sorted.forEach((file, i) => {
+    const slotIndex = existingCount + i;
+    if (slotIndex < 3) {
+      window.presetManager.handleFileUpload(file, 'plyBg' + slotIndex);
+    }
+  });
+}
+
+function syncPlyCache() {
+  const parallaxEl = document.getElementById('plyBgParallax');
+  if (parallaxEl) plyParallaxStrength = parseFloat(parallaxEl.value);
+  const offsetYEl = document.getElementById('plyBgOffsetY');
+  if (offsetYEl) plyBgOffsetY = parseFloat(offsetYEl.value);
+}
+
+function clearPlyBackground() {
+  if (plyBackground) {
+    scene.remove(plyBackground);
+    plyBackground.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    });
+    plyBackground = null;
+  }
+  plyBackgroundFiles = [];
+
+  window.currentMediaRefs.plyBg0 = null;
+  window.currentMediaRefs.plyBg1 = null;
+  window.currentMediaRefs.plyBg2 = null;
+
+  // UI リセット
+  const fileInput = document.getElementById('plyBgFileInput');
+  if (fileInput) fileInput.value = '';
+  const text = document.getElementById('plyBgDropZoneText');
+  if (text) {
+    text.innerHTML = 'PLYをドロップ<br>(複数可)';
+  }
+
+  console.log('PLY background cleared');
+}
+
 // GLBシェーダー用uniform共有オブジェクト
 const glbColorUniforms = {
   glbHue: { value: 0.0 },
@@ -11287,6 +11513,37 @@ function animate() {
   requestAnimationFrame(animate);
   if (window._export360Active) return; // 360エクスポート中はスキップ
 
+  // PLY背景をカメラ位置に追従（パノラマメッシュは原点から見る前提のため）
+  if (plyBackground) {
+    plyBackground.position.copy(camera.position);
+    plyBackground.position.y += plyBgOffsetY;
+    // レイヤーごとのズーム視差:
+    // カメラ→ターゲット方向に各レイヤーをオフセット
+    // 近景（layer0）ほど大きくオフセット → ズーム時に大きく動く（地面が流れる感覚）
+    // 遠景（layer2）はオフセットなし → スカイドームのように動かない
+    const children = plyBackground.children;
+    if (children.length > 0 && plyParallaxStrength > 0) {
+      const invScale = 1 / (plyBackground.scale.x || 1);
+      // カメラからターゲットへの方向ベクトル
+      const dx = controls.target.x - camera.position.x;
+      const dy = controls.target.y - camera.position.y;
+      const dz = controls.target.z - camera.position.z;
+      for (let i = 0, l = children.length; i < l; i++) {
+        const child = children[i];
+        const depth = child.userData.plyLayerDepth || 0;
+        // depth=0(前景): 大きなオフセット → ズームで大きく動く
+        // depth=2(空): オフセット0 → カメラに完全追従（スカイボックス）
+        const factor = plyParallaxStrength * (2 - depth) * invScale;
+        child.position.set(dx * factor, dy * factor, dz * factor);
+      }
+    } else {
+      // パララックス無効時はリセット
+      for (let i = 0, l = children.length; i < l; i++) {
+        children[i].position.set(0, 0, 0);
+      }
+    }
+  }
+
   // 前フレームのシェイクオフセットを除去（OrbitControlsが正しい位置で動作するため）
   removeCameraShakeOffset();
 
@@ -11951,6 +12208,9 @@ async function loadViewerData() {
     { key: 'panel5Wall', loadFn: loadPanel5WallImage },
     { key: 'panel6Wall', loadFn: loadPanel6WallImage },
     { key: 'glb', loadFn: loadGlbModel },
+    { key: 'plyBg0', loadFn: (file) => loadPlyBackground([file]) },
+    { key: 'plyBg1', loadFn: (file) => loadPlyBackground([file]) },
+    { key: 'plyBg2', loadFn: (file) => loadPlyBackground([file]) },
   ];
 
   // メディア読み込み（URL参照の動画はストリーミング、それ以外はblob変換）
@@ -12280,6 +12540,7 @@ window.appFunctions = {
   loadSkyDomeImage, loadInnerSkyImage, loadFloorImage, loadFloor2Image, loadFloor3Image, loadLeftWallImage, loadCenterWallImage, loadRightWallImage, loadBackWallImage, loadPanel5WallImage, loadPanel6WallImage,
   clearSkyDomeImage, clearInnerSkyImage, clearFloorImage, clearFloor2Image, clearFloor3Image, clearLeftWallImage, clearCenterWallImage, clearRightWallImage, clearBackWallImage, clearPanel5WallImage, clearPanel6WallImage,
   loadGlbModel, clearGlbModel,
+  loadPlyBackground, clearPlyBackground, syncPlyCache,
   updateTrackPanel, debouncedRebuildNotes,
 };
 

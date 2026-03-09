@@ -818,6 +818,7 @@ async function loadPreset(presetId) {
   app.clearPanel5WallImage();
   app.clearPanel6WallImage();
   app.clearGlbModel();
+  app.clearPlyBackground();
 
   // MIDI/Audioクリア
   app.clearMidi();
@@ -825,6 +826,9 @@ async function loadPreset(presetId) {
 
   // 設定適用
   applySettings(preset.settings);
+
+  // PLY背景のキャッシュ変数をDOMから同期
+  if (app.syncPlyCache) app.syncPlyCache();
 
   // メディア復元
   const media = preset.media || {};
@@ -845,6 +849,9 @@ async function loadPreset(presetId) {
     window.currentMediaRefs.panel5Wall = media.panel5Wall || null;
     window.currentMediaRefs.panel6Wall = media.panel6Wall || null;
     window.currentMediaRefs.glb = media.glb || null;
+    window.currentMediaRefs.plyBg0 = media.plyBg0 || null;
+    window.currentMediaRefs.plyBg1 = media.plyBg1 || null;
+    window.currentMediaRefs.plyBg2 = media.plyBg2 || null;
   }
 
   if (media.midi) {
@@ -917,6 +924,13 @@ async function loadPreset(presetId) {
   }
   if (media.glb) {
     await restoreMediaSlot(media.glb, app.loadGlbModel, null);
+  }
+  // PLY背景（複数ファイル）を順番に復元
+  for (let i = 0; i < 3; i++) {
+    const key = 'plyBg' + i;
+    if (media[key]) {
+      await restoreMediaSlot(media[key], (file) => app.loadPlyBackground([file]), null);
+    }
   }
 
   console.log('Preset loaded:', preset.name);
@@ -1059,6 +1073,7 @@ async function handleFileUpload(file, slotName) {
   let type = 'image';
   if (file.name.match(/\.(mid|midi)$/i)) type = 'midi';
   else if (file.name.match(/\.(glb|gltf)$/i)) type = 'model';
+  else if (file.name.match(/\.ply$/i)) type = 'model';
   else if (file.type.startsWith('audio/')) type = 'audio';
   else if (file.type.startsWith('video/')) type = 'video';
 
