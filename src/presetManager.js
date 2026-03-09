@@ -852,6 +852,7 @@ async function loadPreset(presetId) {
     window.currentMediaRefs.plyBg0 = media.plyBg0 || null;
     window.currentMediaRefs.plyBg1 = media.plyBg1 || null;
     window.currentMediaRefs.plyBg2 = media.plyBg2 || null;
+    window.currentMediaRefs.plyBg3 = media.plyBg3 || null;
   }
 
   if (media.midi) {
@@ -926,7 +927,7 @@ async function loadPreset(presetId) {
     await restoreMediaSlot(media.glb, app.loadGlbModel, null);
   }
   // PLY背景（複数ファイル）を順番に復元
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     const key = 'plyBg' + i;
     if (media[key]) {
       await restoreMediaSlot(media[key], (file) => app.loadPlyBackground([file]), null);

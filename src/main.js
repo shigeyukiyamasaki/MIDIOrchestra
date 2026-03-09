@@ -128,7 +128,7 @@ let fadeOutDuration = 0.1; // フェードアウト秒数（0.1〜1.0）
 let overlapAudio = null;  // オーバーラップ用の先行再生Audio
 
 // プリセット用メディア参照
-window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, floor2: null, floor3: null, leftWall: null, rightWall: null, centerWall: null, backWall: null, panel5Wall: null, panel6Wall: null, glb: null, plyBg0: null, plyBg1: null, plyBg2: null };
+window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: null, floor: null, floor2: null, floor3: null, leftWall: null, rightWall: null, centerWall: null, backWall: null, panel5Wall: null, panel6Wall: null, glb: null, plyBg0: null, plyBg1: null, plyBg2: null, plyBg3: null };
 
 // GLBモデル
 let glbModel = null;
@@ -5702,6 +5702,7 @@ function setupEventListeners() {
     plyBg0: (file) => loadPlyBackground([file]),
     plyBg1: (file) => loadPlyBackground([file]),
     plyBg2: (file) => loadPlyBackground([file]),
+    plyBg3: (file) => loadPlyBackground([file]),
   };
 
   const slotMediaTypes = {
@@ -10772,7 +10773,7 @@ function savePlyToLibrary(files) {
   const sorted = Array.from(files).sort((a, b) => a.name.localeCompare(b.name));
   sorted.forEach((file, i) => {
     const slotIndex = existingCount + i;
-    if (slotIndex < 3) {
+    if (slotIndex < 4) {
       window.presetManager.handleFileUpload(file, 'plyBg' + slotIndex);
     }
   });
@@ -10799,6 +10800,7 @@ function clearPlyBackground() {
   window.currentMediaRefs.plyBg0 = null;
   window.currentMediaRefs.plyBg1 = null;
   window.currentMediaRefs.plyBg2 = null;
+  window.currentMediaRefs.plyBg3 = null;
 
   // UI リセット
   const fileInput = document.getElementById('plyBgFileInput');
@@ -12211,6 +12213,7 @@ async function loadViewerData() {
     { key: 'plyBg0', loadFn: (file) => loadPlyBackground([file]) },
     { key: 'plyBg1', loadFn: (file) => loadPlyBackground([file]) },
     { key: 'plyBg2', loadFn: (file) => loadPlyBackground([file]) },
+    { key: 'plyBg3', loadFn: (file) => loadPlyBackground([file]) },
   ];
 
   // メディア読み込み（URL参照の動画はストリーミング、それ以外はblob変換）
