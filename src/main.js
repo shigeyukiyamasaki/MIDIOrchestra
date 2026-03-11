@@ -5601,9 +5601,17 @@ function setupEventListeners() {
   document.getElementById('glbPointDensity')?.addEventListener('input', (e) => {
     const val = parseInt(e.target.value);
     document.getElementById('glbPointDensityValue').textContent = val;
-    // 3DGSモデルが読み込み済みならキャッシュから再構築
     if (glbModel && glbModel.userData.is3DGS && glbModel.userData._gsArrayBuffer) {
-      rebuild3DGSFromCache(glbModel.userData._gsArrayBuffer, glbModel.userData.originalFile, val);
+      rebuild3DGSFromCache(glbModel.userData._gsArrayBuffer, glbModel.userData.originalFile);
+    }
+  });
+
+  // トリム（3DGS PLY用 - 重心から遠い点を除去）
+  document.getElementById('glbTrim')?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    document.getElementById('glbTrimValue').textContent = val + '%';
+    if (glbModel && glbModel.userData.is3DGS && glbModel.userData._gsArrayBuffer) {
+      rebuild3DGSFromCache(glbModel.userData._gsArrayBuffer, glbModel.userData.originalFile);
     }
   });
 
@@ -10561,12 +10569,61 @@ function parse3DGSPly(arrayBuffer) {
 
   console.log('[PLY] 3DGS filtered:', vertexCount, '->', kept, 'points (removed', vertexCount - kept, 'background)');
 
+  // 生データを返す（トリム・センタリングは build3DGSGeometry で行う）
+  return { positions, colors, vertexCount: kept };
+}
+
+// 3DGS生データからジオメトリを構築（トリム適用→センタリング→座標変換）
+function build3DGSGeometry(positions, colors, count, trimPercent) {
+  let finalPos = positions;
+  let finalCol = colors;
+  let finalCount = count;
+
+  if (trimPercent > 0) {
+    // 重心を計算
+    let cx = 0, cy = 0, cz = 0;
+    for (let i = 0; i < count; i++) {
+      cx += positions[i * 3];
+      cy += positions[i * 3 + 1];
+      cz += positions[i * 3 + 2];
+    }
+    cx /= count; cy /= count; cz /= count;
+
+    // 各点の重心からの距離²を計算
+    const dists = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      const dx = positions[i * 3] - cx;
+      const dy = positions[i * 3 + 1] - cy;
+      const dz = positions[i * 3 + 2] - cz;
+      dists[i] = dx * dx + dy * dy + dz * dz;
+    }
+
+    // 距離でソートしたインデックスを取得し、上位N%を除去
+    const indices = Array.from({ length: count }, (_, i) => i);
+    indices.sort((a, b) => dists[a] - dists[b]);
+    const keepCount = Math.max(1, Math.floor(count * (1 - trimPercent / 100)));
+
+    finalPos = new Float32Array(keepCount * 3);
+    finalCol = new Float32Array(keepCount * 3);
+    for (let i = 0; i < keepCount; i++) {
+      const src = indices[i];
+      finalPos[i * 3]     = positions[src * 3];
+      finalPos[i * 3 + 1] = positions[src * 3 + 1];
+      finalPos[i * 3 + 2] = positions[src * 3 + 2];
+      finalCol[i * 3]     = colors[src * 3];
+      finalCol[i * 3 + 1] = colors[src * 3 + 1];
+      finalCol[i * 3 + 2] = colors[src * 3 + 2];
+    }
+    finalCount = keepCount;
+    console.log(`[PLY] Trimmed: ${count} → ${keepCount} points (removed ${trimPercent}% farthest)`);
+  }
+
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(finalPos, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(finalCol, 3));
   geometry.computeBoundingBox();
 
-  // ジオメトリをバウンディングボックスの中心にリセンター（原点ずれ対策）
+  // バウンディングボックスの中心にリセンター
   const center = new THREE.Vector3();
   geometry.boundingBox.getCenter(center);
   geometry.translate(-center.x, -center.y, -center.z);
@@ -10575,8 +10632,8 @@ function parse3DGSPly(arrayBuffer) {
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
 
-  console.log('[PLY] 3DGS parsed:', vertexCount, 'gaussians, centered from:', center.toArray().map(v => v.toFixed(2)));
-  return { geometry, vertexCount: kept };
+  console.log(`[PLY] 3DGS built: ${finalCount} points, centered from:`, center.toArray().map(v => v.toFixed(2)));
+  return { geometry, vertexCount: finalCount };
 }
 
 // 3DGSポイントクラウドの点数を補間で増やす（k近傍の中間点を生成）
@@ -10676,10 +10733,13 @@ function interpolate3DGSPoints(geometry, density) {
 }
 
 // キャッシュされたarrayBufferから3DGSを再構築（密度変更時）
-function rebuild3DGSFromCache(arrayBuffer, file, density) {
+function rebuild3DGSFromCache(arrayBuffer, file) {
   const gsResult = parse3DGSPly(arrayBuffer);
   if (!gsResult) return;
-  const finalGeometry = density > 0 ? interpolate3DGSPoints(gsResult.geometry, density) : gsResult.geometry;
+  const trim = parseFloat(document.getElementById('glbTrim')?.value || '0');
+  const density = parseInt(document.getElementById('glbPointDensity')?.value || '0');
+  const built = build3DGSGeometry(gsResult.positions, gsResult.colors, gsResult.vertexCount, trim);
+  const finalGeometry = density > 0 ? interpolate3DGSPoints(built.geometry, density) : built.geometry;
   const material = new THREE.PointsMaterial({
     size: parseFloat(document.getElementById('glbPointSize')?.value || '2'),
     vertexColors: true,
@@ -10869,10 +10929,17 @@ function loadGlbModel(file) {
       if (gsResult) {
         // 3DGS PLY: ポイントクラウドとして描画
         console.log('[PLY] 3DGS format detected, vertices:', gsResult.vertexCount);
-        const densityEl = document.getElementById('glbPointDensity');
-        const vs = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
-        const density = parseInt(densityEl ? densityEl.value : (vs && vs.glbPointDensity !== undefined ? vs.glbPointDensity : '0'));
-        const finalGeometry = density > 0 ? interpolate3DGSPoints(gsResult.geometry, density) : gsResult.geometry;
+        const getSettingVal = (id, def) => {
+          const el = document.getElementById(id);
+          if (el) return parseFloat(el.value);
+          const vsd = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
+          if (vsd && vsd[id] !== undefined) return parseFloat(vsd[id]);
+          return def;
+        };
+        const trim = getSettingVal('glbTrim', 0);
+        const density = getSettingVal('glbPointDensity', 0);
+        const built = build3DGSGeometry(gsResult.positions, gsResult.colors, gsResult.vertexCount, trim);
+        const finalGeometry = density > 0 ? interpolate3DGSPoints(built.geometry, density) : built.geometry;
         const material = new THREE.PointsMaterial({
           size: 2,
           vertexColors: true,
