@@ -5597,6 +5597,16 @@ function setupEventListeners() {
     }
   });
 
+  // 補間密度（3DGS PLY用 - 読み込み時に適用）
+  document.getElementById('glbPointDensity')?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    document.getElementById('glbPointDensityValue').textContent = val;
+    // 3DGSモデルが読み込み済みならキャッシュから再構築
+    if (glbModel && glbModel.userData.is3DGS && glbModel.userData._gsArrayBuffer) {
+      rebuild3DGSFromCache(glbModel.userData._gsArrayBuffer, glbModel.userData.originalFile, val);
+    }
+  });
+
   // クリア
   document.getElementById('glbClear')?.addEventListener('click', () => {
     clearGlbModel();
@@ -10566,7 +10576,122 @@ function parse3DGSPly(arrayBuffer) {
   geometry.computeBoundingSphere();
 
   console.log('[PLY] 3DGS parsed:', vertexCount, 'gaussians, centered from:', center.toArray().map(v => v.toFixed(2)));
-  return { geometry, vertexCount };
+  return { geometry, vertexCount: kept };
+}
+
+// 3DGSポイントクラウドの点数を補間で増やす（k近傍の中間点を生成）
+function interpolate3DGSPoints(geometry, density) {
+  if (density <= 0) return geometry;
+
+  const srcPos = geometry.attributes.position.array;
+  const srcCol = geometry.attributes.color.array;
+  const count = srcPos.length / 3;
+
+  console.log(`[PLY] Interpolation: ${count} points, density=${density}`);
+  const t0 = performance.now();
+
+  // 空間グリッドで近傍探索を高速化
+  const gridSize = 0.05; // グリッドセルサイズ
+  const grid = new Map();
+  const key = (x, y, z) => `${Math.floor(x / gridSize)},${Math.floor(y / gridSize)},${Math.floor(z / gridSize)}`;
+
+  for (let i = 0; i < count; i++) {
+    const k = key(srcPos[i * 3], srcPos[i * 3 + 1], srcPos[i * 3 + 2]);
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k).push(i);
+  }
+
+  // 近傍探索: 3x3x3のグリッドセルを探索
+  const kNeighbors = Math.min(density, 6);
+  const newPositions = [];
+  const newColors = [];
+
+  for (let i = 0; i < count; i++) {
+    const px = srcPos[i * 3], py = srcPos[i * 3 + 1], pz = srcPos[i * 3 + 2];
+    const gx = Math.floor(px / gridSize), gy = Math.floor(py / gridSize), gz = Math.floor(pz / gridSize);
+
+    // 近傍候補を収集
+    const candidates = [];
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const cell = grid.get(`${gx + dx},${gy + dy},${gz + dz}`);
+          if (cell) {
+            for (const j of cell) {
+              if (j <= i) continue; // 重複回避: i < j のペアのみ
+              const dx2 = srcPos[j * 3] - px;
+              const dy2 = srcPos[j * 3 + 1] - py;
+              const dz2 = srcPos[j * 3 + 2] - pz;
+              const dist2 = dx2 * dx2 + dy2 * dy2 + dz2 * dz2;
+              if (dist2 > 0 && dist2 < gridSize * gridSize * 4) {
+                candidates.push({ idx: j, dist2 });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 距離順にソートしてk近傍を取得
+    candidates.sort((a, b) => a.dist2 - b.dist2);
+    const neighbors = candidates.slice(0, kNeighbors);
+
+    // 各近傍との中間点を生成
+    for (const nb of neighbors) {
+      const j = nb.idx;
+      newPositions.push(
+        (px + srcPos[j * 3]) * 0.5,
+        (py + srcPos[j * 3 + 1]) * 0.5,
+        (pz + srcPos[j * 3 + 2]) * 0.5
+      );
+      newColors.push(
+        (srcCol[i * 3] + srcCol[j * 3]) * 0.5,
+        (srcCol[i * 3 + 1] + srcCol[j * 3 + 1]) * 0.5,
+        (srcCol[i * 3 + 2] + srcCol[j * 3 + 2]) * 0.5
+      );
+    }
+  }
+
+  const newCount = count + newPositions.length / 3;
+  console.log(`[PLY] Interpolated: +${newPositions.length / 3} points → ${newCount} total (${(performance.now() - t0).toFixed(0)}ms)`);
+
+  // 元のデータと補間データを結合
+  const mergedPos = new Float32Array(newCount * 3);
+  const mergedCol = new Float32Array(newCount * 3);
+  mergedPos.set(srcPos);
+  mergedCol.set(srcCol);
+  mergedPos.set(new Float32Array(newPositions), count * 3);
+  mergedCol.set(new Float32Array(newColors), count * 3);
+
+  const newGeometry = new THREE.BufferGeometry();
+  newGeometry.setAttribute('position', new THREE.Float32BufferAttribute(mergedPos, 3));
+  newGeometry.setAttribute('color', new THREE.Float32BufferAttribute(mergedCol, 3));
+  newGeometry.computeBoundingBox();
+  newGeometry.computeBoundingSphere();
+
+  // 元のジオメトリを破棄
+  geometry.dispose();
+
+  return newGeometry;
+}
+
+// キャッシュされたarrayBufferから3DGSを再構築（密度変更時）
+function rebuild3DGSFromCache(arrayBuffer, file, density) {
+  const gsResult = parse3DGSPly(arrayBuffer);
+  if (!gsResult) return;
+  const finalGeometry = density > 0 ? interpolate3DGSPoints(gsResult.geometry, density) : gsResult.geometry;
+  const material = new THREE.PointsMaterial({
+    size: parseFloat(document.getElementById('glbPointSize')?.value || '2'),
+    vertexColors: true,
+    sizeAttenuation: false,
+  });
+  const points = new THREE.Points(finalGeometry, material);
+  const group = new THREE.Group();
+  group.add(points);
+  group.userData.isPly = true;
+  group.userData.is3DGS = true;
+  group.userData._gsArrayBuffer = arrayBuffer;
+  setupGlbScene(group, file);
 }
 
 function setupGlbScene(sceneGroup, file) {
@@ -10586,6 +10711,7 @@ function setupGlbScene(sceneGroup, file) {
   }
 
   glbModel = sceneGroup;
+  glbModel.userData.originalFile = file;
 
   // バウンディングボックスでサイズを計算し、自動スケーリング
   const box = new THREE.Box3().setFromObject(glbModel);
@@ -10743,16 +10869,21 @@ function loadGlbModel(file) {
       if (gsResult) {
         // 3DGS PLY: ポイントクラウドとして描画
         console.log('[PLY] 3DGS format detected, vertices:', gsResult.vertexCount);
+        const densityEl = document.getElementById('glbPointDensity');
+        const vs = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
+        const density = parseInt(densityEl ? densityEl.value : (vs && vs.glbPointDensity !== undefined ? vs.glbPointDensity : '0'));
+        const finalGeometry = density > 0 ? interpolate3DGSPoints(gsResult.geometry, density) : gsResult.geometry;
         const material = new THREE.PointsMaterial({
           size: 2,
           vertexColors: true,
           sizeAttenuation: false,
         });
-        const points = new THREE.Points(gsResult.geometry, material);
+        const points = new THREE.Points(finalGeometry, material);
         const group = new THREE.Group();
         group.add(points);
         group.userData.isPly = true;
         group.userData.is3DGS = true;
+        group.userData._gsArrayBuffer = arrayBuffer;
         setupGlbScene(group, file);
         return;
       }
