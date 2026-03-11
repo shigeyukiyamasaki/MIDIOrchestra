@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Orchestra Visualizer</title>
-  <link rel="stylesheet" href="style.css?v=20260219a">
+  <link rel="stylesheet" href="style.css?v=20260311j">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
@@ -334,6 +334,75 @@
           <span id="effectGlitchValue">0</span>
         </div>
 
+        <!-- 地形エフェクト -->
+        <h3 style="margin-top:20px; padding-bottom:10px; border-bottom:1px solid #fff; font-size:16px; color:#fff;">地形エフェクト</h3>
+        <h4 class="setting-category"><span>水面</span><input type="checkbox" id="waterSurfaceEnabled"></h4>
+        <div class="setting-item">
+          <label>面積</label>
+          <input type="range" id="waterSurfaceSize" min="100" max="2000" step="50" value="500">
+          <span id="waterSurfaceSizeValue">500</span>
+        </div>
+        <div class="setting-item">
+          <label>スケール</label>
+          <input type="range" id="waterSurfaceScale" min="10" max="500" step="1" value="40">
+          <span id="waterSurfaceScaleValue">40</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="waterSurfaceSpeed" min="0.1" max="3" step="0.1" value="1">
+          <span id="waterSurfaceSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>深色</label>
+          <input type="color" id="waterSurfaceColor" value="#1a3a6a">
+          <label>浅色</label>
+          <input type="color" id="waterSurfaceColor2" value="#4a9eed">
+        </div>
+        <div class="setting-item">
+          <label>不透明度</label>
+          <input type="range" id="waterSurfaceOpacity" min="0" max="1" step="0.05" value="0.6">
+          <span id="waterSurfaceOpacityValue">0.6</span>
+        </div>
+        <div class="setting-item">
+          <label>コースティクス</label>
+          <input type="range" id="waterSurfaceCaustic" min="0" max="1" step="0.05" value="0.5">
+          <span id="waterSurfaceCausticValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>波高さ</label>
+          <input type="range" id="waterSurfaceWaveHeight" min="0" max="20" step="0.5" value="3">
+          <span id="waterSurfaceWaveHeightValue">3</span>
+        </div>
+        <div class="setting-item">
+          <label>高度</label>
+          <input type="range" id="waterSurfaceHeight" min="-50" max="50" step="1" value="0">
+          <span id="waterSurfaceHeightValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>サンパス強度</label>
+          <input type="range" id="waterSunPathIntensity" min="0" max="3" step="0.05" value="0">
+          <span id="waterSunPathIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>サンパス鋭さ</label>
+          <input type="range" id="waterSunPathSharpness" min="2" max="128" step="1" value="32">
+          <span id="waterSunPathSharpnessValue">32</span>
+        </div>
+        <div class="setting-item">
+          <label>サンパス色</label>
+          <input type="color" id="waterSunPathColor" value="#ffffff">
+        </div>
+        <div class="setting-item">
+          <label>スパークル</label>
+          <input type="range" id="waterSparkleIntensity" min="0" max="3" step="0.05" value="0">
+          <span id="waterSparkleIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>スパークル範囲</label>
+          <input type="range" id="waterSparkleRange" min="0" max="1" step="0.05" value="0.5">
+          <span id="waterSparkleRangeValue">0.5</span>
+        </div>
+
       </div>
     </div>
     <!-- 天候エフェクトパネル（右列） -->
@@ -519,78 +588,6 @@
         </div>
       </div>
     </div>
-    <!-- 地形エフェクトパネル（右列） -->
-    <div id="terrain-panel" class="settings-column">
-      <h3>地形エフェクト</h3>
-      <div id="terrain-list">
-        <h4 class="setting-category"><span>水面</span><input type="checkbox" id="waterSurfaceEnabled"></h4>
-        <div class="setting-item">
-          <label>面積</label>
-          <input type="range" id="waterSurfaceSize" min="100" max="2000" step="50" value="500">
-          <span id="waterSurfaceSizeValue">500</span>
-        </div>
-        <div class="setting-item">
-          <label>スケール</label>
-          <input type="range" id="waterSurfaceScale" min="10" max="500" step="1" value="40">
-          <span id="waterSurfaceScaleValue">40</span>
-        </div>
-        <div class="setting-item">
-          <label>速度</label>
-          <input type="range" id="waterSurfaceSpeed" min="0.1" max="3" step="0.1" value="1">
-          <span id="waterSurfaceSpeedValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>深色</label>
-          <input type="color" id="waterSurfaceColor" value="#1a3a6a">
-          <label>浅色</label>
-          <input type="color" id="waterSurfaceColor2" value="#4a9eed">
-        </div>
-        <div class="setting-item">
-          <label>不透明度</label>
-          <input type="range" id="waterSurfaceOpacity" min="0" max="1" step="0.05" value="0.6">
-          <span id="waterSurfaceOpacityValue">0.6</span>
-        </div>
-        <div class="setting-item">
-          <label>コースティクス</label>
-          <input type="range" id="waterSurfaceCaustic" min="0" max="1" step="0.05" value="0.5">
-          <span id="waterSurfaceCausticValue">0.5</span>
-        </div>
-        <div class="setting-item">
-          <label>波高さ</label>
-          <input type="range" id="waterSurfaceWaveHeight" min="0" max="20" step="0.5" value="3">
-          <span id="waterSurfaceWaveHeightValue">3</span>
-        </div>
-        <div class="setting-item">
-          <label>高度</label>
-          <input type="range" id="waterSurfaceHeight" min="-50" max="50" step="1" value="0">
-          <span id="waterSurfaceHeightValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>サンパス強度</label>
-          <input type="range" id="waterSunPathIntensity" min="0" max="3" step="0.05" value="0">
-          <span id="waterSunPathIntensityValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>サンパス鋭さ</label>
-          <input type="range" id="waterSunPathSharpness" min="2" max="128" step="1" value="32">
-          <span id="waterSunPathSharpnessValue">32</span>
-        </div>
-        <div class="setting-item">
-          <label>サンパス色</label>
-          <input type="color" id="waterSunPathColor" value="#ffffff">
-        </div>
-        <div class="setting-item">
-          <label>スパークル</label>
-          <input type="range" id="waterSparkleIntensity" min="0" max="3" step="0.05" value="0">
-          <span id="waterSparkleIntensityValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>スパークル範囲</label>
-          <input type="range" id="waterSparkleRange" min="0" max="1" step="0.05" value="0.5">
-          <span id="waterSparkleRangeValue">0.5</span>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- 画像配置パネル（メインエリア上部） -->
@@ -607,7 +604,7 @@
             <input type="file" id="plyBgFileInput" accept=".ply" multiple style="display:none;">
           </div>
           <div class="image-controls">
-            <div class="control-row"><label>大きさ</label><input type="range" id="plyBgScale" min="1" max="1000" step="1" value="200"><span id="plyBgScaleValue">200</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="plyBgScale" min="1" max="1000" step="1" value="200"><span id="plyBgScaleValue">200</span></div>
             <div class="control-row"><label>透明度</label><input type="range" id="plyBgOpacity" min="0" max="1" step="0.05" value="1"><span id="plyBgOpacityValue">1</span></div>
             <div class="control-row"><label>Yオフセット</label><input type="range" id="plyBgOffsetY" min="-1000" max="1000" step="1" value="0"><span id="plyBgOffsetYValue">0</span></div>
             <div class="control-row"><label>視差</label><input type="range" id="plyBgParallax" min="0" max="0.2" step="0.005" value="0.05"><span id="plyBgParallaxValue">0.05</span></div>
@@ -912,7 +909,9 @@
         </div>
       </div>
 
-      <!-- 3Dモデル -->
+    </div>
+    <div id="image-list-row3">
+      <!-- 3Dモデル（列1: ファイル・位置・回転） -->
       <div class="image-section">
         <h4 class="setting-category">3Dモデル</h4>
         <div class="image-row">
@@ -926,21 +925,41 @@
             <div class="control-row"><label>X</label><input type="range" id="glbPosX" min="-500" max="500" step="5" value="0"><span id="glbPosXValue">0</span></div>
             <div class="control-row"><label>Y</label><input type="range" id="glbPosY" min="-500" max="500" step="5" value="0"><span id="glbPosYValue">0</span></div>
             <div class="control-row"><label>Z</label><input type="range" id="glbPosZ" min="-500" max="500" step="5" value="0"><span id="glbPosZValue">0</span></div>
-            <div class="control-row"><label>大きさ</label><input type="range" id="glbScale" min="1" max="100000" step="1" value="100"><span id="glbScaleValue">100</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="glbScale" min="1" max="100000" step="1" value="100"><span id="glbScaleValue">100</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- 3Dモデル（列2: 回転） -->
+      <div class="image-section">
+        <div class="image-row">
+          <div class="image-controls">
             <div class="control-row"><label>回転X</label><input type="range" id="glbRotX" min="0" max="360" step="1" value="0"><span id="glbRotXValue">0</span></div>
             <div class="control-row"><label>回転Y</label><input type="range" id="glbRotY" min="0" max="360" step="1" value="0"><span id="glbRotYValue">0</span></div>
             <div class="control-row"><label>回転Z</label><input type="range" id="glbRotZ" min="0" max="360" step="1" value="0"><span id="glbRotZValue">0</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- 3Dモデル（列3: 色調整・エフェクト） -->
+      <div class="image-section">
+        <div class="image-row">
+          <div class="image-controls">
             <div class="control-row"><label>色合い</label><input type="range" id="glbHue" min="0" max="360" step="1" value="0"><span id="glbHueValue">0</span></div>
             <div class="control-row"><label>明るさ</label><input type="range" id="glbBrightness" min="-100" max="100" step="1" value="0"><span id="glbBrightnessValue">0</span></div>
             <div class="control-row"><label>コントラスト</label><input type="range" id="glbContrast" min="-100" max="100" step="1" value="0"><span id="glbContrastValue">0</span></div>
-            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="glbChromaColor" value="#00ff00"><input type="range" id="glbChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="glbChromaThresholdValue">0</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- 3Dモデル（列4: 透過・ドット絵・点サイズ） -->
+      <div class="image-section">
+        <div class="image-row">
+          <div class="image-controls">
             <div class="control-row"><label>ドット絵</label><input type="range" id="glbPixelArt" min="0" max="128" step="1" value="0"><span id="glbPixelArtValue">0</span></div>
             <div class="control-row"><label>点サイズ</label><input type="range" id="glbPointSize" min="1" max="30" step="0.5" value="2"><span id="glbPointSizeValue">2</span></div>
+            <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="glbChromaColor" value="#00ff00"><input type="range" id="glbChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="glbChromaThresholdValue">0</span></div>
             <button id="glbClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
       </div>
-
     </div>
   </div>
 
@@ -1220,6 +1239,6 @@
 
   <script src="src/presetManager.js?v=20260310c"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260311l"></script>
+  <script type="module" src="src/main.js?v=20260312c"></script>
 </body>
 </html>

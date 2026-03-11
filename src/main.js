@@ -2344,16 +2344,12 @@ function syncImagePanelHeight() {
   const imagePanel = document.getElementById('image-panel');
   const canvasContainer = document.getElementById('canvas-container');
   if (!imagePanel || !canvasContainer) return;
-  const panelBottom = imagePanel.offsetTop + imagePanel.offsetHeight;
-  canvasContainer.style.top = panelBottom + 'px';
+  canvasContainer.style.bottom = imagePanel.offsetHeight + 'px';
 }
 
-// 表示設定パネルの高さに合わせてキャンバスコンテナのbottomを自動調整
+// 表示設定パネル（左カラム化のため不要だがコール互換のため残す）
 function syncDisplayPanelHeight() {
-  const displayPanel = document.getElementById('display-settings-panel');
-  const canvasContainer = document.getElementById('canvas-container');
-  if (!displayPanel || !canvasContainer) return;
-  canvasContainer.style.bottom = displayPanel.offsetHeight + 'px';
+  // no-op: 表示設定パネルは左カラムに移動したためbottom調整不要
 }
 
 // 影受けプレーンの表示を更新（影ON/OFF＋床1の有無を考慮）
@@ -3670,6 +3666,19 @@ function setupEventListeners() {
     // 水面（両レイヤー）
     if (waterSurfaceMaterial?.uniforms?.lightColor) waterSurfaceMaterial.uniforms.lightColor.value.copy(tint);
     if (waterTintMaterial?.uniforms?.lightColor) waterTintMaterial.uniforms.lightColor.value.copy(tint);
+    // PLY/GLBモデル
+    if (glbModel) {
+      glbModel.traverse((child) => {
+        if ((child.isMesh || child.isPoints) && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach(m => {
+            if (m.userData && m.userData._plyLightColor) {
+              m.userData._plyLightColor.value.copy(tint);
+            }
+          });
+        }
+      });
+    }
     // 天候パーティクル
     if (weatherParticles?.material?.color) {
       const base = weatherParticles.geometry._isRain ? new THREE.Color(0xaaccff) : new THREE.Color(0xffffff);
@@ -11047,6 +11056,13 @@ function clearPlyBackground() {
   console.log('PLY background cleared');
 }
 
+// 3DGS PLYシャドウ用共有uniform
+const plyShadowUniforms = {
+  map: { value: null },
+  matrix: { value: new THREE.Matrix4() },
+  enabled: { value: 0.0 },
+};
+
 // GLBシェーダー用uniform共有オブジェクト
 const glbColorUniforms = {
   glbHue: { value: 0.0 },
@@ -11202,16 +11218,29 @@ function setupPlyShaderOverride() {
     if ((child.isMesh || child.isPoints) && child.material) {
       const mats = Array.isArray(child.material) ? child.material : [child.material];
       mats.forEach(m => {
+        // lightColor uniformを作成し、materailのuserDataに保持（syncLightToMaterialsから参照）
+        const lightColorUniform = { value: new THREE.Color(1, 1, 1) };
+        if (!m.userData) m.userData = {};
+        m.userData._plyLightColor = lightColorUniform;
+        // 初期値: 現在の光源色を反映
+        if (sunLight) {
+          const colorEnabled = document.getElementById('sunLightColorEnabled')?.checked;
+          if (colorEnabled) {
+            lightColorUniform.value.copy(sunLight.color).multiplyScalar(sunLight.intensity);
+          }
+        }
+
         m.onBeforeCompile = (shader) => {
           shader.uniforms.glbHue = glbColorUniforms.glbHue;
           shader.uniforms.glbBrightness = glbColorUniforms.glbBrightness;
           shader.uniforms.glbContrast = glbColorUniforms.glbContrast;
+          shader.uniforms.plyLightColor = lightColorUniform;
 
           shader.fragmentShader =
-            'uniform float glbHue;\nuniform float glbBrightness;\nuniform float glbContrast;\n' +
+            'uniform float glbHue;\nuniform float glbBrightness;\nuniform float glbContrast;\nuniform vec3 plyLightColor;\n' +
             shader.fragmentShader;
 
-          // MeshStandardMaterial/MeshBasicMaterial: #include <dithering_fragment> の前に注入
+          // MeshStandardMaterial: ライティング自動適用のため光色はシェーダーに注入しない（色調整のみ）
           const withDithering = shader.fragmentShader.replace(
             '#include <dithering_fragment>',
             colorAdjustCode + '\n#include <dithering_fragment>'
@@ -11219,10 +11248,39 @@ function setupPlyShaderOverride() {
           if (withDithering !== shader.fragmentShader) {
             shader.fragmentShader = withDithering;
           } else {
-            // PointsMaterial: #include <fog_fragment> の前に注入
+            // PointsMaterial（3DGS）: unlit なので光色・影もシェーダーで適用
+            shader.uniforms.plyShadowMap = plyShadowUniforms.map;
+            shader.uniforms.plyShadowMatrix = plyShadowUniforms.matrix;
+            shader.uniforms.plyShadowEnabled = plyShadowUniforms.enabled;
+
+            // 頂点シェーダー: fog_vertexの後にシャドウ座標計算を注入
+            shader.vertexShader = 'varying vec4 vPlyShadowCoord;\nuniform mat4 plyShadowMatrix;\n' + shader.vertexShader;
+            shader.vertexShader = shader.vertexShader.replace(
+              '#include <fog_vertex>',
+              '#include <fog_vertex>\nvPlyShadowCoord = plyShadowMatrix * modelMatrix * vec4(transformed, 1.0);'
+            );
+
+            // フラグメントシェーダー: packing + シャドウuniform宣言
+            shader.fragmentShader =
+              '#include <packing>\nvarying vec4 vPlyShadowCoord;\nuniform sampler2D plyShadowMap;\nuniform float plyShadowEnabled;\n' +
+              shader.fragmentShader;
+
+            const shadowAndLightCode = [
+              '// Shadow mapping for 3DGS PLY',
+              'if (plyShadowEnabled > 0.5) {',
+              '  vec3 shadowCoord = vPlyShadowCoord.xyz / vPlyShadowCoord.w;',
+              '  shadowCoord = shadowCoord * 0.5 + 0.5;',
+              '  if (shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 && shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0 && shadowCoord.z <= 1.0) {',
+              '    float closestDepth = unpackRGBAToDepth(texture2D(plyShadowMap, shadowCoord.xy));',
+              '    if (shadowCoord.z > closestDepth + 0.003) gl_FragColor.rgb *= 0.4;',
+              '  }',
+              '}',
+              'gl_FragColor.rgb *= plyLightColor;',
+            ].join('\n') + '\n' + colorAdjustCode;
+
             shader.fragmentShader = shader.fragmentShader.replace(
               '#include <fog_fragment>',
-              colorAdjustCode + '\n#include <fog_fragment>'
+              shadowAndLightCode + '\n#include <fog_fragment>'
             );
           }
         };
@@ -12092,6 +12150,16 @@ function animate() {
 
   // スペクトラム更新
   updateAudioVisualizer();
+
+  // 3DGS PLYシャドウ: 共有uniformを毎フレーム更新
+  if (sunLight && sunLight.shadow && sunLight.shadow.map) {
+    plyShadowUniforms.map.value = sunLight.shadow.map.texture;
+    plyShadowUniforms.enabled.value = 1.0;
+    plyShadowUniforms.matrix.value.copy(sunLight.shadow.camera.projectionMatrix);
+    plyShadowUniforms.matrix.value.multiply(sunLight.shadow.camera.matrixWorldInverse);
+  } else {
+    plyShadowUniforms.enabled.value = 0.0;
+  }
 
   // ブルーム描画
   if (composer && bloomPass && bloomEnabled && bloomPass.strength > 0) {

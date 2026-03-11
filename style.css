@@ -371,7 +371,7 @@ button:disabled {
   position: fixed;
   top: 100px;
   right: 0;
-  width: 750px;
+  width: 561px;
   bottom: 0;
   display: flex;
   z-index: 50;
@@ -390,17 +390,17 @@ button:disabled {
   border-left: 1px solid #555;
 }
 
-/* 画像パネル（メインエリア上部・横並び） */
+/* 画像パネル（メインエリア下部） */
 #image-panel {
   position: fixed;
-  top: 100px;
-  left: 310px;
-  right: 750px;
+  bottom: 0;
+  left: 437px;
+  right: 561px;
   height: auto;
   background: rgba(0, 0, 0, 0.8);
   z-index: 40;
   border-left: 1px solid #555;
-  border-bottom: 1px solid #555;
+  border-top: 1px solid #555;
   overflow: hidden;
   padding: 15px;
   display: flex;
@@ -421,7 +421,8 @@ button:disabled {
 }
 
 #image-panel #image-list,
-#image-panel #image-list-row2 {
+#image-panel #image-list-row2,
+#image-panel #image-list-row3 {
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
@@ -674,10 +675,10 @@ button:disabled {
 /* キャンバスコンテナ */
 #canvas-container {
   position: fixed;
-  top: 420px; /* JS syncImagePanelHeight で自動更新 */
-  left: 310px;
-  right: 750px;
-  bottom: 330px; /* JS syncDisplayPanelHeight で自動更新 */
+  top: 100px;
+  left: 437px;
+  right: 561px;
+  bottom: 330px; /* JS syncImagePanelHeight で自動更新 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -745,34 +746,30 @@ button:disabled {
   text-align: center;
 }
 
-/* 表示設定パネル（プレビュー下段） */
+/* 表示設定パネル（トラック情報の右隣・縦並び） */
 #display-settings-panel {
   position: fixed;
+  top: 100px;
+  left: 250px;
+  width: 187px;
   bottom: 0;
-  left: 310px;
-  right: 750px;
-  max-height: 50vh;
   background: rgba(0, 0, 0, 0.8);
   display: flex;
   flex-direction: column;
-  padding: 10px;
+  padding: 15px;
   z-index: 40;
-  border-top: 1px solid #555;
   border-left: 1px solid #555;
   overflow-y: auto;
 }
 
-
 #display-settings-panel .sections-row {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
   flex: 1;
-  overflow-x: auto;
 }
 
 #display-settings-panel .display-section {
-  flex: 1;
-  min-width: 140px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -789,7 +786,7 @@ button:disabled {
   position: fixed;
   top: 100px;
   left: 0;
-  width: 310px;
+  width: 250px;
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
   padding: 15px;
