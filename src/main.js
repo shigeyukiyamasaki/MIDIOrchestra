@@ -11235,29 +11235,72 @@ function setupPlyShaderOverride() {
           shader.uniforms.glbBrightness = glbColorUniforms.glbBrightness;
           shader.uniforms.glbContrast = glbColorUniforms.glbContrast;
           shader.uniforms.plyLightColor = lightColorUniform;
+          // 雲影用uniform
+          shader.uniforms.cloudTex = glbColorUniforms.cloudTex;
+          shader.uniforms.cloudOffset = glbColorUniforms.cloudOffset;
+          shader.uniforms.cloudRepeat = glbColorUniforms.cloudRepeat;
+          shader.uniforms.cloudOpacity = glbColorUniforms.cloudOpacity;
+          shader.uniforms.cloudPlaneSize = glbColorUniforms.cloudPlaneSize;
+          shader.uniforms.cloudWarmTint = glbColorUniforms.cloudWarmTint;
+
+          // 雲影コード（共通）
+          const cloudShadowCode = [
+            '// Cloud shadow for PLY',
+            'if (cloudOpacity > 0.0) {',
+            '  vec2 cloudUV = vec2(vPlyWorldPos.x, -vPlyWorldPos.z) / cloudPlaneSize + 0.5;',
+            '  cloudUV = cloudUV * cloudRepeat + cloudOffset;',
+            '  float cloudVal = texture2D(cloudTex, cloudUV).a;',
+            '  float csFactor = mix(1.0, 1.0 - cloudVal, cloudOpacity);',
+            '  gl_FragColor.rgb *= csFactor;',
+            '  if (cloudWarmTint > 0.0) {',
+            '    float sunlight = 1.0 - cloudVal;',
+            '    vec3 wc = gl_FragColor.rgb;',
+            '    wc.r = min(wc.r + cloudWarmTint * 0.08 * sunlight, 1.0);',
+            '    wc.g = min(wc.g + cloudWarmTint * 0.03 * sunlight, 1.0);',
+            '    wc.b = max(wc.b - cloudWarmTint * 0.05 * sunlight, 0.0);',
+            '    float lum = dot(wc, vec3(0.299, 0.587, 0.114));',
+            '    wc += wc * cloudWarmTint * 0.4 * (0.5 + lum) * sunlight;',
+            '    gl_FragColor.rgb = min(wc, 1.0);',
+            '  }',
+            '}',
+          ].join('\n');
+
+          const cloudUniforms = 'uniform sampler2D cloudTex;\nuniform vec2 cloudOffset;\nuniform vec2 cloudRepeat;\nuniform float cloudOpacity;\nuniform float cloudPlaneSize;\nuniform float cloudWarmTint;\n';
 
           shader.fragmentShader =
             'uniform float glbHue;\nuniform float glbBrightness;\nuniform float glbContrast;\nuniform vec3 plyLightColor;\n' +
+            cloudUniforms +
             shader.fragmentShader;
 
-          // MeshStandardMaterial: ライティング自動適用のため光色はシェーダーに注入しない（色調整のみ）
+          // MeshStandardMaterial: ライティング自動適用のため光色はシェーダーに注入しない（雲影＋色調整）
+          // vWorldPos を受け渡す
+          shader.vertexShader = 'varying vec3 vPlyWorldPos;\n' + shader.vertexShader;
+          shader.vertexShader = shader.vertexShader.replace(
+            '#include <worldpos_vertex>',
+            '#include <worldpos_vertex>\nvPlyWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;'
+          );
+          shader.fragmentShader = 'varying vec3 vPlyWorldPos;\n' + shader.fragmentShader;
+
           const withDithering = shader.fragmentShader.replace(
             '#include <dithering_fragment>',
-            colorAdjustCode + '\n#include <dithering_fragment>'
+            cloudShadowCode + '\n' + colorAdjustCode + '\n#include <dithering_fragment>'
           );
           if (withDithering !== shader.fragmentShader) {
             shader.fragmentShader = withDithering;
           } else {
-            // PointsMaterial（3DGS）: unlit なので光色・影もシェーダーで適用
+            // PointsMaterial（3DGS）: unlit なので光色・影・雲影もシェーダーで適用
             shader.uniforms.plyShadowMap = plyShadowUniforms.map;
             shader.uniforms.plyShadowMatrix = plyShadowUniforms.matrix;
             shader.uniforms.plyShadowEnabled = plyShadowUniforms.enabled;
 
-            // 頂点シェーダー: fog_vertexの後にシャドウ座標計算を注入
+            // 頂点シェーダー: fog_vertexの後にシャドウ座標＋ワールド座標計算を注入
             shader.vertexShader = 'varying vec4 vPlyShadowCoord;\nuniform mat4 plyShadowMatrix;\n' + shader.vertexShader;
             shader.vertexShader = shader.vertexShader.replace(
               '#include <fog_vertex>',
-              '#include <fog_vertex>\nvPlyShadowCoord = plyShadowMatrix * modelMatrix * vec4(transformed, 1.0);'
+              '#include <fog_vertex>\n' +
+              'vec4 plyWP = modelMatrix * vec4(transformed, 1.0);\n' +
+              'vPlyWorldPos = plyWP.xyz;\n' +
+              'vPlyShadowCoord = plyShadowMatrix * plyWP;'
             );
 
             // フラグメントシェーダー: packing + シャドウuniform宣言
@@ -11265,7 +11308,7 @@ function setupPlyShaderOverride() {
               '#include <packing>\nvarying vec4 vPlyShadowCoord;\nuniform sampler2D plyShadowMap;\nuniform float plyShadowEnabled;\n' +
               shader.fragmentShader;
 
-            const shadowAndLightCode = [
+            const shadowCloudAndLightCode = [
               '// Shadow mapping for 3DGS PLY',
               'if (plyShadowEnabled > 0.5) {',
               '  vec3 shadowCoord = vPlyShadowCoord.xyz / vPlyShadowCoord.w;',
@@ -11276,11 +11319,11 @@ function setupPlyShaderOverride() {
               '  }',
               '}',
               'gl_FragColor.rgb *= plyLightColor;',
-            ].join('\n') + '\n' + colorAdjustCode;
+            ].join('\n') + '\n' + cloudShadowCode + '\n' + colorAdjustCode;
 
             shader.fragmentShader = shader.fragmentShader.replace(
               '#include <fog_fragment>',
-              shadowAndLightCode + '\n#include <fog_fragment>'
+              shadowCloudAndLightCode + '\n#include <fog_fragment>'
             );
           }
         };
@@ -12093,7 +12136,7 @@ function animate() {
 
   // 雲の影UVスクロール
   if (cloudShadowPlane && cloudShadowEnabled && cloudShadowIntensity > 0) {
-    cloudShadowPlane.visible = true;
+    cloudShadowPlane.visible = !(plyBackground || glbModel);
     cloudShadowPlane.material.opacity = cloudShadowIntensity;
     const t = performance.now() * 0.0001 * cloudShadowSpeed;
     const rad = cloudShadowDirection * Math.PI / 180;
@@ -12105,8 +12148,6 @@ function animate() {
       glbColorUniforms.cloudOffset.value.copy(cloudShadowPlane.material.map.offset);
       glbColorUniforms.cloudRepeat.value.copy(cloudShadowPlane.material.map.repeat);
       glbColorUniforms.cloudOpacity.value = cloudShadowIntensity;
-      const geomParams = cloudShadowPlane.geometry.parameters;
-      if (geomParams) glbColorUniforms.cloudPlaneSize.value = geomParams.width || 10000;
     }
   } else if (cloudShadowPlane) {
     cloudShadowPlane.visible = false;
@@ -12936,7 +12977,7 @@ window.exportHelpers = {
       if (waterTintMaterial) waterTintMaterial.uniforms.time.value = waterSurfaceMaterial.uniforms.time.value;
     }
     if (cloudShadowPlane && cloudShadowEnabled && cloudShadowIntensity > 0) {
-      cloudShadowPlane.visible = true;
+      cloudShadowPlane.visible = !(plyBackground || glbModel);
       cloudShadowPlane.material.opacity = cloudShadowIntensity;
       const t = performance.now() * 0.0001 * cloudShadowSpeed;
       const rad = cloudShadowDirection * Math.PI / 180;
