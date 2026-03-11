@@ -917,22 +917,25 @@
         <h4 class="setting-category">3Dモデル</h4>
         <div class="image-row">
           <div class="drop-zone" id="glbDropZone">
-            <span class="drop-zone-text" id="glbDropZoneText">GLBをドロップ<br>または</span>
+            <span class="drop-zone-text" id="glbDropZoneText">GLB/PLYをドロップ<br>または</span>
             <label class="file-label" id="glbFileLabel">ファイル選択</label>
             <button class="library-btn" data-slot="glb">ライブラリ</button>
-            <input type="file" id="glbFileInput" accept=".glb,.gltf,model/gltf-binary,model/gltf+json,application/octet-stream" style="display:none;">
+            <input type="file" id="glbFileInput" accept=".glb,.gltf,.ply,model/gltf-binary,model/gltf+json,application/octet-stream" style="display:none;">
           </div>
           <div class="image-controls">
             <div class="control-row"><label>X</label><input type="range" id="glbPosX" min="-500" max="500" step="5" value="0"><span id="glbPosXValue">0</span></div>
-            <div class="control-row"><label>Y</label><input type="range" id="glbPosY" min="-100" max="500" step="5" value="0"><span id="glbPosYValue">0</span></div>
+            <div class="control-row"><label>Y</label><input type="range" id="glbPosY" min="-500" max="500" step="5" value="0"><span id="glbPosYValue">0</span></div>
             <div class="control-row"><label>Z</label><input type="range" id="glbPosZ" min="-500" max="500" step="5" value="0"><span id="glbPosZValue">0</span></div>
             <div class="control-row"><label>大きさ</label><input type="range" id="glbScale" min="1" max="100000" step="1" value="100"><span id="glbScaleValue">100</span></div>
+            <div class="control-row"><label>回転X</label><input type="range" id="glbRotX" min="0" max="360" step="1" value="0"><span id="glbRotXValue">0</span></div>
             <div class="control-row"><label>回転Y</label><input type="range" id="glbRotY" min="0" max="360" step="1" value="0"><span id="glbRotYValue">0</span></div>
+            <div class="control-row"><label>回転Z</label><input type="range" id="glbRotZ" min="0" max="360" step="1" value="0"><span id="glbRotZValue">0</span></div>
             <div class="control-row"><label>色合い</label><input type="range" id="glbHue" min="0" max="360" step="1" value="0"><span id="glbHueValue">0</span></div>
             <div class="control-row"><label>明るさ</label><input type="range" id="glbBrightness" min="-100" max="100" step="1" value="0"><span id="glbBrightnessValue">0</span></div>
             <div class="control-row"><label>コントラスト</label><input type="range" id="glbContrast" min="-100" max="100" step="1" value="0"><span id="glbContrastValue">0</span></div>
             <div class="control-row chroma-key-row"><label>透過色</label><input type="color" id="glbChromaColor" value="#00ff00"><input type="range" id="glbChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="glbChromaThresholdValue">0</span></div>
             <div class="control-row"><label>ドット絵</label><input type="range" id="glbPixelArt" min="0" max="128" step="1" value="0"><span id="glbPixelArtValue">0</span></div>
+            <div class="control-row"><label>点サイズ</label><input type="range" id="glbPointSize" min="1" max="30" step="0.5" value="2"><span id="glbPointSizeValue">2</span></div>
             <button id="glbClear" class="clear-btn-small">クリア</button>
           </div>
         </div>
@@ -1215,8 +1218,8 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
 
-  <script src="src/presetManager.js?v=20260310b"></script>
+  <script src="src/presetManager.js?v=20260310c"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260310f"></script>
+  <script type="module" src="src/main.js?v=20260311l"></script>
 </body>
 </html>
