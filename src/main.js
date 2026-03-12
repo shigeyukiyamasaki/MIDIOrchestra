@@ -957,6 +957,14 @@ function setupValueSpanDirectInput() {
     span.style.cursor = 'pointer';
     span.title = 'ダブルクリックで直接入力';
 
+    // スピンボタンをspanの隣に追加（イベント委譲で軽量化）
+    span.insertAdjacentHTML('afterend',
+      '<span class="spin-buttons">' +
+        '<button class="spin-up" data-slider="' + sliderId + '">&#9650;</button>' +
+        '<button class="spin-down" data-slider="' + sliderId + '">&#9660;</button>' +
+      '</span>'
+    );
+
     span.addEventListener('dblclick', () => {
       // 既に編集中なら何もしない
       if (span.style.display === 'none') return;
@@ -1037,6 +1045,22 @@ function setupValueSpanDirectInput() {
       input.focus();
       input.select();
     });
+  });
+
+  // スピンボタンのクリックをイベント委譲で処理（1ハンドラで全ボタン対応）
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.spin-buttons button');
+    if (!btn) return;
+    e.stopPropagation();
+    const sliderId = btn.dataset.slider;
+    const slider = document.getElementById(sliderId);
+    if (!slider) return;
+    const dir = btn.classList.contains('spin-up') ? 1 : -1;
+    let val = parseFloat(slider.value) + dir * parseFloat(slider.step);
+    val = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), val));
+    const decimals = (slider.step.split('.')[1] || '').length;
+    slider.value = parseFloat(val.toFixed(decimals));
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
 
@@ -2275,10 +2299,11 @@ function setupThreeJS() {
   // タイムライン平面（現在位置を示す「幕」）
   // PlaneGeometry(奥行き, 高さ) - MIDI読み込み後にサイズ更新
   const timelineGeometry = new THREE.PlaneGeometry(300, 150);
+  const tlOpEl = document.getElementById('timelineOpacity');
   const timelineMaterial = new THREE.MeshBasicMaterial({
     color: 0xff4444,
     transparent: true,
-    opacity: 0.25,
+    opacity: tlOpEl ? parseFloat(tlOpEl.value) : 0,
     side: THREE.DoubleSide,
     depthWrite: false,  // 後ろのノートが見えるように
   });
@@ -5597,22 +5622,30 @@ function setupEventListeners() {
     }
   });
 
+  // 3DGS再構築のデバウンス（トリム・補間密度共通）
+  let _gsRebuildTimer = null;
+  function debouncedGSRebuild() {
+    if (_gsRebuildTimer) clearTimeout(_gsRebuildTimer);
+    // 実行中のWorker/fallbackをキャンセル
+    if (_gsWorker) { _gsWorker.terminate(); _gsWorker = null; }
+    ++_gsComputeId;
+    _gsRebuildTimer = setTimeout(async () => {
+      if (glbModel && glbModel.userData.is3DGS && glbModel.userData._gsArrayBuffer) {
+        await rebuild3DGSFromCache(glbModel.userData._gsArrayBuffer, glbModel.userData.originalFile);
+      }
+    }, 150);
+  }
+
   // 補間密度（3DGS PLY用 - 読み込み時に適用）
   document.getElementById('glbPointDensity')?.addEventListener('input', (e) => {
-    const val = parseInt(e.target.value);
-    document.getElementById('glbPointDensityValue').textContent = val;
-    if (glbModel && glbModel.userData.is3DGS && glbModel.userData._gsArrayBuffer) {
-      rebuild3DGSFromCache(glbModel.userData._gsArrayBuffer, glbModel.userData.originalFile);
-    }
+    document.getElementById('glbPointDensityValue').textContent = parseInt(e.target.value);
+    debouncedGSRebuild();
   });
 
   // トリム（3DGS PLY用 - 重心から遠い点を除去）
   document.getElementById('glbTrim')?.addEventListener('input', (e) => {
-    const val = parseInt(e.target.value);
-    document.getElementById('glbTrimValue').textContent = val + '%';
-    if (glbModel && glbModel.userData.is3DGS && glbModel.userData._gsArrayBuffer) {
-      rebuild3DGSFromCache(glbModel.userData._gsArrayBuffer, glbModel.userData.originalFile);
-    }
+    document.getElementById('glbTrimValue').textContent = parseFloat(e.target.value) + '%';
+    debouncedGSRebuild();
   });
 
   // クリア
@@ -10732,20 +10765,313 @@ function interpolate3DGSPoints(geometry, density) {
   return newGeometry;
 }
 
-// キャッシュされたarrayBufferから3DGSを再構築（密度変更時）
-function rebuild3DGSFromCache(arrayBuffer, file) {
+// 3DGSキャッシュ: パース結果と距離ソート済みインデックスを保持
+let _gsCache = null;
+
+function ensure3DGSCache(arrayBuffer) {
+  if (_gsCache && _gsCache.arrayBuffer === arrayBuffer) return _gsCache;
   const gsResult = parse3DGSPly(arrayBuffer);
-  if (!gsResult) return;
+  if (!gsResult) return null;
+  const { positions, colors, vertexCount } = gsResult;
+
+  // 重心計算
+  let cx = 0, cy = 0, cz = 0;
+  for (let i = 0; i < vertexCount; i++) {
+    cx += positions[i * 3]; cy += positions[i * 3 + 1]; cz += positions[i * 3 + 2];
+  }
+  cx /= vertexCount; cy /= vertexCount; cz /= vertexCount;
+
+  // 距離²を計算してソート済みインデックスを作成
+  const dists = new Float32Array(vertexCount);
+  for (let i = 0; i < vertexCount; i++) {
+    const dx = positions[i * 3] - cx, dy = positions[i * 3 + 1] - cy, dz = positions[i * 3 + 2] - cz;
+    dists[i] = dx * dx + dy * dy + dz * dz;
+  }
+  const sortedIndices = new Uint32Array(vertexCount);
+  for (let i = 0; i < vertexCount; i++) sortedIndices[i] = i;
+  sortedIndices.sort((a, b) => dists[a] - dists[b]);
+
+  _gsCache = { arrayBuffer, positions, colors, vertexCount, sortedIndices };
+  console.log(`[PLY] 3DGS cache built: ${vertexCount} points, sorted by distance`);
+  return _gsCache;
+}
+
+// 補間キャッシュ: トリム値ごとにレベル別中間点を保持
+let _gsInterpCache = null; // { trimKey, basePos, baseCol, baseCount, levels[] }
+
+// Web Worker で中間点を計算（メインスレッドを完全にブロックしない）
+let _gsWorker = null;
+let _gsComputeId = 0;
+
+function computeMidpointsInWorker(basePos, baseCol, baseCount, onProgress) {
+  return new Promise((resolve, reject) => {
+    if (_gsWorker) { _gsWorker.terminate(); _gsWorker = null; }
+
+    // 最適化Worker: top-K固定配列, オブジェクト生成なし, 進捗報告
+    const workerCode = `
+      self.onmessage = function(e) {
+        try {
+          var bp = e.data.basePos, bc = e.data.baseCol;
+          var n = e.data.baseCount, gs = e.data.gridSize;
+          var MAX_K = 6, thresh = gs * gs * 4;
+
+          // グリッド構築
+          var grid = new Map();
+          for (var i = 0; i < n; i++) {
+            var k = Math.floor(bp[i*3]/gs)+','+Math.floor(bp[i*3+1]/gs)+','+Math.floor(bp[i*3+2]/gs);
+            var arr = grid.get(k);
+            if (!arr) { arr = []; grid.set(k, arr); }
+            arr.push(i);
+          }
+          self.postMessage({ type: 'progress', pct: 5 });
+
+          // 出力バッファ（push方式）
+          var lp = [], lc = [];
+          for (var v = 0; v < MAX_K; v++) { lp.push([]); lc.push([]); }
+
+          // top-K固定配列（ポイントごとに再利用）
+          var tIdx = new Int32Array(MAX_K);
+          var tDst = new Float64Array(MAX_K);
+          var progressStep = Math.max(1, Math.floor(n / 20));
+
+          for (var i = 0; i < n; i++) {
+            var px = bp[i*3], py = bp[i*3+1], pz = bp[i*3+2];
+            var gx = Math.floor(px/gs), gy = Math.floor(py/gs), gz = Math.floor(pz/gs);
+            var tc = 0, mxD = 0, mxI = 0;
+
+            for (var dx = -1; dx <= 1; dx++) {
+              for (var dy = -1; dy <= 1; dy++) {
+                for (var dz = -1; dz <= 1; dz++) {
+                  var cell = grid.get((gx+dx)+','+(gy+dy)+','+(gz+dz));
+                  if (!cell) continue;
+                  for (var ci = 0, cl = cell.length; ci < cl; ci++) {
+                    var j = cell[ci];
+                    if (j <= i) continue;
+                    var ex = bp[j*3]-px, ey = bp[j*3+1]-py, ez = bp[j*3+2]-pz;
+                    var d2 = ex*ex + ey*ey + ez*ez;
+                    if (d2 <= 0 || d2 >= thresh) continue;
+                    if (tc < MAX_K) {
+                      tIdx[tc] = j; tDst[tc] = d2; tc++;
+                      if (tc === MAX_K) {
+                        mxD = tDst[0]; mxI = 0;
+                        for (var t = 1; t < MAX_K; t++) { if (tDst[t] > mxD) { mxD = tDst[t]; mxI = t; } }
+                      }
+                    } else if (d2 < mxD) {
+                      tIdx[mxI] = j; tDst[mxI] = d2;
+                      mxD = tDst[0]; mxI = 0;
+                      for (var t = 1; t < MAX_K; t++) { if (tDst[t] > mxD) { mxD = tDst[t]; mxI = t; } }
+                    }
+                  }
+                }
+              }
+            }
+
+            // insertion sort (max 6 elements)
+            for (var si = 1; si < tc; si++) {
+              var sI = tIdx[si], sD = tDst[si], sj = si - 1;
+              while (sj >= 0 && tDst[sj] > sD) { tIdx[sj+1] = tIdx[sj]; tDst[sj+1] = tDst[sj]; sj--; }
+              tIdx[sj+1] = sI; tDst[sj+1] = sD;
+            }
+
+            for (var kk = 0; kk < tc; kk++) {
+              var j = tIdx[kk];
+              lp[kk].push((px+bp[j*3])*0.5, (py+bp[j*3+1])*0.5, (pz+bp[j*3+2])*0.5);
+              lc[kk].push((bc[i*3]+bc[j*3])*0.5, (bc[i*3+1]+bc[j*3+1])*0.5, (bc[i*3+2]+bc[j*3+2])*0.5);
+            }
+
+            if (i % progressStep === 0 && i > 0) {
+              self.postMessage({ type: 'progress', pct: 5 + Math.round(i / n * 90) });
+            }
+          }
+
+          var levels = [], xfer = [];
+          for (var v = 0; v < MAX_K; v++) {
+            var p = new Float32Array(lp[v]);
+            var c = new Float32Array(lc[v]);
+            levels.push({ positions: p, colors: c, count: p.length / 3 });
+            xfer.push(p.buffer, c.buffer);
+          }
+          self.postMessage({ type: 'done', levels: levels }, xfer);
+        } catch (err) {
+          self.postMessage({ type: 'error', message: err.message || String(err) });
+        }
+      };
+    `;
+
+    const blob = new Blob([workerCode], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    const worker = new Worker(url);
+    _gsWorker = worker;
+    URL.revokeObjectURL(url);
+
+    worker.onmessage = (e) => {
+      if (e.data.type === 'progress') {
+        if (onProgress) onProgress(e.data.pct);
+        return;
+      }
+      _gsWorker = null;
+      worker.terminate();
+      if (e.data.type === 'error') {
+        console.error('[PLY Worker] Error:', e.data.message);
+        reject(new Error(e.data.message));
+      } else {
+        if (onProgress) onProgress(100);
+        resolve(e.data.levels);
+      }
+    };
+    worker.onerror = (e) => {
+      console.error('[PLY Worker] onerror:', e.message);
+      _gsWorker = null;
+      worker.terminate();
+      reject(new Error(e.message || 'Worker error'));
+    };
+
+    const posClone = basePos.slice();
+    const colClone = baseCol.slice();
+    worker.postMessage(
+      { basePos: posClone, baseCol: colClone, baseCount, gridSize: 0.05 },
+      [posClone.buffer, colClone.buffer]
+    );
+  });
+}
+
+// 表示状態: drawRangeで密度を即座に切り替えるためのキャッシュ
+let _gsDisplayState = null; // { trimKey, hasLevels, cumulativeCounts }
+
+// キャッシュから3DGSを高速再構築
+async function rebuild3DGSFromCache(arrayBuffer, file) {
+  const cache = ensure3DGSCache(arrayBuffer);
+  if (!cache) return;
   const trim = parseFloat(document.getElementById('glbTrim')?.value || '0');
   const density = parseInt(document.getElementById('glbPointDensity')?.value || '0');
-  const built = build3DGSGeometry(gsResult.positions, gsResult.colors, gsResult.vertexCount, trim);
-  const finalGeometry = density > 0 ? interpolate3DGSPoints(built.geometry, density) : built.geometry;
+  const trimKey = trim.toFixed(4);
+
+  // drawRangeだけで対応できるか判定
+  if (_gsDisplayState && _gsDisplayState.trimKey === trimKey && glbModel && glbModel.userData.is3DGS) {
+    if (density === 0 || _gsDisplayState.hasLevels) {
+      const count = _gsDisplayState.cumulativeCounts[Math.min(density, _gsDisplayState.cumulativeCounts.length - 1)];
+      let pts = null;
+      glbModel.traverse((c) => { if (c.isPoints) pts = c; });
+      if (pts) {
+        pts.geometry.setDrawRange(0, count);
+        console.log(`[PLY] drawRange: ${count} points (density=${density})`);
+        return;
+      }
+    }
+    // density > 0 だがレベル未計算 → 下でフルバッファ構築
+  }
+
+  // トリム値が変わったらキャッシュ無効化
+  if (_gsInterpCache && _gsInterpCache.trimKey !== trimKey) {
+    _gsInterpCache = null;
+    _gsDisplayState = null;
+  }
+
+  // ベースデータ構築
+  if (!_gsInterpCache) {
+    const keepCount = Math.max(1, Math.floor(cache.vertexCount * (1 - trim / 100)));
+    const trimmedPos = new Float32Array(keepCount * 3);
+    const trimmedCol = new Float32Array(keepCount * 3);
+    for (let i = 0; i < keepCount; i++) {
+      const src = cache.sortedIndices[i];
+      trimmedPos[i * 3]     = cache.positions[src * 3];
+      trimmedPos[i * 3 + 1] = cache.positions[src * 3 + 1];
+      trimmedPos[i * 3 + 2] = cache.positions[src * 3 + 2];
+      trimmedCol[i * 3]     = cache.colors[src * 3];
+      trimmedCol[i * 3 + 1] = cache.colors[src * 3 + 1];
+      trimmedCol[i * 3 + 2] = cache.colors[src * 3 + 2];
+    }
+    let cx = 0, cy = 0, cz = 0;
+    for (let i = 0; i < keepCount; i++) {
+      cx += trimmedPos[i * 3]; cy += trimmedPos[i * 3 + 1]; cz += trimmedPos[i * 3 + 2];
+    }
+    cx /= keepCount; cy /= keepCount; cz /= keepCount;
+    const basePos = new Float32Array(keepCount * 3);
+    for (let i = 0; i < keepCount; i++) {
+      basePos[i * 3]     = trimmedPos[i * 3] - cx;
+      basePos[i * 3 + 1] = -(trimmedPos[i * 3 + 1] - cy);
+      basePos[i * 3 + 2] = -(trimmedPos[i * 3 + 2] - cz);
+    }
+    _gsInterpCache = { trimKey, basePos, baseCol: trimmedCol, baseCount: keepCount, levels: null };
+  }
+
+  const ic = _gsInterpCache;
+
+  // 中間点が必要ならWeb Workerで計算
+  if (density > 0 && !ic.levels) {
+    const densityValEl = document.getElementById('glbPointDensityValue');
+    const origText = densityValEl ? densityValEl.textContent : '';
+    try {
+      console.log(`[PLY] Starting midpoint computation in Web Worker (${ic.baseCount} points)...`);
+      const levels = await computeMidpointsInWorker(ic.basePos, ic.baseCol, ic.baseCount, (pct) => {
+        console.log(`[PLY] Worker progress: ${pct}%`);
+        if (densityValEl) densityValEl.textContent = `計算中${pct}%`;
+      });
+      if (_gsInterpCache !== ic) return;
+      ic.levels = levels;
+      const total = levels.reduce((s, l) => s + l.count, 0);
+      console.log(`[PLY] Worker done: ${total} midpoints across 6 levels`);
+    } catch (e) {
+      console.error('[PLY] Worker computation failed:', e.message);
+      if (densityValEl) densityValEl.textContent = origText;
+      return;
+    }
+    if (densityValEl) densityValEl.textContent = origText;
+  }
+
+  // 全レベルを含むフルバッファを構築（drawRangeで密度切替可能に）
+  let totalCount = ic.baseCount;
+  const cumulativeCounts = [ic.baseCount]; // density=0
+  if (ic.levels) {
+    for (let k = 0; k < 6; k++) {
+      totalCount += ic.levels[k].count;
+      cumulativeCounts.push(totalCount);
+    }
+  } else {
+    for (let k = 0; k < 6; k++) cumulativeCounts.push(ic.baseCount);
+  }
+
+  const finalPos = new Float32Array(totalCount * 3);
+  const finalCol = new Float32Array(totalCount * 3);
+  finalPos.set(ic.basePos);
+  finalCol.set(ic.baseCol);
+  if (ic.levels) {
+    let off = ic.baseCount * 3;
+    for (let k = 0; k < 6; k++) {
+      finalPos.set(ic.levels[k].positions, off);
+      finalCol.set(ic.levels[k].colors, off);
+      off += ic.levels[k].count * 3;
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(finalPos, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(finalCol, 3));
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  geometry.setDrawRange(0, cumulativeCounts[Math.min(density, cumulativeCounts.length - 1)]);
+
+  _gsDisplayState = { trimKey, hasLevels: !!ic.levels, cumulativeCounts };
+
+  // 既存モデルならジオメトリだけ差し替え
+  if (glbModel && glbModel.userData.is3DGS) {
+    let existingPoints = null;
+    glbModel.traverse((child) => { if (child.isPoints) existingPoints = child; });
+    if (existingPoints) {
+      existingPoints.geometry.dispose();
+      existingPoints.geometry = geometry;
+      console.log(`[PLY] Full buffer built: ${totalCount} points, showing ${cumulativeCounts[density]}`);
+      return;
+    }
+  }
+
+  // 初回: フル構築
   const material = new THREE.PointsMaterial({
     size: parseFloat(document.getElementById('glbPointSize')?.value || '2'),
     vertexColors: true,
     sizeAttenuation: false,
   });
-  const points = new THREE.Points(finalGeometry, material);
+  const points = new THREE.Points(geometry, material);
   const group = new THREE.Group();
   group.add(points);
   group.userData.isPly = true;
@@ -10937,21 +11263,28 @@ function loadGlbModel(file) {
           return def;
         };
         const trim = getSettingVal('glbTrim', 0);
-        const density = getSettingVal('glbPointDensity', 0);
+        // ベースジオメトリだけ構築（補間はWorkerで非同期に行う）
         const built = build3DGSGeometry(gsResult.positions, gsResult.colors, gsResult.vertexCount, trim);
-        const finalGeometry = density > 0 ? interpolate3DGSPoints(built.geometry, density) : built.geometry;
         const material = new THREE.PointsMaterial({
           size: 2,
           vertexColors: true,
           sizeAttenuation: false,
         });
-        const points = new THREE.Points(finalGeometry, material);
+        const points = new THREE.Points(built.geometry, material);
         const group = new THREE.Group();
         group.add(points);
         group.userData.isPly = true;
         group.userData.is3DGS = true;
         group.userData._gsArrayBuffer = arrayBuffer;
         setupGlbScene(group, file);
+        // 密度設定があれば非同期でWorker補間を実行（スライダーのinputイベント経由）
+        const density = getSettingVal('glbPointDensity', 0);
+        if (density > 0) {
+          setTimeout(() => {
+            const densityEl = document.getElementById('glbPointDensity');
+            if (densityEl) densityEl.dispatchEvent(new Event('input'));
+          }, 300);
+        }
         return;
       }
 
