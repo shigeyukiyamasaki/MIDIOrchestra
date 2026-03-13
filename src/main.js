@@ -454,6 +454,10 @@ let plyWaterThreshold = 0.3;   // 色の許容範囲
 let plyWaterAmplitude = 0.5;   // 揺れの振幅
 let plyWaterSpeed = 1.0;       // 揺れの速度
 let plyWaterWavelength = 10;   // 波長
+let plyWaterOpacity = 1.0;     // PLY水面の透明度
+let plyWaterCausticsIntensity = 0; // コースティクス強度
+let plyWaterCausticsSpeed = 1.0;   // コースティクス速度
+let plyWaterCausticsScale = 0.1;   // コースティクスサイズ
 let plyWaterIndices = null;    // マッチした頂点インデックス配列
 let plyWaterOrigPos = null;    // マッチした頂点の元位置
 let plyWaterTime = 0;          // アニメーション時間
@@ -1885,6 +1889,10 @@ function syncWaterSettingsFromDOM() {
   plyWaterAmplitude = gv('plyWaterAmplitude', 0.5);
   plyWaterSpeed = gv('plyWaterSpeed', 1.0);
   plyWaterWavelength = gv('plyWaterWavelength', 10);
+  plyWaterOpacity = gv('plyWaterOpacity', 1.0);
+  plyWaterCausticsIntensity = gv('plyWaterCausticsIntensity', 0);
+  plyWaterCausticsSpeed = gv('plyWaterCausticsSpeed', 1.0);
+  plyWaterCausticsScale = gv('plyWaterCausticsScale', 0.1);
 }
 
 function buildWaterParticles() {
@@ -2013,7 +2021,17 @@ function updateWaterParticles() {
   geom.attributes.position.needsUpdate = true;
 }
 
-// PLY水面エフェクト: 指定色の頂点を波状に揺らす
+// PLY水面用共有uniform更新
+function updatePlyWaterUniforms() {
+  plyWaterUniforms.enabled.value = plyWaterEnabled ? 1.0 : 0.0;
+  plyWaterUniforms.opacity.value = plyWaterOpacity;
+  plyWaterUniforms.color.value.set(plyWaterColor);
+  plyWaterUniforms.threshold.value = plyWaterThreshold;
+  plyWaterUniforms.causticsIntensity.value = plyWaterCausticsIntensity;
+  plyWaterUniforms.causticsScale.value = plyWaterCausticsScale;
+}
+
+// PLY水面エフェクト: 指定色の頂点を波状に揺らす（波アニメーション用インデックス収集）
 function setupPlyWaterEffect() {
   plyWaterIndices = null;
   plyWaterOrigPos = null;
@@ -2047,10 +2065,11 @@ function setupPlyWaterEffect() {
   if (indices.length > 0) {
     plyWaterIndices = new Uint32Array(indices);
     plyWaterOrigPos = new Float32Array(origPositions);
-    console.log(`[PlyWater] ${indices.length} vertices matched color ${plyWaterColor} (threshold=${threshold})`);
+    console.log(`[PlyWater] ${indices.length} vertices matched`);
   } else {
     console.log('[PlyWater] No vertices matched');
   }
+  updatePlyWaterUniforms();
 }
 
 function updatePlyWaterEffect() {
@@ -2072,10 +2091,9 @@ function updatePlyWaterEffect() {
     for (let j = 0; j < indices.length; j++) {
       const i = indices[j];
       const ox = orig[j * 3], oy = orig[j * 3 + 1], oz = orig[j * 3 + 2];
-      // XZ位置に基づく波（複数方向を合成してリアルな水面感）
       const phase1 = (ox + oz) / wl + t;
       const phase2 = (ox * 0.7 - oz * 0.7) / (wl * 0.8) + t * 1.3;
-      const wave = Math.sin(phase1) * 0.6 + Math.sin(phase2) * 0.4; // -1 ~ 1
+      const wave = Math.sin(phase1) * 0.6 + Math.sin(phase2) * 0.4;
       pos[i * 3 + 1] = oy + amp * wave;
     }
     posAttr.needsUpdate = true;
@@ -2084,7 +2102,6 @@ function updatePlyWaterEffect() {
 
 function clearPlyWaterEffect() {
   if (!plyWaterIndices || !glbModel) return;
-  // 元の位置に戻す
   glbModel.traverse((child) => {
     if (!child.isPoints || !child.geometry) return;
     const posAttr = child.geometry.attributes.position;
@@ -2098,6 +2115,8 @@ function clearPlyWaterEffect() {
   });
   plyWaterIndices = null;
   plyWaterOrigPos = null;
+  plyWaterEnabled = false;
+  updatePlyWaterUniforms();
 }
 
 // クロマキー対応デプスマテリアル（影用：クロマキーで除去した部分の影を出さない）
@@ -4396,12 +4415,14 @@ function setupEventListeners() {
   });
   document.getElementById('plyWaterColor')?.addEventListener('input', (e) => {
     plyWaterColor = e.target.value;
+    updatePlyWaterUniforms();
     if (plyWaterEnabled) { clearPlyWaterEffect(); setupPlyWaterEffect(); }
   });
   document.getElementById('plyWaterThreshold')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('plyWaterThresholdValue').textContent = v;
     plyWaterThreshold = v;
+    updatePlyWaterUniforms();
     if (plyWaterEnabled) { clearPlyWaterEffect(); setupPlyWaterEffect(); }
   });
   document.getElementById('plyWaterAmplitude')?.addEventListener('input', (e) => {
@@ -4418,6 +4439,29 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('plyWaterWavelengthValue').textContent = v;
     plyWaterWavelength = v;
+  });
+  document.getElementById('plyWaterOpacity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyWaterOpacityValue').textContent = v;
+    plyWaterOpacity = v;
+    updatePlyWaterUniforms();
+  });
+  document.getElementById('plyWaterCausticsIntensity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyWaterCausticsIntensityValue').textContent = v;
+    plyWaterCausticsIntensity = v;
+    updatePlyWaterUniforms();
+  });
+  document.getElementById('plyWaterCausticsSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyWaterCausticsSpeedValue').textContent = v;
+    plyWaterCausticsSpeed = v;
+  });
+  document.getElementById('plyWaterCausticsScale')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyWaterCausticsScaleValue').textContent = v;
+    plyWaterCausticsScale = v;
+    updatePlyWaterUniforms();
   });
 
   // ============================================
@@ -6102,7 +6146,11 @@ function setupEventListeners() {
     if (glbModel && glbModel.userData.is3DGS) {
       glbModel.traverse((child) => {
         if (child.isPoints && child.material) {
-          child.material.size = val;
+          if (child.material.uniforms && child.material.uniforms.pointSize) {
+            child.material.uniforms.pointSize.value = val;
+          } else {
+            child.material.size = val;
+          }
         }
       });
     }
@@ -11421,6 +11469,15 @@ function computeMidpointsInWorker(basePos, baseCol, baseCount, onProgress) {
   });
 }
 
+// 3DGSポイントクラウド用PointsMaterial生成
+function create3DGSMaterial(pointSize) {
+  return new THREE.PointsMaterial({
+    size: pointSize,
+    vertexColors: true,
+    sizeAttenuation: false,
+  });
+}
+
 // 表示状態: drawRangeで密度を即座に切り替えるためのキャッシュ
 let _gsDisplayState = null; // { trimKey, hasLevels, cumulativeCounts }
 
@@ -11548,22 +11605,15 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
       existingPoints.geometry.dispose();
       existingPoints.geometry = geometry;
       console.log(`[PLY] Full buffer built: ${totalCount} points, showing ${cumulativeCounts[density]}`);
-      // ジオメトリ差し替え後にPLY水面エフェクトを再セットアップ
-      console.log('[PLY] geometry replaced, plyWaterEnabled:', plyWaterEnabled, 'plyWaterIndices:', plyWaterIndices?.length);
       if (plyWaterEnabled) {
         setupPlyWaterEffect();
-        console.log('[PLY] after re-setup, plyWaterIndices:', plyWaterIndices?.length);
       }
       return;
     }
   }
 
   // 初回: フル構築
-  const material = new THREE.PointsMaterial({
-    size: parseFloat(document.getElementById('glbPointSize')?.value || '2'),
-    vertexColors: true,
-    sizeAttenuation: false,
-  });
+  const material = create3DGSMaterial(parseFloat(document.getElementById('glbPointSize')?.value || '2'));
   const points = new THREE.Points(geometry, material);
   const group = new THREE.Group();
   group.add(points);
@@ -11648,7 +11698,11 @@ function setupGlbScene(sceneGroup, file) {
     const pointSize = getVal('glbPointSize', 2);
     glbModel.traverse((child) => {
       if (child.isPoints && child.material) {
-        child.material.size = pointSize;
+        if (child.material.uniforms && child.material.uniforms.pointSize) {
+          child.material.uniforms.pointSize.value = pointSize;
+        } else {
+          child.material.size = pointSize;
+        }
       }
     });
   }
@@ -11759,11 +11813,7 @@ function loadGlbModel(file) {
         const trim = getSettingVal('glbTrim', 0);
         // ベースジオメトリだけ構築（補間はWorkerで非同期に行う）
         const built = build3DGSGeometry(gsResult.positions, gsResult.colors, gsResult.vertexCount, trim);
-        const material = new THREE.PointsMaterial({
-          size: 2,
-          vertexColors: true,
-          sizeAttenuation: false,
-        });
+        const material = create3DGSMaterial(2);
         const points = new THREE.Points(built.geometry, material);
         const group = new THREE.Group();
         group.add(points);
@@ -12089,6 +12139,17 @@ const plyShadowUniforms = {
   enabled: { value: 0.0 },
 };
 
+// PLY水面エフェクト用共有uniform
+const plyWaterUniforms = {
+  enabled: { value: 0.0 },
+  opacity: { value: 1.0 },
+  color: { value: new THREE.Color('#4a9eed') },
+  threshold: { value: 0.3 },
+  causticsIntensity: { value: 0.0 },
+  causticsScale: { value: 0.1 },
+  causticsTime: { value: 0.0 },
+};
+
 // GLBシェーダー用uniform共有オブジェクト
 const glbColorUniforms = {
   glbHue: { value: 0.0 },
@@ -12314,10 +12375,17 @@ function setupPlyShaderOverride() {
           if (withDithering !== shader.fragmentShader) {
             shader.fragmentShader = withDithering;
           } else {
-            // PointsMaterial（3DGS）: unlit なので光色・影・雲影もシェーダーで適用
+            // PointsMaterial（3DGS）: unlit なので光色・影・雲影・水面透明度もシェーダーで適用
             shader.uniforms.plyShadowMap = plyShadowUniforms.map;
             shader.uniforms.plyShadowMatrix = plyShadowUniforms.matrix;
             shader.uniforms.plyShadowEnabled = plyShadowUniforms.enabled;
+            shader.uniforms.waterEnabled = plyWaterUniforms.enabled;
+            shader.uniforms.waterOpacity = plyWaterUniforms.opacity;
+            shader.uniforms.waterColor = plyWaterUniforms.color;
+            shader.uniforms.waterThreshold = plyWaterUniforms.threshold;
+            shader.uniforms.causticsIntensity = plyWaterUniforms.causticsIntensity;
+            shader.uniforms.causticsScale = plyWaterUniforms.causticsScale;
+            shader.uniforms.causticsTime = plyWaterUniforms.causticsTime;
 
             // 頂点シェーダー: fog_vertexの後にシャドウ座標＋ワールド座標計算を注入
             shader.vertexShader = 'varying vec4 vPlyShadowCoord;\nuniform mat4 plyShadowMatrix;\n' + shader.vertexShader;
@@ -12329,12 +12397,27 @@ function setupPlyShaderOverride() {
               'vPlyShadowCoord = plyShadowMatrix * plyWP;'
             );
 
-            // フラグメントシェーダー: packing + シャドウuniform宣言
+            // フラグメントシェーダー: packing + シャドウuniform宣言 + 水面uniform宣言
             shader.fragmentShader =
               '#include <packing>\nvarying vec4 vPlyShadowCoord;\nuniform sampler2D plyShadowMap;\nuniform float plyShadowEnabled;\n' +
+              'uniform float waterEnabled;\nuniform float waterOpacity;\nuniform vec3 waterColor;\nuniform float waterThreshold;\n' +
+              'uniform float causticsIntensity;\nuniform float causticsScale;\nuniform float causticsTime;\n' +
               shader.fragmentShader;
 
+            const waterTransparencyCode = [
+              '// Water transparency for 3DGS PLY',
+              'if (waterEnabled > 0.5 && waterOpacity < 0.99) {',
+              '  float wDist = distance(gl_FragColor.rgb, waterColor);',
+              '  if (wDist < waterThreshold) {',
+              '    if (waterOpacity < 0.01) discard;',
+              '    float wHash = fract(sin(dot(vPlyWorldPos.xz, vec2(12.9898, 78.233))) * 43758.5453);',
+              '    if (wHash > waterOpacity) discard;',
+              '  }',
+              '}',
+            ].join('\n');
+
             const shadowCloudAndLightCode = [
+              waterTransparencyCode,
               '// Shadow mapping for 3DGS PLY',
               'if (plyShadowEnabled > 0.5) {',
               '  vec3 shadowCoord = vPlyShadowCoord.xyz / vPlyShadowCoord.w;',
@@ -12347,9 +12430,25 @@ function setupPlyShaderOverride() {
               'gl_FragColor.rgb *= plyLightColor;',
             ].join('\n') + '\n' + cloudShadowCode + '\n' + colorAdjustCode;
 
+            const causticsCode = [
+              '// Caustics for water vertices',
+              'if (waterEnabled > 0.5 && causticsIntensity > 0.0) {',
+              '  float cDist = distance(diffuseColor.rgb, waterColor);',
+              '  if (cDist < waterThreshold) {',
+              '    vec2 cuv = vPlyWorldPos.xz * causticsScale;',
+              '    float ct = causticsTime;',
+              '    vec2 d1 = cuv + vec2(sin(ct*0.3+cuv.y*3.0)*0.1, cos(ct*0.4+cuv.x*2.5)*0.1);',
+              '    float c1 = pow(max(0.5+0.5*sin(d1.x*6.0+ct)*cos(d1.y*5.0-ct*0.7),0.0),3.0);',
+              '    vec2 d2 = cuv + vec2(cos(ct*0.5+cuv.y*2.0)*0.15, sin(ct*0.35+cuv.x*3.5)*0.12);',
+              '    float c2 = pow(max(0.5+0.5*sin(d2.x*4.0-ct*0.8)*cos(d2.y*6.5+ct*0.6),0.0),3.0);',
+              '    gl_FragColor.rgb += vec3((c1+c2)*0.5) * causticsIntensity;',
+              '  }',
+              '}',
+            ].join('\n');
+
             shader.fragmentShader = shader.fragmentShader.replace(
               '#include <fog_fragment>',
-              shadowCloudAndLightCode + '\n#include <fog_fragment>'
+              shadowCloudAndLightCode + '\n' + causticsCode + '\n#include <fog_fragment>'
             );
           }
         };
@@ -13147,6 +13246,7 @@ function animate() {
   updateLightning();
   updateWaterParticles();
   updatePlyWaterEffect();
+  plyWaterUniforms.causticsTime.value += 0.016 * plyWaterCausticsSpeed;
 
   // 水面アニメーション更新（両レイヤー同期）
   if (waterSurfacePlane && waterSurfacePlane.visible) {
@@ -13975,7 +14075,7 @@ window.appFunctions = {
   loadGlbModel, clearGlbModel,
   loadPlyBackground, clearPlyBackground, syncPlyCache,
   updateTrackPanel, debouncedRebuildNotes,
-  buildWaterParticles, setupPlyWaterEffect, syncWaterSettingsFromDOM,
+  buildWaterParticles, setupPlyWaterEffect, syncWaterSettingsFromDOM, updatePlyWaterUniforms,
 };
 
 // 360度エクスポート用にinternal関数・オブジェクトを公開
@@ -14002,6 +14102,7 @@ window.exportHelpers = {
     updateLightning();
     updateWaterParticles();
     updatePlyWaterEffect();
+    plyWaterUniforms.causticsTime.value += 0.016 * plyWaterCausticsSpeed;
     if (waterSurfacePlane && waterSurfacePlane.visible) {
       const timeDelta = 0.016 * waterSurfaceSpeed;
       waterSurfaceMaterial.uniforms.time.value += timeDelta;
