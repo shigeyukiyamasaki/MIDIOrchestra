@@ -132,6 +132,7 @@ window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: nu
 
 // GLBモデル
 let glbModel = null;
+let glbHeightGrid = null; // GLBモデルからベイクしたハイトグリッド
 
 // PLY背景
 let plyBackground = null;        // THREE.Group（PLYメッシュ3層を格納）
@@ -434,6 +435,19 @@ let waterSurfaceSpeed = 1;
 let waterSurfaceColor = '#1a3a6a';
 let waterSurfaceOpacity = 0.6;
 let waterSurfaceCaustic = 0.5;
+let waterFlowParticles = null; // 水流パーティクルシステム
+let waterFlowEnabled = false;
+let waterFlowAmount = 2000;
+let waterFlowSpeed = 1;
+let waterFlowPointSize = 8;
+let waterFlowColor = '#4a9eed';
+let waterFlowOpacity = 0.6;
+let waterFlowAngle = 0;     // 流れ方向(度) 0=+Z方向
+let waterFlowWidth = 200;   // 流れの幅
+let waterFlowLength = 400;  // 流れの長さ
+let waterFlowHeight = 0;    // 水面高度オフセット
+let waterFlowCenterX = 0;   // 水源の中心X
+let waterFlowCenterZ = 0;   // 水源の中心Z
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
@@ -1726,6 +1740,243 @@ function updateWeatherParticles() {
     }
     sg.attributes.position.needsUpdate = true;
   }
+}
+
+// GLBモデルからハイトグリッドをベイク（レイキャストで上から下にスキャン）
+// 非同期で行い、UIをブロックしない
+function bakeGlbHeightGrid() {
+  glbHeightGrid = null;
+  if (!waterFlowEnabled) return; // 水流が無効なら不要
+  if (!glbModel) return;
+  if (glbModel.userData.is3DGS) return;
+
+  const meshes = [];
+  glbModel.traverse((child) => {
+    if (child.isMesh) meshes.push(child);
+  });
+  if (meshes.length === 0) return;
+
+  const resolution = 64;
+  const raycaster = new THREE.Raycaster();
+  const downDir = new THREE.Vector3(0, -1, 0);
+  const box = new THREE.Box3().setFromObject(glbModel);
+  const minX = box.min.x, maxX = box.max.x;
+  const minZ = box.min.z, maxZ = box.max.z;
+  const maxY = box.max.y + 10;
+  const grid = new Float32Array(resolution * resolution);
+  grid.fill(-Infinity);
+  const stepX = (maxX - minX) / (resolution - 1);
+  const stepZ = (maxZ - minZ) / (resolution - 1);
+
+  let iz = 0;
+  const bakeChunk = () => {
+    const startTime = performance.now();
+    while (iz < resolution) {
+      const wz = minZ + iz * stepZ;
+      for (let ix = 0; ix < resolution; ix++) {
+        const wx = minX + ix * stepX;
+        raycaster.set(new THREE.Vector3(wx, maxY, wz), downDir);
+        const hits = raycaster.intersectObjects(meshes, false);
+        if (hits.length > 0) {
+          grid[iz * resolution + ix] = hits[0].point.y;
+        }
+      }
+      iz++;
+      // 16ms以上経過したら次フレームに譲る
+      if (performance.now() - startTime > 16) {
+        requestAnimationFrame(bakeChunk);
+        return;
+      }
+    }
+    // 完了
+    glbHeightGrid = { data: grid, resolution, minX, maxX, minZ, maxZ, stepX, stepZ };
+    console.log(`[WaterFlow] GLB height grid baked: ${resolution}x${resolution}`);
+  };
+  requestAnimationFrame(bakeChunk);
+}
+
+// GLBハイトグリッドからバイリニア補間でサンプリング
+function sampleGlbHeight(wx, wz) {
+  if (!glbHeightGrid) return -Infinity;
+  const g = glbHeightGrid;
+  // グリッド座標に変換
+  const gx = (wx - g.minX) / g.stepX;
+  const gz = (wz - g.minZ) / g.stepZ;
+  if (gx < 0 || gx >= g.resolution - 1 || gz < 0 || gz >= g.resolution - 1) return -Infinity;
+  const ix = Math.floor(gx), iz = Math.floor(gz);
+  const fx = gx - ix, fz = gz - iz;
+  const r = g.resolution;
+  const h00 = g.data[iz * r + ix];
+  const h10 = g.data[iz * r + ix + 1];
+  const h01 = g.data[(iz + 1) * r + ix];
+  const h11 = g.data[(iz + 1) * r + ix + 1];
+  // -Infinityのセルはヒットなし→スキップ
+  if (h00 === -Infinity || h10 === -Infinity || h01 === -Infinity || h11 === -Infinity) return -Infinity;
+  return h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) + h01 * (1 - fx) * fz + h11 * fx * fz;
+}
+
+// 地形の高さをサンプリング（ワールド座標 wx, wz → ワールドY）
+// 床ハイトマップとGLBモデルの高い方を採用
+function sampleTerrainHeight(wx, wz) {
+  let floorH = -Infinity;
+
+  // 床パネルの高さ
+  if (floorPlane) {
+    const params = floorPlane.geometry.parameters;
+    const localX = wx;
+    const localY = -wz;
+    const halfW = params.width / 2;
+    const halfH = params.height / 2;
+    if (localX >= -halfW && localX <= halfW && localY >= -halfH && localY <= halfH) {
+      let z = -floorCurvature * (localX * localX + localY * localY);
+      if (floorDisplacementData && floorDisplacementScale > 0) {
+        const u = (localX / params.width) + 0.5;
+        const v = 1.0 - ((localY / params.height) + 0.5);
+        const px = Math.min(Math.max(Math.floor(u * floorDisplacementData.width), 0), floorDisplacementData.width - 1);
+        const py = Math.min(Math.max(Math.floor(v * floorDisplacementData.height), 0), floorDisplacementData.height - 1);
+        const idx = (py * floorDisplacementData.width + px) * 4;
+        const height = floorDisplacementData.data[idx] / 255;
+        z += height * floorDisplacementScale;
+      }
+      floorH = floorPlane.position.y + z;
+    }
+  }
+
+  // GLBモデルの高さ
+  const glbH = sampleGlbHeight(wx, wz);
+
+  // 高い方を採用（どちらもヒットなしなら-50）
+  let terrainH = Math.max(floorH, glbH);
+  if (terrainH === -Infinity) terrainH = -50;
+
+  return terrainH + waterFlowHeight;
+}
+
+// 水流パーティクルシステム
+function buildWaterParticles() {
+  if (waterFlowParticles) {
+    scene.remove(waterFlowParticles);
+    waterFlowParticles.geometry.dispose();
+    waterFlowParticles.material.dispose();
+    waterFlowParticles = null;
+  }
+  if (!waterFlowEnabled) return;
+
+  const count = waterFlowAmount;
+  const positions = new Float32Array(count * 3);
+  const velocities = new Float32Array(count * 3);
+  const angleRad = waterFlowAngle * Math.PI / 180;
+  const flowDirX = Math.sin(angleRad);
+  const flowDirZ = Math.cos(angleRad);
+  const halfWidth = waterFlowWidth / 2;
+  const halfLength = waterFlowLength / 2;
+
+  const cx = waterFlowCenterX;
+  const cz = waterFlowCenterZ;
+
+  for (let i = 0; i < count; i++) {
+    const i3 = i * 3;
+    const along = (Math.random() - 0.5) * waterFlowLength;
+    const across = (Math.random() - 0.5) * waterFlowWidth;
+    const wx = cx + along * flowDirX + across * flowDirZ;
+    const wz = cz + along * flowDirZ - across * flowDirX;
+    positions[i3]     = wx;
+    positions[i3 + 1] = sampleTerrainHeight(wx, wz);
+    positions[i3 + 2] = wz;
+    velocities[i3]     = 0;
+    velocities[i3 + 1] = 0;
+    velocities[i3 + 2] = 0;
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom._velocities = velocities;
+  geom._halfLength = halfLength;
+  geom._halfWidth = halfWidth;
+  geom._flowDirX = flowDirX;
+  geom._flowDirZ = flowDirZ;
+
+  const mat = new THREE.PointsMaterial({
+    color: new THREE.Color(waterFlowColor),
+    size: waterFlowPointSize,
+    transparent: true,
+    opacity: waterFlowOpacity,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+
+  waterFlowParticles = new THREE.Points(geom, mat);
+  waterFlowParticles.frustumCulled = false;
+  waterFlowParticles.renderOrder = 9998;
+  scene.add(waterFlowParticles);
+}
+
+function updateWaterParticles() {
+  if (!waterFlowParticles || !waterFlowEnabled) return;
+  const geom = waterFlowParticles.geometry;
+  const pos = geom.attributes.position.array;
+  const vel = geom._velocities;
+  const speed = waterFlowSpeed;
+  const halfLength = geom._halfLength;
+  const halfWidth = geom._halfWidth;
+  const flowDirX = geom._flowDirX;
+  const flowDirZ = geom._flowDirZ;
+  const count = pos.length / 3;
+  const delta = 2.0; // 勾配サンプリングの微小距離
+  const gravity = 0.15; // 勾配による加速力
+  const drag = 0.98; // 減衰（水の粘性）
+  const minSpeed = 0.05; // 最低速度（平地で完全停止しないように）
+
+  for (let i = 0; i < count; i++) {
+    const i3 = i * 3;
+    const wx = pos[i3];
+    const wz = pos[i3 + 2];
+
+    // 地形の勾配を中心差分で算出
+    const hC = sampleTerrainHeight(wx, wz);
+    const hXp = sampleTerrainHeight(wx + delta, wz);
+    const hXm = sampleTerrainHeight(wx - delta, wz);
+    const hZp = sampleTerrainHeight(wx, wz + delta);
+    const hZm = sampleTerrainHeight(wx, wz - delta);
+    const gradX = (hXp - hXm) / (2 * delta); // dh/dx
+    const gradZ = (hZp - hZm) / (2 * delta); // dh/dz
+
+    // 勾配の下り方向に加速（-grad方向が下り）
+    vel[i3]     += -gradX * gravity;
+    vel[i3 + 2] += -gradZ * gravity;
+
+    // UIの流れ方向を弱い一定力として加算（川の流れのベース方向）
+    vel[i3]     += flowDirX * minSpeed * 0.1;
+    vel[i3 + 2] += flowDirZ * minSpeed * 0.1;
+
+    // 減衰
+    vel[i3]     *= drag;
+    vel[i3 + 2] *= drag;
+
+    // 位置更新
+    pos[i3]     += vel[i3]     * speed;
+    pos[i3 + 2] += vel[i3 + 2] * speed;
+
+    // 地形に追従
+    pos[i3 + 1] = sampleTerrainHeight(pos[i3], pos[i3 + 2]);
+
+    // 領域外に出たらランダム位置にリスポーン（中心からの相対座標で判定）
+    const rx = pos[i3] - waterFlowCenterX;
+    const rz = pos[i3 + 2] - waterFlowCenterZ;
+    const along = rx * flowDirX + rz * flowDirZ;
+    const across = rx * flowDirZ - rz * flowDirX;
+    if (along > halfLength || along < -halfLength ||
+        across > halfWidth || across < -halfWidth) {
+      const newAlong = (Math.random() - 0.5) * halfLength * 2;
+      const newAcross = (Math.random() - 0.5) * halfWidth * 2;
+      pos[i3]     = waterFlowCenterX + newAlong * flowDirX + newAcross * flowDirZ;
+      pos[i3 + 2] = waterFlowCenterZ + newAlong * flowDirZ - newAcross * flowDirX;
+      pos[i3 + 1] = sampleTerrainHeight(pos[i3], pos[i3 + 2]);
+      vel[i3]     = 0;
+      vel[i3 + 2] = 0;
+    }
+  }
+  geom.attributes.position.needsUpdate = true;
 }
 
 // クロマキー対応デプスマテリアル（影用：クロマキーで除去した部分の影を出さない）
@@ -3943,6 +4194,76 @@ function setupEventListeners() {
     setWaterUniform('sparkleRange', v);
   });
 
+  // 水流パーティクル
+  document.getElementById('waterFlowEnabled')?.addEventListener('change', (e) => {
+    waterFlowEnabled = e.target.checked;
+    if (waterFlowEnabled && !glbHeightGrid && glbModel) bakeGlbHeightGrid();
+    buildWaterParticles();
+  });
+  document.getElementById('waterFlowAmount')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('waterFlowAmountValue').textContent = v;
+    waterFlowAmount = v;
+    buildWaterParticles();
+  });
+  document.getElementById('waterFlowSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterFlowSpeedValue').textContent = v;
+    waterFlowSpeed = v;
+  });
+  document.getElementById('waterFlowPointSize')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterFlowPointSizeValue').textContent = v;
+    waterFlowPointSize = v;
+    if (waterFlowParticles) waterFlowParticles.material.size = v;
+  });
+  document.getElementById('waterFlowColor')?.addEventListener('input', (e) => {
+    waterFlowColor = e.target.value;
+    if (waterFlowParticles) waterFlowParticles.material.color.set(e.target.value);
+  });
+  document.getElementById('waterFlowOpacity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('waterFlowOpacityValue').textContent = v;
+    waterFlowOpacity = v;
+    if (waterFlowParticles) waterFlowParticles.material.opacity = v;
+  });
+  document.getElementById('waterFlowAngle')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('waterFlowAngleValue').textContent = v;
+    waterFlowAngle = v;
+    buildWaterParticles();
+  });
+  document.getElementById('waterFlowWidth')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('waterFlowWidthValue').textContent = v;
+    waterFlowWidth = v;
+    buildWaterParticles();
+  });
+  document.getElementById('waterFlowLength')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('waterFlowLengthValue').textContent = v;
+    waterFlowLength = v;
+    buildWaterParticles();
+  });
+  document.getElementById('waterFlowHeight')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('waterFlowHeightValue').textContent = v;
+    waterFlowHeight = v;
+    // 高度はsampleTerrainHeightが毎フレーム参照するため再構築不要
+  });
+  document.getElementById('waterFlowCenterX')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('waterFlowCenterXValue').textContent = v;
+    waterFlowCenterX = v;
+    buildWaterParticles();
+  });
+  document.getElementById('waterFlowCenterZ')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('waterFlowCenterZValue').textContent = v;
+    waterFlowCenterZ = v;
+    buildWaterParticles();
+  });
+
   // ============================================
   // 画像パネル系イベントリスナー（viewerモードではDOM不在のためスキップ）
   // ============================================
@@ -5524,25 +5845,33 @@ function setupEventListeners() {
     e.target.value = '';
   });
 
+  // GLBハイトグリッド再ベイク（デバウンス: スライダー操作中は遅延、離したら即実行）
+  let _glbBakeTimer = null;
+  function debouncedBakeGlbHeight() {
+    if (!waterFlowEnabled) return;
+    if (_glbBakeTimer) clearTimeout(_glbBakeTimer);
+    _glbBakeTimer = setTimeout(() => { _glbBakeTimer = null; bakeGlbHeightGrid(); }, 300);
+  }
+
   // 位置X
   document.getElementById('glbPosX')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('glbPosXValue').textContent = value;
-    if (glbModel) glbModel.position.x = value;
+    if (glbModel) { glbModel.position.x = value; debouncedBakeGlbHeight(); }
   });
 
   // 位置Y
   document.getElementById('glbPosY')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('glbPosYValue').textContent = value;
-    if (glbModel) glbModel.position.y = value;
+    if (glbModel) { glbModel.position.y = value; debouncedBakeGlbHeight(); }
   });
 
   // 位置Z
   document.getElementById('glbPosZ')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('glbPosZValue').textContent = value;
-    if (glbModel) glbModel.position.z = value;
+    if (glbModel) { glbModel.position.z = value; debouncedBakeGlbHeight(); }
   });
 
   // スケール
@@ -5552,6 +5881,7 @@ function setupEventListeners() {
     if (glbModel) {
       const s = value / 100;
       glbModel.scale.set(s, s, s);
+      debouncedBakeGlbHeight();
     }
   });
 
@@ -5559,21 +5889,21 @@ function setupEventListeners() {
   document.getElementById('glbRotX')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('glbRotXValue').textContent = value;
-    if (glbModel) glbModel.rotation.x = value * Math.PI / 180;
+    if (glbModel) { glbModel.rotation.x = value * Math.PI / 180; debouncedBakeGlbHeight(); }
   });
 
   // 回転Y
   document.getElementById('glbRotY')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('glbRotYValue').textContent = value;
-    if (glbModel) glbModel.rotation.y = value * Math.PI / 180;
+    if (glbModel) { glbModel.rotation.y = value * Math.PI / 180; debouncedBakeGlbHeight(); }
   });
 
   // 回転Z
   document.getElementById('glbRotZ')?.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('glbRotZValue').textContent = value;
-    if (glbModel) glbModel.rotation.z = value * Math.PI / 180;
+    if (glbModel) { glbModel.rotation.z = value * Math.PI / 180; debouncedBakeGlbHeight(); }
   });
 
   // 色合い
@@ -11229,6 +11559,7 @@ function setupGlbScene(sceneGroup, file) {
   if (text) text.textContent = file.name;
 
   onWindowResize();
+  bakeGlbHeightGrid();
   console.log('GLB/PLY model loaded:', file.name, 'children:', glbModel.children.length);
 }
 
@@ -11441,6 +11772,7 @@ function clearGlbModel() {
     });
     glbModel = null;
   }
+  glbHeightGrid = null;
 
   window.currentMediaRefs.glb = null;
 
@@ -12650,6 +12982,7 @@ function animate() {
   // 天候パーティクル更新
   updateWeatherParticles();
   updateLightning();
+  updateWaterParticles();
 
   // 水面アニメーション更新（両レイヤー同期）
   if (waterSurfacePlane && waterSurfacePlane.visible) {
@@ -13502,6 +13835,7 @@ window.exportHelpers = {
     updatePopIcons(dt);
     updateWeatherParticles();
     updateLightning();
+    updateWaterParticles();
     if (waterSurfacePlane && waterSurfacePlane.visible) {
       const timeDelta = 0.016 * waterSurfaceSpeed;
       waterSurfaceMaterial.uniforms.time.value += timeDelta;

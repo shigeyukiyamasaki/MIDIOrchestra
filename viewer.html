@@ -803,6 +803,18 @@
     <input type="color" id="waterSunPathColor" value="#ffffff">
     <input type="range" id="waterSparkleIntensity" min="0" max="3" step="0.05" value="0"><span id="waterSparkleIntensityValue">0</span>
     <input type="range" id="waterSparkleRange" min="0" max="1" step="0.05" value="0.5"><span id="waterSparkleRangeValue">0.5</span>
+    <input type="checkbox" id="waterFlowEnabled">
+    <input type="range" id="waterFlowAmount" min="100" max="10000" step="100" value="2000"><span id="waterFlowAmountValue">2000</span>
+    <input type="range" id="waterFlowSpeed" min="0.1" max="5" step="0.1" value="1"><span id="waterFlowSpeedValue">1</span>
+    <input type="range" id="waterFlowPointSize" min="1" max="30" step="1" value="8"><span id="waterFlowPointSizeValue">8</span>
+    <input type="color" id="waterFlowColor" value="#4a9eed">
+    <input type="range" id="waterFlowOpacity" min="0" max="1" step="0.05" value="0.6"><span id="waterFlowOpacityValue">0.6</span>
+    <input type="range" id="waterFlowAngle" min="0" max="360" step="5" value="0"><span id="waterFlowAngleValue">0</span>
+    <input type="range" id="waterFlowWidth" min="10" max="1000" step="10" value="200"><span id="waterFlowWidthValue">200</span>
+    <input type="range" id="waterFlowLength" min="10" max="2000" step="10" value="400"><span id="waterFlowLengthValue">400</span>
+    <input type="range" id="waterFlowHeight" min="-50" max="50" step="1" value="0"><span id="waterFlowHeightValue">0</span>
+    <input type="range" id="waterFlowCenterX" min="-500" max="500" step="5" value="0"><span id="waterFlowCenterXValue">0</span>
+    <input type="range" id="waterFlowCenterZ" min="-500" max="500" step="5" value="0"><span id="waterFlowCenterZValue">0</span>
     <!-- 再生制御 -->
     <input type="checkbox" id="loopStartEnabled">
     <input type="range" id="loopStartSeek" min="0" max="1000" step="1" value="0">
@@ -956,6 +968,6 @@
     }
   </script>
   <script src="src/presetManager.js?v=20260307a"></script>
-  <script type="module" src="src/main.js?v=20260312i"></script>
+  <script type="module" src="src/main.js?v=20260313f"></script>
 </body>
 </html>
