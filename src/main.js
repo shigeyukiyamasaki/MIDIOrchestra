@@ -133,6 +133,7 @@ window.currentMediaRefs = { midi: null, audio: null, skyDome: null, innerSky: nu
 // GLBモデル
 let glbModel = null;
 let glbHeightGrid = null; // GLBモデルからベイクしたハイトグリッド
+let gsBaseCanvasWidth = 0; // 3DGSポイントサイズ補正の基準幅
 
 // PLY背景
 let plyBackground = null;        // THREE.Group（PLYメッシュ3層を格納）
@@ -2848,6 +2849,23 @@ function onWindowResize() {
   if (composer) composer.setSize(width, height);
   updateCreditsPosition();
   updateViewerSideControlsWidth();
+
+  // 3DGSポイントサイズをビューポート幅に合わせて補正
+  if (glbModel && glbModel.userData.is3DGS && gsBaseCanvasWidth > 0) {
+    const baseSize = parseFloat(document.getElementById('glbPointSize')?.value || '2');
+    const scale = width / gsBaseCanvasWidth;
+    const adjusted = baseSize * scale;
+    glbModel.traverse((child) => {
+      if (child.isPoints && child.material) {
+        if (child.material.uniforms && child.material.uniforms.pointSize) {
+          child.material.uniforms.pointSize.value = adjusted;
+        } else {
+          child.material.size = adjusted;
+          child.material.needsUpdate = true;
+        }
+      }
+    });
+  }
 }
 
 // モバイル横向き: スライダーパネルを動画の左端まで伸ばす
@@ -6139,17 +6157,20 @@ function setupEventListeners() {
     applyGlbPixelArt(val);
   });
 
-  // 点サイズ（3DGS PLY用）
+  // 点サイズ（3DGS PLY用）— ビューポート幅に応じて補正
   document.getElementById('glbPointSize')?.addEventListener('input', (e) => {
     const val = parseFloat(e.target.value);
     document.getElementById('glbPointSizeValue').textContent = val;
     if (glbModel && glbModel.userData.is3DGS) {
+      const scale = gsBaseCanvasWidth > 0 ? renderer.getSize(new THREE.Vector2()).x / gsBaseCanvasWidth : 1;
+      const adjusted = val * scale;
       glbModel.traverse((child) => {
         if (child.isPoints && child.material) {
           if (child.material.uniforms && child.material.uniforms.pointSize) {
-            child.material.uniforms.pointSize.value = val;
+            child.material.uniforms.pointSize.value = adjusted;
           } else {
-            child.material.size = val;
+            child.material.size = adjusted;
+            child.material.needsUpdate = true;
           }
         }
       });
@@ -11693,7 +11714,7 @@ function setupGlbScene(sceneGroup, file) {
 
   const isPlyModel = glbModel.userData.isPly;
 
-  // 3DGS PLY: スライダーの点サイズを適用
+  // 3DGS PLY: スライダーの点サイズを適用 + 基準幅を記録
   if (glbModel.userData.is3DGS) {
     const pointSize = getVal('glbPointSize', 2);
     glbModel.traverse((child) => {
@@ -11705,6 +11726,7 @@ function setupGlbScene(sceneGroup, file) {
         }
       }
     });
+    gsBaseCanvasWidth = renderer.getSize(new THREE.Vector2()).x;
   }
 
   // 影を落とす・受ける設定
