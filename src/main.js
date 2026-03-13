@@ -448,6 +448,15 @@ let waterFlowLength = 400;  // 流れの長さ
 let waterFlowHeight = 0;    // 水面高度オフセット
 let waterFlowCenterX = 0;   // 水源の中心X
 let waterFlowCenterZ = 0;   // 水源の中心Z
+let plyWaterEnabled = false;   // PLY水面エフェクト有効
+let plyWaterColor = '#4a9eed'; // 対象色
+let plyWaterThreshold = 0.3;   // 色の許容範囲
+let plyWaterAmplitude = 0.5;   // 揺れの振幅
+let plyWaterSpeed = 1.0;       // 揺れの速度
+let plyWaterWavelength = 10;   // 波長
+let plyWaterIndices = null;    // マッチした頂点インデックス配列
+let plyWaterOrigPos = null;    // マッチした頂点の元位置
+let plyWaterTime = 0;          // アニメーション時間
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
@@ -1853,6 +1862,31 @@ function sampleTerrainHeight(wx, wz) {
 }
 
 // 水流パーティクルシステム
+// DOM値からwater系グローバル変数を直接同期（プリセット復元用）
+function syncWaterSettingsFromDOM() {
+  const gc = (id) => document.getElementById(id)?.checked ?? false;
+  const gv = (id, def) => { const el = document.getElementById(id); return el ? parseFloat(el.value) : def; };
+  const gs = (id, def) => { const el = document.getElementById(id); return el ? el.value : def; };
+  waterFlowEnabled = gc('waterFlowEnabled');
+  waterFlowAmount = gv('waterFlowAmount', 2000);
+  waterFlowSpeed = gv('waterFlowSpeed', 1);
+  waterFlowPointSize = gv('waterFlowPointSize', 8);
+  waterFlowColor = gs('waterFlowColor', '#4a9eed');
+  waterFlowOpacity = gv('waterFlowOpacity', 0.6);
+  waterFlowAngle = gv('waterFlowAngle', 0);
+  waterFlowWidth = gv('waterFlowWidth', 200);
+  waterFlowLength = gv('waterFlowLength', 400);
+  waterFlowHeight = gv('waterFlowHeight', 0);
+  waterFlowCenterX = gv('waterFlowCenterX', 0);
+  waterFlowCenterZ = gv('waterFlowCenterZ', 0);
+  plyWaterEnabled = gc('plyWaterEnabled');
+  plyWaterColor = gs('plyWaterColor', '#4a9eed');
+  plyWaterThreshold = gv('plyWaterThreshold', 0.3);
+  plyWaterAmplitude = gv('plyWaterAmplitude', 0.5);
+  plyWaterSpeed = gv('plyWaterSpeed', 1.0);
+  plyWaterWavelength = gv('plyWaterWavelength', 10);
+}
+
 function buildWaterParticles() {
   if (waterFlowParticles) {
     scene.remove(waterFlowParticles);
@@ -1977,6 +2011,93 @@ function updateWaterParticles() {
     }
   }
   geom.attributes.position.needsUpdate = true;
+}
+
+// PLY水面エフェクト: 指定色の頂点を波状に揺らす
+function setupPlyWaterEffect() {
+  plyWaterIndices = null;
+  plyWaterOrigPos = null;
+  if (!plyWaterEnabled || !glbModel || !glbModel.userData.is3DGS) return;
+
+  const target = new THREE.Color(plyWaterColor);
+  const threshold = plyWaterThreshold;
+  const indices = [];
+  const origPositions = [];
+
+  glbModel.traverse((child) => {
+    if (!child.isPoints || !child.geometry) return;
+    const colAttr = child.geometry.attributes.color;
+    const posAttr = child.geometry.attributes.position;
+    if (!colAttr || !posAttr) return;
+    const col = colAttr.array;
+    const pos = posAttr.array;
+    const count = posAttr.count;
+
+    for (let i = 0; i < count; i++) {
+      const r = col[i * 3], g = col[i * 3 + 1], b = col[i * 3 + 2];
+      const dr = r - target.r, dg = g - target.g, db = b - target.b;
+      const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+      if (dist < threshold) {
+        indices.push(i);
+        origPositions.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+      }
+    }
+  });
+
+  if (indices.length > 0) {
+    plyWaterIndices = new Uint32Array(indices);
+    plyWaterOrigPos = new Float32Array(origPositions);
+    console.log(`[PlyWater] ${indices.length} vertices matched color ${plyWaterColor} (threshold=${threshold})`);
+  } else {
+    console.log('[PlyWater] No vertices matched');
+  }
+}
+
+function updatePlyWaterEffect() {
+  if (!plyWaterIndices || !glbModel || !glbModel.userData.is3DGS) return;
+
+  plyWaterTime += 0.016 * plyWaterSpeed;
+  const amp = plyWaterAmplitude;
+  const wl = plyWaterWavelength;
+  const t = plyWaterTime;
+
+  glbModel.traverse((child) => {
+    if (!child.isPoints || !child.geometry) return;
+    const posAttr = child.geometry.attributes.position;
+    if (!posAttr) return;
+    const pos = posAttr.array;
+    const indices = plyWaterIndices;
+    const orig = plyWaterOrigPos;
+
+    for (let j = 0; j < indices.length; j++) {
+      const i = indices[j];
+      const ox = orig[j * 3], oy = orig[j * 3 + 1], oz = orig[j * 3 + 2];
+      // XZ位置に基づく波（複数方向を合成してリアルな水面感）
+      const phase1 = (ox + oz) / wl + t;
+      const phase2 = (ox * 0.7 - oz * 0.7) / (wl * 0.8) + t * 1.3;
+      const wave = Math.sin(phase1) * 0.6 + Math.sin(phase2) * 0.4; // -1 ~ 1
+      pos[i * 3 + 1] = oy + amp * wave;
+    }
+    posAttr.needsUpdate = true;
+  });
+}
+
+function clearPlyWaterEffect() {
+  if (!plyWaterIndices || !glbModel) return;
+  // 元の位置に戻す
+  glbModel.traverse((child) => {
+    if (!child.isPoints || !child.geometry) return;
+    const posAttr = child.geometry.attributes.position;
+    if (!posAttr) return;
+    const pos = posAttr.array;
+    for (let j = 0; j < plyWaterIndices.length; j++) {
+      const i = plyWaterIndices[j];
+      pos[i * 3 + 1] = plyWaterOrigPos[j * 3 + 1];
+    }
+    posAttr.needsUpdate = true;
+  });
+  plyWaterIndices = null;
+  plyWaterOrigPos = null;
 }
 
 // クロマキー対応デプスマテリアル（影用：クロマキーで除去した部分の影を出さない）
@@ -4262,6 +4383,41 @@ function setupEventListeners() {
     document.getElementById('waterFlowCenterZValue').textContent = v;
     waterFlowCenterZ = v;
     buildWaterParticles();
+  });
+
+  // PLY水面エフェクト
+  document.getElementById('plyWaterEnabled')?.addEventListener('change', (e) => {
+    plyWaterEnabled = e.target.checked;
+    if (plyWaterEnabled) {
+      setupPlyWaterEffect();
+    } else {
+      clearPlyWaterEffect();
+    }
+  });
+  document.getElementById('plyWaterColor')?.addEventListener('input', (e) => {
+    plyWaterColor = e.target.value;
+    if (plyWaterEnabled) { clearPlyWaterEffect(); setupPlyWaterEffect(); }
+  });
+  document.getElementById('plyWaterThreshold')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyWaterThresholdValue').textContent = v;
+    plyWaterThreshold = v;
+    if (plyWaterEnabled) { clearPlyWaterEffect(); setupPlyWaterEffect(); }
+  });
+  document.getElementById('plyWaterAmplitude')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyWaterAmplitudeValue').textContent = v;
+    plyWaterAmplitude = v;
+  });
+  document.getElementById('plyWaterSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyWaterSpeedValue').textContent = v;
+    plyWaterSpeed = v;
+  });
+  document.getElementById('plyWaterWavelength')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyWaterWavelengthValue').textContent = v;
+    plyWaterWavelength = v;
   });
 
   // ============================================
@@ -11285,6 +11441,7 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
       if (pts) {
         pts.geometry.setDrawRange(0, count);
         console.log(`[PLY] drawRange: ${count} points (density=${density})`);
+        if (plyWaterEnabled) setupPlyWaterEffect();
         return;
       }
     }
@@ -11391,6 +11548,12 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
       existingPoints.geometry.dispose();
       existingPoints.geometry = geometry;
       console.log(`[PLY] Full buffer built: ${totalCount} points, showing ${cumulativeCounts[density]}`);
+      // ジオメトリ差し替え後にPLY水面エフェクトを再セットアップ
+      console.log('[PLY] geometry replaced, plyWaterEnabled:', plyWaterEnabled, 'plyWaterIndices:', plyWaterIndices?.length);
+      if (plyWaterEnabled) {
+        setupPlyWaterEffect();
+        console.log('[PLY] after re-setup, plyWaterIndices:', plyWaterIndices?.length);
+      }
       return;
     }
   }
@@ -12983,6 +13146,7 @@ function animate() {
   updateWeatherParticles();
   updateLightning();
   updateWaterParticles();
+  updatePlyWaterEffect();
 
   // 水面アニメーション更新（両レイヤー同期）
   if (waterSurfacePlane && waterSurfacePlane.visible) {
@@ -13811,6 +13975,7 @@ window.appFunctions = {
   loadGlbModel, clearGlbModel,
   loadPlyBackground, clearPlyBackground, syncPlyCache,
   updateTrackPanel, debouncedRebuildNotes,
+  buildWaterParticles, setupPlyWaterEffect, syncWaterSettingsFromDOM,
 };
 
 // 360度エクスポート用にinternal関数・オブジェクトを公開
@@ -13836,6 +14001,7 @@ window.exportHelpers = {
     updateWeatherParticles();
     updateLightning();
     updateWaterParticles();
+    updatePlyWaterEffect();
     if (waterSurfacePlane && waterSurfacePlane.visible) {
       const timeDelta = 0.016 * waterSurfaceSpeed;
       waterSurfaceMaterial.uniforms.time.value += timeDelta;

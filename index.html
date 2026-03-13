@@ -457,6 +457,31 @@
           <input type="range" id="waterFlowCenterZ" min="-500" max="500" step="5" value="0">
           <span id="waterFlowCenterZValue">0</span>
         </div>
+        <h4 class="setting-category"><span>PLY水面</span><input type="checkbox" id="plyWaterEnabled"></h4>
+        <div class="setting-item">
+          <label>対象色</label>
+          <input type="color" id="plyWaterColor" value="#4a9eed">
+        </div>
+        <div class="setting-item">
+          <label>許容範囲</label>
+          <input type="range" id="plyWaterThreshold" min="0.05" max="1" step="0.05" value="0.3">
+          <span id="plyWaterThresholdValue">0.3</span>
+        </div>
+        <div class="setting-item">
+          <label>振幅</label>
+          <input type="range" id="plyWaterAmplitude" min="0.01" max="3" step="0.01" value="0.5">
+          <span id="plyWaterAmplitudeValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="plyWaterSpeed" min="0.1" max="5" step="0.1" value="1">
+          <span id="plyWaterSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>波長</label>
+          <input type="range" id="plyWaterWavelength" min="1" max="50" step="1" value="10">
+          <span id="plyWaterWavelengthValue">10</span>
+        </div>
 
       </div>
     </div>
@@ -1294,8 +1319,8 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
 
-  <script src="src/presetManager.js?v=20260310c"></script>
+  <script src="src/presetManager.js?v=20260313g"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260313f"></script>
+  <script type="module" src="src/main.js?v=20260313r"></script>
 </body>
 </html>

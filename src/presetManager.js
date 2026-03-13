@@ -722,7 +722,6 @@ function applySettings(s) {
       setRangeValue(key, s[key]);
     }
   });
-
   // 音域フィルター復元（localStorageに書き込み → state.tracksに反映）
   if (s.pitchFilters && typeof s.pitchFilters === 'object') {
     localStorage.setItem('midiOrchestra_pitchFilters', JSON.stringify(s.pitchFilters));
@@ -911,6 +910,27 @@ async function loadPreset(presetId) {
     const key = 'plyBg' + i;
     if (media[key]) {
       await restoreMediaSlot(media[key], (file) => app.loadPlyBackground([file]), null);
+    }
+  }
+
+  // 水流・PLY水面エフェクトの再構築
+  // プリセットの設定値を直接参照してグローバル変数をセットし再構築
+  if (app.syncWaterSettingsFromDOM) {
+    // まずプリセット値でチェックボックスを確実にセット
+    const wfEl = document.getElementById('waterFlowEnabled');
+    if (wfEl && preset.settings.waterFlowEnabled) {
+      wfEl.checked = true;
+    }
+    const pwEl = document.getElementById('plyWaterEnabled');
+    if (pwEl && preset.settings.plyWaterEnabled) {
+      pwEl.checked = true;
+    }
+    app.syncWaterSettingsFromDOM();
+    if (preset.settings.waterFlowEnabled) {
+      app.buildWaterParticles();
+    }
+    if (preset.settings.plyWaterEnabled) {
+      app.setupPlyWaterEffect();
     }
   }
 
