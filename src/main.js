@@ -450,6 +450,7 @@ let waterFlowHeight = 0;    // 水面高度オフセット
 let waterFlowCenterX = 0;   // 水源の中心X
 let waterFlowCenterZ = 0;   // 水源の中心Z
 let plyWaterEnabled = false;   // PLY水面エフェクト有効
+let plyWaterMode = 'ocean';    // 波の種類: ocean / brook
 let plyWaterColor = '#4a9eed'; // 対象色
 let plyWaterThreshold = 0.3;   // 色の許容範囲
 let plyWaterAmplitude = 0.5;   // 揺れの振幅
@@ -1885,6 +1886,7 @@ function syncWaterSettingsFromDOM() {
   waterFlowCenterX = gv('waterFlowCenterX', 0);
   waterFlowCenterZ = gv('waterFlowCenterZ', 0);
   plyWaterEnabled = gc('plyWaterEnabled');
+  plyWaterMode = gs('plyWaterMode', 'ocean');
   plyWaterColor = gs('plyWaterColor', '#4a9eed');
   plyWaterThreshold = gv('plyWaterThreshold', 0.3);
   plyWaterAmplitude = gv('plyWaterAmplitude', 0.5);
@@ -2089,13 +2091,31 @@ function updatePlyWaterEffect() {
     const indices = plyWaterIndices;
     const orig = plyWaterOrigPos;
 
-    for (let j = 0; j < indices.length; j++) {
-      const i = indices[j];
-      const ox = orig[j * 3], oy = orig[j * 3 + 1], oz = orig[j * 3 + 2];
-      const phase1 = (ox + oz) / wl + t;
-      const phase2 = (ox * 0.7 - oz * 0.7) / (wl * 0.8) + t * 1.3;
-      const wave = Math.sin(phase1) * 0.6 + Math.sin(phase2) * 0.4;
-      pos[i * 3 + 1] = oy + amp * wave;
+    if (plyWaterMode === 'brook') {
+      // 小川モード: 細かく不規則な揺れ + わずかな水平の流れ感
+      for (let j = 0; j < indices.length; j++) {
+        const i = indices[j];
+        const ox = orig[j * 3], oy = orig[j * 3 + 1], oz = orig[j * 3 + 2];
+        const s = 1.0 / wl;
+        const w1 = Math.sin(ox * s * 3.1 + t * 2.3) * Math.cos(oz * s * 2.7 + t * 1.7);
+        const w2 = Math.sin(ox * s * 5.7 - t * 3.1 + oz * s * 1.3) * 0.5;
+        const w3 = Math.cos(oz * s * 4.3 + t * 2.7 + ox * s * 0.8) * 0.3;
+        const w4 = Math.sin((ox + oz) * s * 7.1 + t * 4.0) * 0.15;
+        const wave = (w1 + w2 + w3 + w4) * 0.5;
+        pos[i * 3 + 1] = oy + amp * wave;
+        // わずかなX方向の流れ
+        pos[i * 3] = ox + amp * 0.15 * Math.sin(oz * s * 2.0 + t * 1.8);
+      }
+    } else {
+      // 海モード: 大きくゆったりとしたうねり
+      for (let j = 0; j < indices.length; j++) {
+        const i = indices[j];
+        const ox = orig[j * 3], oy = orig[j * 3 + 1], oz = orig[j * 3 + 2];
+        const phase1 = (ox + oz) / wl + t;
+        const phase2 = (ox * 0.7 - oz * 0.7) / (wl * 0.8) + t * 1.3;
+        const wave = Math.sin(phase1) * 0.6 + Math.sin(phase2) * 0.4;
+        pos[i * 3 + 1] = oy + amp * wave;
+      }
     }
     posAttr.needsUpdate = true;
   });
@@ -2110,6 +2130,7 @@ function clearPlyWaterEffect() {
     const pos = posAttr.array;
     for (let j = 0; j < plyWaterIndices.length; j++) {
       const i = plyWaterIndices[j];
+      pos[i * 3]     = plyWaterOrigPos[j * 3];
       pos[i * 3 + 1] = plyWaterOrigPos[j * 3 + 1];
     }
     posAttr.needsUpdate = true;
@@ -2850,22 +2871,6 @@ function onWindowResize() {
   updateCreditsPosition();
   updateViewerSideControlsWidth();
 
-  // 3DGSポイントサイズをビューポート幅に合わせて補正
-  if (glbModel && glbModel.userData.is3DGS && gsBaseCanvasWidth > 0) {
-    const baseSize = parseFloat(document.getElementById('glbPointSize')?.value || '2');
-    const scale = width / gsBaseCanvasWidth;
-    const adjusted = baseSize * scale;
-    glbModel.traverse((child) => {
-      if (child.isPoints && child.material) {
-        if (child.material.uniforms && child.material.uniforms.pointSize) {
-          child.material.uniforms.pointSize.value = adjusted;
-        } else {
-          child.material.size = adjusted;
-          child.material.needsUpdate = true;
-        }
-      }
-    });
-  }
 }
 
 // モバイル横向き: スライダーパネルを動画の左端まで伸ばす
@@ -4430,6 +4435,9 @@ function setupEventListeners() {
     } else {
       clearPlyWaterEffect();
     }
+  });
+  document.getElementById('plyWaterMode')?.addEventListener('change', (e) => {
+    plyWaterMode = e.target.value;
   });
   document.getElementById('plyWaterColor')?.addEventListener('input', (e) => {
     plyWaterColor = e.target.value;
@@ -6157,20 +6165,17 @@ function setupEventListeners() {
     applyGlbPixelArt(val);
   });
 
-  // 点サイズ（3DGS PLY用）— ビューポート幅に応じて補正
+  // 点サイズ（3DGS PLY用）
   document.getElementById('glbPointSize')?.addEventListener('input', (e) => {
     const val = parseFloat(e.target.value);
     document.getElementById('glbPointSizeValue').textContent = val;
     if (glbModel && glbModel.userData.is3DGS) {
-      const scale = gsBaseCanvasWidth > 0 ? renderer.getSize(new THREE.Vector2()).x / gsBaseCanvasWidth : 1;
-      const adjusted = val * scale;
       glbModel.traverse((child) => {
         if (child.isPoints && child.material) {
           if (child.material.uniforms && child.material.uniforms.pointSize) {
-            child.material.uniforms.pointSize.value = adjusted;
+            child.material.uniforms.pointSize.value = val;
           } else {
-            child.material.size = adjusted;
-            child.material.needsUpdate = true;
+            child.material.size = val;
           }
         }
       });
@@ -11495,7 +11500,7 @@ function create3DGSMaterial(pointSize) {
   return new THREE.PointsMaterial({
     size: pointSize,
     vertexColors: true,
-    sizeAttenuation: false,
+    sizeAttenuation: true,
   });
 }
 
@@ -11507,7 +11512,7 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
   const cache = ensure3DGSCache(arrayBuffer);
   if (!cache) return;
   const trim = parseFloat(document.getElementById('glbTrim')?.value || '0');
-  const density = parseInt(document.getElementById('glbPointDensity')?.value || '0');
+  const density = 0; // sizeAttenuation: trueで補間不要
   const trimKey = trim.toFixed(4);
 
   // drawRangeだけで対応できるか判定
@@ -11726,7 +11731,6 @@ function setupGlbScene(sceneGroup, file) {
         }
       }
     });
-    gsBaseCanvasWidth = renderer.getSize(new THREE.Vector2()).x;
   }
 
   // 影を落とす・受ける設定
