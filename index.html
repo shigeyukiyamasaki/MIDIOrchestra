@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Orchestra Visualizer</title>
-  <link rel="stylesheet" href="style.css?v=20260314ah">
+  <link rel="stylesheet" href="style.css?v=20260314aj">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
@@ -317,186 +317,7 @@
 
       </div>
     </div>
-    <!-- 水エフェクトパネル -->
-    <div id="water-panel" class="settings-column">
-      <h3>水エフェクト</h3>
-      <div id="water-list">
-        <h4 class="setting-category"><span>水面</span><input type="checkbox" id="waterSurfaceEnabled"></h4>
-        <div class="setting-item">
-          <label>面積</label>
-          <input type="range" id="waterSurfaceSize" min="100" max="2000" step="50" value="500">
-          <span id="waterSurfaceSizeValue">500</span>
-        </div>
-        <div class="setting-item">
-          <label>スケール</label>
-          <input type="range" id="waterSurfaceScale" min="10" max="500" step="1" value="40">
-          <span id="waterSurfaceScaleValue">40</span>
-        </div>
-        <div class="setting-item">
-          <label>速度</label>
-          <input type="range" id="waterSurfaceSpeed" min="0.1" max="3" step="0.1" value="1">
-          <span id="waterSurfaceSpeedValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>深色</label>
-          <input type="color" id="waterSurfaceColor" value="#1a3a6a">
-          <label>浅色</label>
-          <input type="color" id="waterSurfaceColor2" value="#4a9eed">
-        </div>
-        <div class="setting-item">
-          <label>不透明度</label>
-          <input type="range" id="waterSurfaceOpacity" min="0" max="1" step="0.05" value="0.6">
-          <span id="waterSurfaceOpacityValue">0.6</span>
-        </div>
-        <div class="setting-item">
-          <label>コースティクス</label>
-          <input type="range" id="waterSurfaceCaustic" min="0" max="1" step="0.05" value="0.5">
-          <span id="waterSurfaceCausticValue">0.5</span>
-        </div>
-        <div class="setting-item">
-          <label>波高さ</label>
-          <input type="range" id="waterSurfaceWaveHeight" min="0" max="20" step="0.5" value="3">
-          <span id="waterSurfaceWaveHeightValue">3</span>
-        </div>
-        <div class="setting-item">
-          <label>高度</label>
-          <input type="range" id="waterSurfaceHeight" min="-50" max="50" step="1" value="0">
-          <span id="waterSurfaceHeightValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>サンパス強度</label>
-          <input type="range" id="waterSunPathIntensity" min="0" max="3" step="0.05" value="0">
-          <span id="waterSunPathIntensityValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>サンパス鋭さ</label>
-          <input type="range" id="waterSunPathSharpness" min="2" max="128" step="1" value="32">
-          <span id="waterSunPathSharpnessValue">32</span>
-        </div>
-        <div class="setting-item">
-          <label>サンパス色</label>
-          <input type="color" id="waterSunPathColor" value="#ffffff">
-        </div>
-        <div class="setting-item">
-          <label>スパークル</label>
-          <input type="range" id="waterSparkleIntensity" min="0" max="3" step="0.05" value="0">
-          <span id="waterSparkleIntensityValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>スパークル範囲</label>
-          <input type="range" id="waterSparkleRange" min="0" max="1" step="0.05" value="0.5">
-          <span id="waterSparkleRangeValue">0.5</span>
-        </div>
-        <h4 class="setting-category"><span>水流</span><input type="checkbox" id="waterFlowEnabled"></h4>
-        <div class="setting-item">
-          <label>量</label>
-          <input type="range" id="waterFlowAmount" min="100" max="10000" step="100" value="2000">
-          <span id="waterFlowAmountValue">2000</span>
-        </div>
-        <div class="setting-item">
-          <label>速度</label>
-          <input type="range" id="waterFlowSpeed" min="0.1" max="5" step="0.1" value="1">
-          <span id="waterFlowSpeedValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>粒サイズ</label>
-          <input type="range" id="waterFlowPointSize" min="1" max="30" step="1" value="8">
-          <span id="waterFlowPointSizeValue">8</span>
-        </div>
-        <div class="setting-item">
-          <label>色</label>
-          <input type="color" id="waterFlowColor" value="#4a9eed">
-        </div>
-        <div class="setting-item">
-          <label>不透明度</label>
-          <input type="range" id="waterFlowOpacity" min="0" max="1" step="0.05" value="0.6">
-          <span id="waterFlowOpacityValue">0.6</span>
-        </div>
-        <div class="setting-item">
-          <label>方向(°)</label>
-          <input type="range" id="waterFlowAngle" min="0" max="360" step="5" value="0">
-          <span id="waterFlowAngleValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>幅</label>
-          <input type="range" id="waterFlowWidth" min="10" max="1000" step="10" value="200">
-          <span id="waterFlowWidthValue">200</span>
-        </div>
-        <div class="setting-item">
-          <label>長さ</label>
-          <input type="range" id="waterFlowLength" min="10" max="2000" step="10" value="400">
-          <span id="waterFlowLengthValue">400</span>
-        </div>
-        <div class="setting-item">
-          <label>高度</label>
-          <input type="range" id="waterFlowHeight" min="-50" max="50" step="1" value="0">
-          <span id="waterFlowHeightValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>中心X</label>
-          <input type="range" id="waterFlowCenterX" min="-500" max="500" step="5" value="0">
-          <span id="waterFlowCenterXValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>中心Z</label>
-          <input type="range" id="waterFlowCenterZ" min="-500" max="500" step="5" value="0">
-          <span id="waterFlowCenterZValue">0</span>
-        </div>
-        <h4 class="setting-category"><span>PLY水面</span><input type="checkbox" id="plyWaterEnabled"></h4>
-        <div class="setting-item">
-          <label>波の種類</label>
-          <select id="plyWaterMode">
-            <option value="ocean">海の波</option>
-            <option value="brook">小川</option>
-          </select>
-        </div>
-        <div class="setting-item">
-          <label>対象色</label>
-          <input type="color" id="plyWaterColor" value="#4a9eed">
-        </div>
-        <div class="setting-item">
-          <label>許容範囲</label>
-          <input type="range" id="plyWaterThreshold" min="0.05" max="1" step="0.05" value="0.3">
-          <span id="plyWaterThresholdValue">0.3</span>
-        </div>
-        <div class="setting-item">
-          <label>振幅</label>
-          <input type="range" id="plyWaterAmplitude" min="0.01" max="3" step="0.01" value="0.5">
-          <span id="plyWaterAmplitudeValue">0.5</span>
-        </div>
-        <div class="setting-item">
-          <label>速度</label>
-          <input type="range" id="plyWaterSpeed" min="0.1" max="5" step="0.1" value="1">
-          <span id="plyWaterSpeedValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>波長</label>
-          <input type="range" id="plyWaterWavelength" min="1" max="50" step="1" value="10">
-          <span id="plyWaterWavelengthValue">10</span>
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="plyWaterOpacity" min="0" max="1" step="0.05" value="1">
-          <span id="plyWaterOpacityValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>コースティクス強度</label>
-          <input type="range" id="plyWaterCausticsIntensity" min="0" max="3" step="0.1" value="0">
-          <span id="plyWaterCausticsIntensityValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>コースティクス速度</label>
-          <input type="range" id="plyWaterCausticsSpeed" min="0.1" max="5" step="0.1" value="1">
-          <span id="plyWaterCausticsSpeedValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>コースティクスサイズ</label>
-          <input type="range" id="plyWaterCausticsScale" min="0.01" max="1" step="0.01" value="0.1">
-          <span id="plyWaterCausticsScaleValue">0.1</span>
-        </div>
-      </div>
-    </div>
-    <!-- 天候エフェクトパネル（右列） -->
+    <!-- 天候エフェクトパネル -->
     <!-- 光エフェクトパネル -->
     <div id="light-panel" class="settings-column">
       <h3>光エフェクト</h3>
@@ -709,13 +530,195 @@
         </div>
       </div>
     </div>
+    <!-- 水エフェクトパネル -->
+    <div id="water-panel" class="settings-column">
+      <h3>水エフェクト</h3>
+      <div id="water-list">
+        <h4 class="setting-category"><span>水面</span><input type="checkbox" id="waterSurfaceEnabled"></h4>
+        <div class="setting-item">
+          <label>面積</label>
+          <input type="range" id="waterSurfaceSize" min="100" max="2000" step="50" value="500">
+          <span id="waterSurfaceSizeValue">500</span>
+        </div>
+        <div class="setting-item">
+          <label>スケール</label>
+          <input type="range" id="waterSurfaceScale" min="10" max="500" step="1" value="40">
+          <span id="waterSurfaceScaleValue">40</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="waterSurfaceSpeed" min="0.1" max="3" step="0.1" value="1">
+          <span id="waterSurfaceSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>深色</label>
+          <input type="color" id="waterSurfaceColor" value="#1a3a6a">
+          <label>浅色</label>
+          <input type="color" id="waterSurfaceColor2" value="#4a9eed">
+        </div>
+        <div class="setting-item">
+          <label>不透明度</label>
+          <input type="range" id="waterSurfaceOpacity" min="0" max="1" step="0.05" value="0.6">
+          <span id="waterSurfaceOpacityValue">0.6</span>
+        </div>
+        <div class="setting-item">
+          <label>コースティクス</label>
+          <input type="range" id="waterSurfaceCaustic" min="0" max="1" step="0.05" value="0.5">
+          <span id="waterSurfaceCausticValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>波高さ</label>
+          <input type="range" id="waterSurfaceWaveHeight" min="0" max="20" step="0.5" value="3">
+          <span id="waterSurfaceWaveHeightValue">3</span>
+        </div>
+        <div class="setting-item">
+          <label>高度</label>
+          <input type="range" id="waterSurfaceHeight" min="-50" max="50" step="1" value="0">
+          <span id="waterSurfaceHeightValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>サンパス強度</label>
+          <input type="range" id="waterSunPathIntensity" min="0" max="3" step="0.05" value="0">
+          <span id="waterSunPathIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>サンパス鋭さ</label>
+          <input type="range" id="waterSunPathSharpness" min="2" max="128" step="1" value="32">
+          <span id="waterSunPathSharpnessValue">32</span>
+        </div>
+        <div class="setting-item">
+          <label>サンパス色</label>
+          <input type="color" id="waterSunPathColor" value="#ffffff">
+        </div>
+        <div class="setting-item">
+          <label>スパークル</label>
+          <input type="range" id="waterSparkleIntensity" min="0" max="3" step="0.05" value="0">
+          <span id="waterSparkleIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>スパークル範囲</label>
+          <input type="range" id="waterSparkleRange" min="0" max="1" step="0.05" value="0.5">
+          <span id="waterSparkleRangeValue">0.5</span>
+        </div>
+        <h4 class="setting-category"><span>水流</span><input type="checkbox" id="waterFlowEnabled"></h4>
+        <div class="setting-item">
+          <label>量</label>
+          <input type="range" id="waterFlowAmount" min="100" max="10000" step="100" value="2000">
+          <span id="waterFlowAmountValue">2000</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="waterFlowSpeed" min="0.1" max="5" step="0.1" value="1">
+          <span id="waterFlowSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>粒サイズ</label>
+          <input type="range" id="waterFlowPointSize" min="1" max="30" step="1" value="8">
+          <span id="waterFlowPointSizeValue">8</span>
+        </div>
+        <div class="setting-item">
+          <label>色</label>
+          <input type="color" id="waterFlowColor" value="#4a9eed">
+        </div>
+        <div class="setting-item">
+          <label>不透明度</label>
+          <input type="range" id="waterFlowOpacity" min="0" max="1" step="0.05" value="0.6">
+          <span id="waterFlowOpacityValue">0.6</span>
+        </div>
+        <div class="setting-item">
+          <label>方向(°)</label>
+          <input type="range" id="waterFlowAngle" min="0" max="360" step="5" value="0">
+          <span id="waterFlowAngleValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>幅</label>
+          <input type="range" id="waterFlowWidth" min="10" max="1000" step="10" value="200">
+          <span id="waterFlowWidthValue">200</span>
+        </div>
+        <div class="setting-item">
+          <label>長さ</label>
+          <input type="range" id="waterFlowLength" min="10" max="2000" step="10" value="400">
+          <span id="waterFlowLengthValue">400</span>
+        </div>
+        <div class="setting-item">
+          <label>高度</label>
+          <input type="range" id="waterFlowHeight" min="-50" max="50" step="1" value="0">
+          <span id="waterFlowHeightValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>中心X</label>
+          <input type="range" id="waterFlowCenterX" min="-500" max="500" step="5" value="0">
+          <span id="waterFlowCenterXValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>中心Z</label>
+          <input type="range" id="waterFlowCenterZ" min="-500" max="500" step="5" value="0">
+          <span id="waterFlowCenterZValue">0</span>
+        </div>
+        <h4 class="setting-category"><span>PLY水面</span><input type="checkbox" id="plyWaterEnabled"></h4>
+        <div class="setting-item">
+          <label>波の種類</label>
+          <select id="plyWaterMode">
+            <option value="ocean">海の波</option>
+            <option value="brook">小川</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <label>対象色</label>
+          <input type="color" id="plyWaterColor" value="#4a9eed">
+        </div>
+        <div class="setting-item">
+          <label>許容範囲</label>
+          <input type="range" id="plyWaterThreshold" min="0.05" max="1" step="0.05" value="0.3">
+          <span id="plyWaterThresholdValue">0.3</span>
+        </div>
+        <div class="setting-item">
+          <label>振幅</label>
+          <input type="range" id="plyWaterAmplitude" min="0.01" max="3" step="0.01" value="0.5">
+          <span id="plyWaterAmplitudeValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="plyWaterSpeed" min="0.1" max="5" step="0.1" value="1">
+          <span id="plyWaterSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>波長</label>
+          <input type="range" id="plyWaterWavelength" min="1" max="50" step="1" value="10">
+          <span id="plyWaterWavelengthValue">10</span>
+        </div>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="plyWaterOpacity" min="0" max="1" step="0.05" value="1">
+          <span id="plyWaterOpacityValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>コースティクス強度</label>
+          <input type="range" id="plyWaterCausticsIntensity" min="0" max="3" step="0.1" value="0">
+          <span id="plyWaterCausticsIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>コースティクス速度</label>
+          <input type="range" id="plyWaterCausticsSpeed" min="0.1" max="5" step="0.1" value="1">
+          <span id="plyWaterCausticsSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>コースティクスサイズ</label>
+          <input type="range" id="plyWaterCausticsScale" min="0.01" max="1" step="0.01" value="0.1">
+          <span id="plyWaterCausticsScaleValue">0.1</span>
+        </div>
+      </div>
+    </div>
     </div>
   </div>
 
   <!-- 画像配置パネル（メインエリア上部） -->
   <div id="image-panel">
     <h3>画像設定</h3>
-    <div id="image-list">
+    <div id="image-nav" class="property-nav"></div>
+    <div id="image-content" class="property-content">
+    <div class="settings-column">
+      <h3>背景・床</h3>
       <!-- 3D背景（PLY） -->
       <div class="image-section">
         <h4 class="setting-category">3D背景</h4>
@@ -868,7 +871,8 @@
       </div>
 
     </div>
-    <div id="image-list-row2">
+    <div class="settings-column">
+      <h3>パネル</h3>
       <!-- 左側面画像 -->
       <div class="image-section">
         <h4 class="setting-category">パネル1</h4>
@@ -1032,7 +1036,8 @@
       </div>
 
     </div>
-    <div id="image-list-row3">
+    <div class="settings-column">
+      <h3>3D</h3>
       <!-- 3Dモデル（列1: ファイル・位置・回転） -->
       <div class="image-section">
         <h4 class="setting-category">3Dモデル</h4>
@@ -1084,6 +1089,7 @@
           </div>
         </div>
       </div>
+    </div>
     </div>
   </div>
 
@@ -1404,6 +1410,6 @@
 
   <script src="src/presetManager.js?v=20260313g"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260314l"></script>
+  <script type="module" src="src/main.js?v=20260314q"></script>
 </body>
 </html>

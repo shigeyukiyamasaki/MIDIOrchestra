@@ -516,17 +516,25 @@ button:disabled {
 }
 
 
-#image-panel #image-list,
-#image-panel #image-list-row2,
-#image-panel #image-list-row3 {
+#image-content {
+  display: grid !important;
+}
+#image-content > .settings-column {
+  grid-row: 1;
+  grid-column: 1;
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
   gap: 20px;
-  flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0 15px;
+  visibility: hidden;
+  pointer-events: none;
+}
+#image-content > .settings-column.prop-active {
+  visibility: visible;
+  pointer-events: auto;
 }
 
 #image-panel .image-section {
@@ -1081,12 +1089,6 @@ button:disabled {
   gap: 8px;
   margin-top: 10px;
 }
-#image-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .setting-category {
   font-size: 14px;
   font-weight: bold;
