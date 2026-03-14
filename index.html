@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Orchestra Visualizer</title>
-  <link rel="stylesheet" href="style.css?v=20260312e">
+  <link rel="stylesheet" href="style.css?v=20260314ah">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
@@ -81,14 +81,18 @@
 
   <!-- 設定パネルコンテナ（2列） -->
   <div id="settings-container">
+    <h3 id="settings-container-title">エフェクト設定</h3>
+    <div id="property-nav" class="property-nav"></div>
+    <div id="property-content" class="property-content">
     <!-- カメラ設定パネル（左列） -->
     <div id="camera-panel" class="settings-column">
       <h3>カメラ設定</h3>
       <button id="cameraResetBtn" class="clear-btn-small" style="margin-bottom:8px;">カメラ位置リセット</button>
       <div id="camera-list">
+        <h4 class="setting-category">カメラ位置</h4>
         <!-- X軸（左右） -->
-        <h4 class="setting-category">X (左右) <span id="cameraPosXValue" class="pos-value">-150</span></h4>
         <div class="setting-item dual-range-container">
+          <label>X (左右) <span id="cameraPosXValue" class="pos-value">-150</span></label>
           <div class="dual-range" data-axis="X" data-min="-500" data-max="500">
             <div class="range-track"></div>
             <div class="range-selected"></div>
@@ -103,8 +107,8 @@
         </div>
 
         <!-- Y軸（高さ） -->
-        <h4 class="setting-category">Y (高さ) <span id="cameraPosYValue" class="pos-value">150</span></h4>
         <div class="setting-item dual-range-container">
+          <label>Y (高さ) <span id="cameraPosYValue" class="pos-value">150</span></label>
           <div class="dual-range" data-axis="Y" data-min="-100" data-max="500">
             <div class="range-track"></div>
             <div class="range-selected"></div>
@@ -119,8 +123,8 @@
         </div>
 
         <!-- Z軸（前後） -->
-        <h4 class="setting-category">Z (前後) <span id="cameraPosZValue" class="pos-value">200</span></h4>
         <div class="setting-item dual-range-container">
+          <label>Z (前後) <span id="cameraPosZValue" class="pos-value">200</span></label>
           <div class="dual-range" data-axis="Z" data-min="-500" data-max="500">
             <div class="range-track"></div>
             <div class="range-selected"></div>
@@ -205,30 +209,6 @@
     <div id="effects-panel" class="settings-column">
       <h3>エフェクト</h3>
       <div id="effects-list">
-        <!-- ノート通過時 -->
-        <h4 class="setting-category">ノート通過時</h4>
-        <div class="setting-item">
-          <label>バウンス (0=OFF)</label>
-          <input type="range" id="bounceScale" min="0" max="5" step="0.5" value="1">
-          <span id="bounceScaleValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>バウンス時間</label>
-          <input type="range" id="bounceDuration" min="0.1" max="0.5" step="0.05" value="0.2">
-          <span id="bounceDurationValue">0.2</span>
-        </div>
-        <div class="setting-item">
-          <label>楽器アイコン (0=OFF)</label>
-          <input type="range" id="popIconScale" min="0" max="10" step="0.1" value="3">
-          <span id="popIconScaleValue">3</span>
-        </div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="rippleEnabled" checked>
-            波紋
-          </label>
-        </div>
-
         <!-- バスドラ専用 -->
         <h4 class="setting-category">バスドラ専用</h4>
         <div class="setting-item">
@@ -334,8 +314,13 @@
           <span id="effectGlitchValue">0</span>
         </div>
 
-        <!-- 地形エフェクト -->
-        <h3 style="margin-top:20px; padding-bottom:10px; border-bottom:1px solid #fff; font-size:16px; color:#fff;">地形エフェクト</h3>
+
+      </div>
+    </div>
+    <!-- 水エフェクトパネル -->
+    <div id="water-panel" class="settings-column">
+      <h3>水エフェクト</h3>
+      <div id="water-list">
         <h4 class="setting-category"><span>水面</span><input type="checkbox" id="waterSurfaceEnabled"></h4>
         <div class="setting-item">
           <label>面積</label>
@@ -509,13 +494,13 @@
           <input type="range" id="plyWaterCausticsScale" min="0.01" max="1" step="0.01" value="0.1">
           <span id="plyWaterCausticsScaleValue">0.1</span>
         </div>
-
       </div>
     </div>
     <!-- 天候エフェクトパネル（右列） -->
-    <div id="sunlight-panel" class="settings-column">
-      <h3>天候エフェクト</h3>
-      <div id="sunlight-list">
+    <!-- 光エフェクトパネル -->
+    <div id="light-panel" class="settings-column">
+      <h3>光エフェクト</h3>
+      <div id="light-list">
         <h4 class="setting-category"><span>ブルーム</span><input type="checkbox" id="bloomEnabled" checked></h4>
         <div class="setting-item">
           <label>強度</label>
@@ -620,45 +605,74 @@
           <input type="range" id="cloudShadowContrast" min="0" max="3" step="0.05" value="0">
           <span id="cloudShadowContrastValue">0</span>
         </div>
-        <h4 class="setting-category"><span>天候</span></h4>
-        <div class="setting-item">
-          <label>種類</label>
-          <select id="weatherType">
-            <option value="none">なし</option>
-            <option value="rain">雨</option>
-            <option value="snow">雪</option>
-          </select>
-        </div>
+      </div>
+    </div>
+    <!-- 天候エフェクトパネル -->
+    <div id="sunlight-panel" class="settings-column">
+      <h3>天候エフェクト</h3>
+      <div id="sunlight-list">
+        <h4 class="setting-category"><span>雨</span><input type="checkbox" id="rainEnabled"></h4>
         <div class="setting-item">
           <label>量</label>
-          <input type="range" id="weatherAmount" min="100" max="500000" step="100" value="3000">
-          <span id="weatherAmountValue">3000</span>
+          <input type="range" id="rainAmount" min="100" max="500000" step="100" value="3000">
+          <span id="rainAmountValue">3000</span>
         </div>
         <div class="setting-item">
           <label>速度</label>
-          <input type="range" id="weatherSpeed" min="0.1" max="15" step="0.1" value="1">
-          <span id="weatherSpeedValue">1</span>
+          <input type="range" id="rainSpeed" min="0.1" max="15" step="0.1" value="1">
+          <span id="rainSpeedValue">1</span>
         </div>
         <div class="setting-item">
           <label>飛沫</label>
-          <input type="range" id="weatherSplash" min="0" max="20" step="1" value="3">
-          <span id="weatherSplashValue">3</span>
+          <input type="range" id="rainSplashAmount" min="0" max="20" step="1" value="3">
+          <span id="rainSplashAmountValue">3</span>
         </div>
         <div class="setting-item">
           <label>角度(°)</label>
-          <input type="range" id="weatherAngle" min="0" max="80" step="1" value="0">
-          <span id="weatherAngleValue">0</span>
+          <input type="range" id="rainAngle" min="0" max="80" step="1" value="0">
+          <span id="rainAngleValue">0</span>
         </div>
         <div class="setting-item">
           <label>風向(°)</label>
-          <input type="range" id="weatherWindDir" min="0" max="360" step="5" value="0">
-          <span id="weatherWindDirValue">0</span>
+          <input type="range" id="rainWindDir" min="0" max="360" step="5" value="0">
+          <span id="rainWindDirValue">0</span>
         </div>
         <div class="setting-item">
           <label>範囲</label>
-          <input type="range" id="weatherSpread" min="100" max="1000" step="50" value="400">
-          <span id="weatherSpreadValue">400</span>
+          <input type="range" id="rainSpread" min="100" max="1000" step="50" value="400">
+          <span id="rainSpreadValue">400</span>
         </div>
+        <h4 class="setting-category"><span>雪</span><input type="checkbox" id="snowEnabled"></h4>
+        <div class="setting-item">
+          <label>量</label>
+          <input type="range" id="snowAmount" min="100" max="500000" step="100" value="3000">
+          <span id="snowAmountValue">3000</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="snowSpeed" min="0.1" max="15" step="0.1" value="1">
+          <span id="snowSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>角度(°)</label>
+          <input type="range" id="snowAngle" min="0" max="80" step="1" value="0">
+          <span id="snowAngleValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>風向(°)</label>
+          <input type="range" id="snowWindDir" min="0" max="360" step="5" value="0">
+          <span id="snowWindDirValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>範囲</label>
+          <input type="range" id="snowSpread" min="100" max="1000" step="50" value="400">
+          <span id="snowSpreadValue">400</span>
+        </div>
+        <select id="weatherType" style="display:none">
+          <option value="none">なし</option>
+          <option value="rain">雨</option>
+          <option value="snow">雪</option>
+        </select>
         <h4 class="setting-category"><span>雷</span></h4>
         <div class="setting-item">
           <label>頻度</label>
@@ -694,6 +708,7 @@
           <span id="lightningFlashDecayValue">0.3</span>
         </div>
       </div>
+    </div>
     </div>
   </div>
 
@@ -1085,160 +1100,201 @@
   <!-- 表示設定パネル（プレビュー下段・横並び） -->
   <div id="display-settings-panel">
     <h3>表示設定</h3>
-    <div class="sections-row">
-    <div class="display-section">
-      <h4 class="setting-category">ノート</h4>
-      <div class="setting-item">
-        <label>太さ</label>
-        <input type="range" id="noteHeight" min="0.3" max="3" step="0.1" value="0.8">
-        <span id="noteHeightValue">0.8</span>
+    <div id="display-nav" class="property-nav"></div>
+    <div id="display-content" class="property-content">
+
+    <!-- グローバルタブ -->
+    <div class="settings-column">
+      <h3>グローバル</h3>
+      <div class="display-section">
+        <h4 class="setting-category">背景</h4>
+        <div class="setting-item">
+          <label>背景色（上）</label>
+          <input type="color" id="bgColorTop" value="#1a1a2e">
+        </div>
+        <div class="setting-item">
+          <label>背景色（下）</label>
+          <input type="color" id="bgColorBottom" value="#0a0a15">
+        </div>
+        <div class="setting-item">
+          <label>中間点</label>
+          <input type="range" id="bgGradientMidpoint" min="0" max="100" step="1" value="50">
+          <span id="bgGradientMidpointValue">50</span>
+        </div>
+        <div class="setting-item">
+          <button id="bgColorSwap" style="padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-arrows-up-down"></i> 上下入替</button>
+        </div>
       </div>
-      <div class="setting-item">
-        <label>奥行き</label>
-        <input type="range" id="noteDepth" min="1" max="10" step="0.5" value="1">
-        <span id="noteDepthValue">1</span>
+      <div class="display-section">
+        <h4 class="setting-category">グリッド</h4>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="gridOpacity" min="0" max="1" step="0.1" value="0.5">
+          <span id="gridOpacityValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>大きさ</label>
+          <input type="range" id="gridSize" min="100" max="2000" step="100" value="500">
+          <span id="gridSizeValue">500</span>
+        </div>
+        <div class="setting-item">
+          <label>色</label>
+          <input type="color" id="gridColor" value="#444444">
+        </div>
       </div>
-      <div class="setting-item">
-        <label>透明度</label>
-        <input type="range" id="noteOpacity" min="0.1" max="1" step="0.05" value="0.85">
-        <span id="noteOpacityValue">0.85</span>
-      </div>
-    </div>
-    <div class="display-section">
-      <h4 class="setting-category">レイアウト</h4>
-      <div class="setting-item">
-        <label>トラック間隔</label>
-        <input type="range" id="trackSpacing" min="1" max="30" step="0.5" value="6">
-        <span id="trackSpacingValue">6</span>
-      </div>
-      <div class="setting-item">
-        <label>時間スケール</label>
-        <input type="range" id="timeScale" min="10" max="300" step="5" value="50">
-        <span id="timeScaleValue">50</span>
-      </div>
-      <div class="setting-item">
-        <label>縦スケール</label>
-        <input type="range" id="pitchScale" min="0.5" max="10" step="0.1" value="1">
-        <span id="pitchScaleValue">1</span>
-      </div>
-      <div class="setting-item">
-        <label>高さオフセット</label>
-        <input type="range" id="noteYOffset" min="-100" max="200" step="1" value="0">
-        <span id="noteYOffsetValue">0</span>
-      </div>
-      <div class="setting-item">
-        <label>ノート回転</label>
-        <input type="range" id="noteFlowAngle" min="0" max="360" step="1" value="0">
-        <span id="noteFlowAngleValue">0</span>
-      </div>
-    </div>
-    <div class="display-section">
-      <h4 class="setting-category">タイムライン</h4>
-      <div class="setting-item">
-        <label>幕の透明度</label>
-        <input type="range" id="timelineOpacity" min="0" max="0.5" step="0.05" value="0">
-        <span id="timelineOpacityValue">0</span>
-      </div>
-      <div class="setting-item">
-        <label>X位置</label>
-        <input type="range" id="timelineX" min="-500" max="500" step="5" value="0">
-        <span id="timelineXValue">0</span>
-      </div>
-      <div class="setting-item">
-        <label>幕の色</label>
-        <input type="color" id="timelineColor" value="#ff4444">
+      <div class="display-section">
+        <h4 class="setting-category">クレジット</h4>
+        <div class="setting-item credits-row"><label>1行目</label><input type="text" id="creditsLine1" class="credits-input" placeholder="曲名"><input type="number" id="creditsSize1" class="credits-size-input" min="8" max="72" value="22"></div>
+        <div class="setting-item credits-row"><label>2行目</label><input type="text" id="creditsLine2" class="credits-input" placeholder="作曲"><input type="number" id="creditsSize2" class="credits-size-input" min="8" max="72" value="30"></div>
+        <div class="setting-item credits-row"><label>3行目</label><input type="text" id="creditsLine3" class="credits-input" placeholder="編曲"><input type="number" id="creditsSize3" class="credits-size-input" min="8" max="72" value="16"></div>
+        <div class="setting-item credits-row"><label>4行目</label><span style="color:#888;font-size:11px;">Arr. Romashige（固定）</span><input type="number" id="creditsSize4" class="credits-size-input" min="8" max="72" value="16"></div>
+        <div class="setting-item">
+          <label>色</label>
+          <input type="color" id="creditsColor" value="#ffffff">
+        </div>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8">
+          <span id="creditsOpacityValue">0.8</span>
+        </div>
       </div>
     </div>
-    <div class="display-section">
-      <h4 class="setting-category">表示</h4>
-      <div class="setting-item">
-        <label>背景色（上）</label>
-        <input type="color" id="bgColorTop" value="#1a1a2e">
+
+    <!-- ノートタブ -->
+    <div class="settings-column">
+      <h3>ノート</h3>
+      <div class="display-section">
+        <h4 class="setting-category">外観</h4>
+        <div class="setting-item">
+          <label>太さ</label>
+          <input type="range" id="noteHeight" min="0.3" max="3" step="0.1" value="0.8">
+          <span id="noteHeightValue">0.8</span>
+        </div>
+        <div class="setting-item">
+          <label>奥行き</label>
+          <input type="range" id="noteDepth" min="1" max="10" step="0.5" value="1">
+          <span id="noteDepthValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="noteOpacity" min="0.1" max="1" step="0.05" value="0.85">
+          <span id="noteOpacityValue">0.85</span>
+        </div>
       </div>
-      <div class="setting-item">
-        <label>背景色（下）</label>
-        <input type="color" id="bgColorBottom" value="#0a0a15">
+      <div class="display-section">
+        <h4 class="setting-category">レイアウト</h4>
+        <div class="setting-item">
+          <label>トラック間隔</label>
+          <input type="range" id="trackSpacing" min="1" max="30" step="0.5" value="6">
+          <span id="trackSpacingValue">6</span>
+        </div>
+        <div class="setting-item">
+          <label>時間スケール</label>
+          <input type="range" id="timeScale" min="10" max="300" step="5" value="50">
+          <span id="timeScaleValue">50</span>
+        </div>
+        <div class="setting-item">
+          <label>縦スケール</label>
+          <input type="range" id="pitchScale" min="0.5" max="10" step="0.1" value="1">
+          <span id="pitchScaleValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>高さオフセット</label>
+          <input type="range" id="noteYOffset" min="-100" max="200" step="1" value="0">
+          <span id="noteYOffsetValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>ノート回転</label>
+          <input type="range" id="noteFlowAngle" min="0" max="360" step="1" value="0">
+          <span id="noteFlowAngleValue">0</span>
+        </div>
       </div>
-      <div class="setting-item">
-        <label>中間点</label>
-        <input type="range" id="bgGradientMidpoint" min="0" max="100" step="1" value="50">
-        <span id="bgGradientMidpointValue">50</span>
-      </div>
-      <div class="setting-item">
-        <button id="bgColorSwap" style="padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-arrows-up-down"></i> 上下入替</button>
-      </div>
-    </div>
-    <div class="display-section">
-      <h4 class="setting-category">スペクトラム</h4>
-      <div class="setting-item">
-        <label>
-          <input type="checkbox" id="audioVisualizerEnabled">
-          ON/OFF
-        </label>
-      </div>
-      <div class="setting-item">
-        <label>スタイル</label>
-        <select id="audioVisualizerStyle">
-          <option value="bar">バー</option>
-          <option value="wave">ウェーブ</option>
-          <option value="dot">ドット</option>
-          <option value="mirror">ミラー</option>
-        </select>
-      </div>
-      <div class="setting-item">
-        <label>スケール</label>
-        <input type="range" id="audioVisualizerScale" min="0.1" max="3" step="0.1" value="1">
-        <span id="audioVisualizerScaleValue">1</span>
-      </div>
-      <div class="setting-item">
-        <label>半径</label>
-        <input type="range" id="audioVisualizerRadius" min="10" max="200" step="1" value="18">
-        <span id="audioVisualizerRadiusValue">18</span>
-      </div>
-      <div class="setting-item">
-        <label>本数</label>
-        <input type="range" id="audioVisualizerBars" min="16" max="128" step="1" value="64">
-        <span id="audioVisualizerBarsValue">64</span>
-      </div>
-      <div class="setting-item">
-        <label>透明度</label>
-        <input type="range" id="audioVisualizerOpacity" min="0" max="1" step="0.05" value="0.9">
-        <span id="audioVisualizerOpacityValue">0.9</span>
-      </div>
-    </div>
-    <div class="display-section">
-      <h4 class="setting-category">グリッド</h4>
-      <div class="setting-item">
-        <label>透明度</label>
-        <input type="range" id="gridOpacity" min="0" max="1" step="0.1" value="0.5">
-        <span id="gridOpacityValue">0.5</span>
-      </div>
-      <div class="setting-item">
-        <label>大きさ</label>
-        <input type="range" id="gridSize" min="100" max="2000" step="100" value="500">
-        <span id="gridSizeValue">500</span>
-      </div>
-      <div class="setting-item">
-        <label>色</label>
-        <input type="color" id="gridColor" value="#444444">
-      </div>
-    </div>
-    <div class="display-section">
-      <h4 class="setting-category">クレジット</h4>
-      <div class="setting-item credits-row"><label>1行目</label><input type="text" id="creditsLine1" class="credits-input" placeholder="曲名"><input type="number" id="creditsSize1" class="credits-size-input" min="8" max="72" value="22"></div>
-      <div class="setting-item credits-row"><label>2行目</label><input type="text" id="creditsLine2" class="credits-input" placeholder="作曲"><input type="number" id="creditsSize2" class="credits-size-input" min="8" max="72" value="30"></div>
-      <div class="setting-item credits-row"><label>3行目</label><input type="text" id="creditsLine3" class="credits-input" placeholder="編曲"><input type="number" id="creditsSize3" class="credits-size-input" min="8" max="72" value="16"></div>
-      <div class="setting-item credits-row"><label>4行目</label><span style="color:#888;font-size:11px;">Arr. Romashige（固定）</span><input type="number" id="creditsSize4" class="credits-size-input" min="8" max="72" value="16"></div>
-      <div class="setting-item">
-        <label>色</label>
-        <input type="color" id="creditsColor" value="#ffffff">
-      </div>
-      <div class="setting-item">
-        <label>透明度</label>
-        <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8">
-        <span id="creditsOpacityValue">0.8</span>
+      <div class="display-section">
+        <h4 class="setting-category">ノート通過時</h4>
+        <div class="setting-item">
+          <label>バウンス (0=OFF)</label>
+          <input type="range" id="bounceScale" min="0" max="5" step="0.5" value="1">
+          <span id="bounceScaleValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>バウンス時間</label>
+          <input type="range" id="bounceDuration" min="0.1" max="0.5" step="0.05" value="0.2">
+          <span id="bounceDurationValue">0.2</span>
+        </div>
+        <div class="setting-item">
+          <label>楽器アイコン (0=OFF)</label>
+          <input type="range" id="popIconScale" min="0" max="10" step="0.1" value="3">
+          <span id="popIconScaleValue">3</span>
+        </div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="rippleEnabled" checked>
+            波紋
+          </label>
+        </div>
       </div>
     </div>
+
+    <!-- タイムラインタブ -->
+    <div class="settings-column">
+      <h3>タイムライン</h3>
+      <div class="display-section">
+        <h4 class="setting-category">タイムライン</h4>
+        <div class="setting-item">
+          <label>幕の透明度</label>
+          <input type="range" id="timelineOpacity" min="0" max="0.5" step="0.05" value="0">
+          <span id="timelineOpacityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>X位置</label>
+          <input type="range" id="timelineX" min="-500" max="500" step="5" value="0">
+          <span id="timelineXValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>幕の色</label>
+          <input type="color" id="timelineColor" value="#ff4444">
+        </div>
+      </div>
+      <div class="display-section">
+        <h4 class="setting-category">スペクトラム</h4>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="audioVisualizerEnabled">
+            ON/OFF
+          </label>
+        </div>
+        <div class="setting-item">
+          <label>スタイル</label>
+          <select id="audioVisualizerStyle">
+            <option value="bar">バー</option>
+            <option value="wave">ウェーブ</option>
+            <option value="dot">ドット</option>
+            <option value="mirror">ミラー</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <label>スケール</label>
+          <input type="range" id="audioVisualizerScale" min="0.1" max="3" step="0.1" value="1">
+          <span id="audioVisualizerScaleValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>半径</label>
+          <input type="range" id="audioVisualizerRadius" min="10" max="200" step="1" value="18">
+          <span id="audioVisualizerRadiusValue">18</span>
+        </div>
+        <div class="setting-item">
+          <label>本数</label>
+          <input type="range" id="audioVisualizerBars" min="16" max="128" step="1" value="64">
+          <span id="audioVisualizerBarsValue">64</span>
+        </div>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="audioVisualizerOpacity" min="0" max="1" step="0.05" value="0.9">
+          <span id="audioVisualizerOpacityValue">0.9</span>
+        </div>
+      </div>
+    </div>
+
     </div>
   </div>
 
@@ -1348,6 +1404,6 @@
 
   <script src="src/presetManager.js?v=20260313g"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260314b"></script>
+  <script type="module" src="src/main.js?v=20260314l"></script>
 </body>
 </html>

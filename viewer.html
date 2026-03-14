@@ -773,12 +773,19 @@
     <input type="checkbox" id="noteShadowEnabled">
     <!-- 天候 -->
     <select id="weatherType"><option value="none">なし</option><option value="rain">雨</option><option value="snow">雪</option></select>
-    <input type="range" id="weatherAmount" min="100" max="500000" step="100" value="3000"><span id="weatherAmountValue">3000</span>
-    <input type="range" id="weatherSpeed" min="0.1" max="15" step="0.1" value="1"><span id="weatherSpeedValue">1</span>
-    <input type="range" id="weatherSplash" min="0" max="20" step="1" value="3"><span id="weatherSplashValue">3</span>
-    <input type="range" id="weatherAngle" min="0" max="80" step="1" value="0"><span id="weatherAngleValue">0</span>
-    <input type="range" id="weatherWindDir" min="0" max="360" step="5" value="0"><span id="weatherWindDirValue">0</span>
-    <input type="range" id="weatherSpread" min="100" max="1000" step="50" value="400"><span id="weatherSpreadValue">400</span>
+    <input type="checkbox" id="rainEnabled">
+    <input type="range" id="rainAmount" min="100" max="500000" step="100" value="3000"><span id="rainAmountValue">3000</span>
+    <input type="range" id="rainSpeed" min="0.1" max="15" step="0.1" value="1"><span id="rainSpeedValue">1</span>
+    <input type="range" id="rainSplashAmount" min="0" max="20" step="1" value="3"><span id="rainSplashAmountValue">3</span>
+    <input type="range" id="rainAngle" min="0" max="80" step="1" value="0"><span id="rainAngleValue">0</span>
+    <input type="range" id="rainWindDir" min="0" max="360" step="5" value="0"><span id="rainWindDirValue">0</span>
+    <input type="range" id="rainSpread" min="100" max="1000" step="50" value="400"><span id="rainSpreadValue">400</span>
+    <input type="checkbox" id="snowEnabled">
+    <input type="range" id="snowAmount" min="100" max="500000" step="100" value="3000"><span id="snowAmountValue">3000</span>
+    <input type="range" id="snowSpeed" min="0.1" max="15" step="0.1" value="1"><span id="snowSpeedValue">1</span>
+    <input type="range" id="snowAngle" min="0" max="80" step="1" value="0"><span id="snowAngleValue">0</span>
+    <input type="range" id="snowWindDir" min="0" max="360" step="5" value="0"><span id="snowWindDirValue">0</span>
+    <input type="range" id="snowSpread" min="100" max="1000" step="50" value="400"><span id="snowSpreadValue">400</span>
     <!-- 雷 -->
     <input type="range" id="lightningFrequency" min="0" max="30" step="1" value="0"><span id="lightningFrequencyValue">0</span>
     <input type="range" id="lightningRandomness" min="0" max="1" step="0.05" value="0.5"><span id="lightningRandomnessValue">0.5</span>
@@ -979,6 +986,6 @@
     }
   </script>
   <script src="src/presetManager.js?v=20260307a"></script>
-  <script type="module" src="src/main.js?v=20260314b"></script>
+  <script type="module" src="src/main.js?v=20260314g"></script>
 </body>
 </html>

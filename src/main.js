@@ -415,6 +415,9 @@ let weatherSpread = 400;
 let weatherSplash = 3;  // スプラッシュ量 (0=無効, 1-20)
 let weatherAngle = 0;   // 傾き角度(度) 0=真下, 80=ほぼ横
 let weatherWindDir = 0;  // 風向(度) 0=+Z方向
+// 雨・雪の独立パラメータ
+let rainParams = { amount: 3000, speed: 1, splash: 3, angle: 0, windDir: 0, spread: 400 };
+let snowParams = { amount: 3000, speed: 1, angle: 0, windDir: 0, spread: 400 };
 let lightningFrequency = 0;  // 0=無効, 1-10 (回/分の目安)
 let lightningIntensity = 0.5; // フラッシュ強度 0.1-1.0
 let lightningColor = '#ffffff'; // 稲光の色
@@ -3086,7 +3089,43 @@ function restoreUserBackground() {
 // ============================================
 // イベントリスナー
 // ============================================
+function setupTabbedPanel(navId, contentId) {
+  const nav = document.getElementById(navId);
+  const content = document.getElementById(contentId);
+  if (!nav || !content) return;
+
+  const columns = content.querySelectorAll('.settings-column');
+  let firstNavItem = null;
+
+  columns.forEach((col) => {
+    const h3 = col.querySelector('h3');
+    const groupTitle = h3 ? h3.textContent : '';
+    if (!groupTitle) return;
+
+    const navItem = document.createElement('div');
+    navItem.className = 'nav-item';
+    navItem.textContent = groupTitle;
+    navItem.addEventListener('click', () => {
+      content.querySelectorAll('.settings-column').forEach(c => c.classList.remove('prop-active'));
+      nav.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      col.classList.add('prop-active');
+      navItem.classList.add('active');
+    });
+    nav.appendChild(navItem);
+    if (!firstNavItem) firstNavItem = navItem;
+  });
+
+  if (firstNavItem) firstNavItem.click();
+}
+
+function setupPropertyPanel() {
+  setupTabbedPanel('property-nav', 'property-content');
+  setupTabbedPanel('display-nav', 'display-content');
+}
+
 function setupEventListeners() {
+  setupPropertyPanel();
+
   // ファイル選択
   const midiInput = document.getElementById('midiInput');
   const midiFileName = document.getElementById('midiFileName');
@@ -4165,44 +4204,139 @@ function setupEventListeners() {
     const enabled = e.target.checked;
     state.noteObjects.forEach(mesh => { mesh.castShadow = enabled; });
   });
-  // 天候エフェクト
+  // 天候エフェクト — 雨・雪独立チェックボックス
+  function syncParamsFromDOM(type) {
+    // DOMスライダーの現在値をparamsに反映（プリセット復元時の順序問題対策）
+    const prefix = type;
+    const p = type === 'rain' ? rainParams : snowParams;
+    const amount = document.getElementById(`${prefix}Amount`);
+    const speed = document.getElementById(`${prefix}Speed`);
+    const angle = document.getElementById(`${prefix}Angle`);
+    const windDir = document.getElementById(`${prefix}WindDir`);
+    const spread = document.getElementById(`${prefix}Spread`);
+    if (amount) p.amount = parseInt(amount.value);
+    if (speed) p.speed = parseFloat(speed.value);
+    if (angle) p.angle = parseInt(angle.value);
+    if (windDir) p.windDir = parseInt(windDir.value);
+    if (spread) p.spread = parseInt(spread.value);
+    if (type === 'rain') {
+      const splash = document.getElementById('rainSplashAmount');
+      if (splash) p.splash = parseInt(splash.value);
+    }
+  }
+  function applyWeatherParams(type) {
+    syncParamsFromDOM(type);
+    const p = type === 'rain' ? rainParams : snowParams;
+    weatherAmount = p.amount;
+    weatherSpeed = p.speed;
+    weatherSplash = type === 'rain' ? p.splash : 0;
+    weatherAngle = p.angle;
+    weatherWindDir = p.windDir;
+    weatherSpread = p.spread;
+  }
+  document.getElementById('rainEnabled')?.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      const snowCb = document.getElementById('snowEnabled');
+      if (snowCb) snowCb.checked = false;
+      weatherType = 'rain';
+      applyWeatherParams('rain');
+    } else {
+      weatherType = 'none';
+    }
+    const wtSel = document.getElementById('weatherType');
+    if (wtSel) wtSel.value = weatherType;
+    buildWeatherParticles();
+  });
+  document.getElementById('snowEnabled')?.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      const rainCb = document.getElementById('rainEnabled');
+      if (rainCb) rainCb.checked = false;
+      weatherType = 'snow';
+      applyWeatherParams('snow');
+    } else {
+      weatherType = 'none';
+    }
+    const wtSel = document.getElementById('weatherType');
+    if (wtSel) wtSel.value = weatherType;
+    buildWeatherParticles();
+  });
+  // 非表示のweatherType select（プリセット自動収集用）
   document.getElementById('weatherType')?.addEventListener('change', (e) => {
     weatherType = e.target.value;
+    const rainCb = document.getElementById('rainEnabled');
+    const snowCb = document.getElementById('snowEnabled');
+    if (rainCb) rainCb.checked = (weatherType === 'rain');
+    if (snowCb) snowCb.checked = (weatherType === 'snow');
+    if (weatherType !== 'none') applyWeatherParams(weatherType);
     buildWeatherParticles();
   });
-  document.getElementById('weatherAmount')?.addEventListener('input', (e) => {
+  // 雨パラメータ
+  document.getElementById('rainAmount')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
-    document.getElementById('weatherAmountValue').textContent = v;
-    weatherAmount = v;
-    buildWeatherParticles();
+    document.getElementById('rainAmountValue').textContent = v;
+    rainParams.amount = v;
+    if (weatherType === 'rain') { weatherAmount = v; buildWeatherParticles(); }
   });
-  document.getElementById('weatherSpeed')?.addEventListener('input', (e) => {
+  document.getElementById('rainSpeed')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
-    document.getElementById('weatherSpeedValue').textContent = v;
-    weatherSpeed = v;
+    document.getElementById('rainSpeedValue').textContent = v;
+    rainParams.speed = v;
+    if (weatherType === 'rain') { weatherSpeed = v; }
   });
-  document.getElementById('weatherSplash')?.addEventListener('input', (e) => {
+  document.getElementById('rainSplashAmount')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
-    document.getElementById('weatherSplashValue').textContent = v;
-    weatherSplash = v;
+    document.getElementById('rainSplashAmountValue').textContent = v;
+    rainParams.splash = v;
+    if (weatherType === 'rain') { weatherSplash = v; }
   });
-  document.getElementById('weatherAngle')?.addEventListener('input', (e) => {
+  document.getElementById('rainAngle')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
-    document.getElementById('weatherAngleValue').textContent = v;
-    weatherAngle = v;
-    buildWeatherParticles();
+    document.getElementById('rainAngleValue').textContent = v;
+    rainParams.angle = v;
+    if (weatherType === 'rain') { weatherAngle = v; buildWeatherParticles(); }
   });
-  document.getElementById('weatherWindDir')?.addEventListener('input', (e) => {
+  document.getElementById('rainWindDir')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
-    document.getElementById('weatherWindDirValue').textContent = v;
-    weatherWindDir = v;
-    buildWeatherParticles();
+    document.getElementById('rainWindDirValue').textContent = v;
+    rainParams.windDir = v;
+    if (weatherType === 'rain') { weatherWindDir = v; buildWeatherParticles(); }
   });
-  document.getElementById('weatherSpread')?.addEventListener('input', (e) => {
+  document.getElementById('rainSpread')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
-    document.getElementById('weatherSpreadValue').textContent = v;
-    weatherSpread = v;
-    buildWeatherParticles();
+    document.getElementById('rainSpreadValue').textContent = v;
+    rainParams.spread = v;
+    if (weatherType === 'rain') { weatherSpread = v; buildWeatherParticles(); }
+  });
+  // 雪パラメータ
+  document.getElementById('snowAmount')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('snowAmountValue').textContent = v;
+    snowParams.amount = v;
+    if (weatherType === 'snow') { weatherAmount = v; buildWeatherParticles(); }
+  });
+  document.getElementById('snowSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('snowSpeedValue').textContent = v;
+    snowParams.speed = v;
+    if (weatherType === 'snow') { weatherSpeed = v; }
+  });
+  document.getElementById('snowAngle')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('snowAngleValue').textContent = v;
+    snowParams.angle = v;
+    if (weatherType === 'snow') { weatherAngle = v; buildWeatherParticles(); }
+  });
+  document.getElementById('snowWindDir')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('snowWindDirValue').textContent = v;
+    snowParams.windDir = v;
+    if (weatherType === 'snow') { weatherWindDir = v; buildWeatherParticles(); }
+  });
+  document.getElementById('snowSpread')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('snowSpreadValue').textContent = v;
+    snowParams.spread = v;
+    if (weatherType === 'snow') { weatherSpread = v; buildWeatherParticles(); }
   });
 
   // 雷パラメータ
@@ -13680,12 +13814,30 @@ async function loadViewerData() {
     // 天候パラメータをビューワー用に直接同期
     const s = data.settings;
     if (s.weatherType !== undefined) { weatherType = s.weatherType; }
-    if (s.weatherAmount !== undefined) { weatherAmount = parseInt(s.weatherAmount); }
-    if (s.weatherSpeed !== undefined) { weatherSpeed = parseFloat(s.weatherSpeed); }
-    if (s.weatherSpread !== undefined) { weatherSpread = parseInt(s.weatherSpread); }
-    if (s.weatherSplash !== undefined) { weatherSplash = parseInt(s.weatherSplash); }
-    if (s.weatherAngle !== undefined) { weatherAngle = parseInt(s.weatherAngle); }
-    if (s.weatherWindDir !== undefined) { weatherWindDir = parseInt(s.weatherWindDir); }
+    // 旧形式（weatherAmount等）→ rain/snowParams に振り分け
+    if (weatherType === 'rain') {
+      if (s.weatherAmount !== undefined || s.rainAmount !== undefined) rainParams.amount = parseInt(s.rainAmount ?? s.weatherAmount);
+      if (s.weatherSpeed !== undefined || s.rainSpeed !== undefined) rainParams.speed = parseFloat(s.rainSpeed ?? s.weatherSpeed);
+      if (s.weatherSplash !== undefined || s.rainSplashAmount !== undefined) rainParams.splash = parseInt(s.rainSplashAmount ?? s.weatherSplash);
+      if (s.weatherAngle !== undefined || s.rainAngle !== undefined) rainParams.angle = parseInt(s.rainAngle ?? s.weatherAngle);
+      if (s.weatherWindDir !== undefined || s.rainWindDir !== undefined) rainParams.windDir = parseInt(s.rainWindDir ?? s.weatherWindDir);
+      if (s.weatherSpread !== undefined || s.rainSpread !== undefined) rainParams.spread = parseInt(s.rainSpread ?? s.weatherSpread);
+      weatherAmount = rainParams.amount; weatherSpeed = rainParams.speed; weatherSplash = rainParams.splash;
+      weatherAngle = rainParams.angle; weatherWindDir = rainParams.windDir; weatherSpread = rainParams.spread;
+    } else if (weatherType === 'snow') {
+      if (s.weatherAmount !== undefined || s.snowAmount !== undefined) snowParams.amount = parseInt(s.snowAmount ?? s.weatherAmount);
+      if (s.weatherSpeed !== undefined || s.snowSpeed !== undefined) snowParams.speed = parseFloat(s.snowSpeed ?? s.weatherSpeed);
+      if (s.weatherAngle !== undefined || s.snowAngle !== undefined) snowParams.angle = parseInt(s.snowAngle ?? s.weatherAngle);
+      if (s.weatherWindDir !== undefined || s.snowWindDir !== undefined) snowParams.windDir = parseInt(s.snowWindDir ?? s.weatherWindDir);
+      if (s.weatherSpread !== undefined || s.snowSpread !== undefined) snowParams.spread = parseInt(s.snowSpread ?? s.weatherSpread);
+      weatherAmount = snowParams.amount; weatherSpeed = snowParams.speed; weatherSplash = 0;
+      weatherAngle = snowParams.angle; weatherWindDir = snowParams.windDir; weatherSpread = snowParams.spread;
+    }
+    // チェックボックス同期
+    const rainCb = document.getElementById('rainEnabled');
+    const snowCb = document.getElementById('snowEnabled');
+    if (rainCb) rainCb.checked = (weatherType === 'rain');
+    if (snowCb) snowCb.checked = (weatherType === 'snow');
     if (weatherType !== 'none') buildWeatherParticles();
 
     // 雷パラメータをビューワー用に直接同期
