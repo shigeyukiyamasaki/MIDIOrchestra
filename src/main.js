@@ -1079,11 +1079,9 @@ function setupValueSpanDirectInput() {
     });
   });
 
-  // スピンボタンのクリックをイベント委譲で処理（1ハンドラで全ボタン対応）
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.spin-buttons button');
-    if (!btn) return;
-    e.stopPropagation();
+  // スピンボタン長押しリピート対応（イベント委譲）
+  let _spinTimer = null, _spinRAF = null;
+  function _spinStep(btn) {
     const sliderId = btn.dataset.slider;
     const slider = document.getElementById(sliderId);
     if (!slider) return;
@@ -1093,7 +1091,26 @@ function setupValueSpanDirectInput() {
     const decimals = (slider.step.split('.')[1] || '').length;
     slider.value = parseFloat(val.toFixed(decimals));
     slider.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function _spinStop() {
+    clearTimeout(_spinTimer);
+    clearInterval(_spinRAF);
+    _spinTimer = null;
+    _spinRAF = null;
+  }
+  document.addEventListener('pointerdown', (e) => {
+    const btn = e.target.closest('.spin-buttons button');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _spinStep(btn);
+    _spinTimer = setTimeout(() => {
+      _spinRAF = setInterval(() => _spinStep(btn), 50);
+    }, 400);
   });
+  document.addEventListener('pointerup', _spinStop);
+  document.addEventListener('pointerleave', _spinStop);
+  document.addEventListener('pointercancel', _spinStop);
 }
 
 // 水面の波計算GLSL（vertex/fragment共通）
@@ -2140,7 +2157,6 @@ function clearPlyWaterEffect() {
   });
   plyWaterIndices = null;
   plyWaterOrigPos = null;
-  plyWaterEnabled = false;
   updatePlyWaterUniforms();
 }
 
@@ -3213,24 +3229,35 @@ function setupEventListeners() {
     });
   }
 
+  // 長押しリピート対応ヘルパー
+  function addHoldRepeat(btn, action) {
+    if (!btn) return;
+    let timer = null, interval = null;
+    const stop = () => { clearTimeout(timer); clearInterval(interval); timer = null; interval = null; };
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      action();
+      timer = setTimeout(() => { interval = setInterval(action, 50); }, 400);
+    });
+    btn.addEventListener('pointerup', stop);
+    btn.addEventListener('pointerleave', stop);
+    btn.addEventListener('pointercancel', stop);
+  }
+
   const loopEndDown = document.getElementById('loopEndDown');
   const loopEndUp = document.getElementById('loopEndUp');
-  if (loopEndDown) {
-    loopEndDown.addEventListener('click', () => {
-      if (state.duration > 0) {
-        state.loopEndTime = Math.max(0, state.loopEndTime - 0.1);
-        updateLoopEndDisplay();
-      }
-    });
-  }
-  if (loopEndUp) {
-    loopEndUp.addEventListener('click', () => {
-      if (state.duration > 0) {
-        state.loopEndTime = Math.min(state.duration, state.loopEndTime + 0.1);
-        updateLoopEndDisplay();
-      }
-    });
-  }
+  addHoldRepeat(loopEndDown, () => {
+    if (state.duration > 0) {
+      state.loopEndTime = Math.max(0, state.loopEndTime - 0.1);
+      updateLoopEndDisplay();
+    }
+  });
+  addHoldRepeat(loopEndUp, () => {
+    if (state.duration > 0) {
+      state.loopEndTime = Math.min(state.duration, state.loopEndTime + 0.1);
+      updateLoopEndDisplay();
+    }
+  });
 
   // ループ始点（2周目以降の開始位置）
   const loopStartSeek = document.getElementById('loopStartSeek');
@@ -3268,22 +3295,18 @@ function setupEventListeners() {
 
   const loopStartDown = document.getElementById('loopStartDown');
   const loopStartUp = document.getElementById('loopStartUp');
-  if (loopStartDown) {
-    loopStartDown.addEventListener('click', () => {
-      if (state.duration > 0) {
-        state.loopStartTime = Math.max(0, state.loopStartTime - 0.1);
-        updateLoopStartDisplay();
-      }
-    });
-  }
-  if (loopStartUp) {
-    loopStartUp.addEventListener('click', () => {
-      if (state.duration > 0) {
-        state.loopStartTime = Math.min(state.duration, state.loopStartTime + 0.1);
-        updateLoopStartDisplay();
-      }
-    });
-  }
+  addHoldRepeat(loopStartDown, () => {
+    if (state.duration > 0) {
+      state.loopStartTime = Math.max(0, state.loopStartTime - 0.1);
+      updateLoopStartDisplay();
+    }
+  });
+  addHoldRepeat(loopStartUp, () => {
+    if (state.duration > 0) {
+      state.loopStartTime = Math.min(state.duration, state.loopStartTime + 0.1);
+      updateLoopStartDisplay();
+    }
+  });
 
   // フェードアウト秒数スライダー
   const fadeOutSlider = document.getElementById('fadeOutDuration');
@@ -11826,9 +11849,9 @@ function setupGlbScene(sceneGroup, file) {
 
   // デフォルト値(100)のときのみ自動調整（プリセット復元時やビューワーでも動作）
   if (maxDim > 0 && scaleValue === 100) {
-    const targetSize = 50;
+    const targetSize = 500;
     const autoScale = targetSize / maxDim;
-    scaleValue = Math.min(100000, Math.max(1, Math.round(autoScale * 100)));
+    scaleValue = Math.max(1, Math.round(autoScale * 100));
     if (scaleSlider) {
       scaleSlider.value = scaleValue;
       const valSpan = document.getElementById('glbScaleValue');
