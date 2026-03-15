@@ -390,8 +390,45 @@ let pixelGridSize = 1;  // ピクセルグリッド幅（1=オフ）
 let pixelFpsLimit = 0;  // ピクセルアート色変化速度（0=即時、1-30=遅い）
 let _pixelPrevRT = null;       // フレームホールド用：前フレームRenderTarget
 let _pixelCopyPass = null;     // フレームホールド用：コピーパス
+let _pixelPrevCopyMat = null;  // prevRT書き込み用マテリアル
+let _pixelPrevCopyScene = null; // prevRT書き込み用シーン
+let _pixelPrevCopyCamera = null; // prevRT書き込み用カメラ
 let _pixelHoldReady = false;   // フレームホールド用：初回キャプチャ済みか
 let _pixelLastUpdateTime = 0;  // フレームホールド用：最終更新時刻
+let _pixelPaletteTexture = null; // 固定パレット用DataTexture
+// 色数モニター
+const _colorMonitor = {
+  history: [],     // 直近のカウント履歴
+  allSum: 0,       // 全体の合計
+  allCount: 0,     // 全体のサンプル数
+  skip: 0,         // フレームスキップカウンター
+  el: null         // オーバーレイDOM
+};
+// 固定パレット定義（RGB 0-255）
+const PIXEL_PALETTES = {
+  gameboy: [
+    [15,56,15], [48,98,48], [139,172,15], [155,188,15]
+  ],
+  famicom: [
+    [102,102,102],[0,42,136],[20,18,167],[59,0,164],[92,0,126],[110,0,64],[108,6,0],[86,29,0],
+    [51,53,0],[11,72,0],[0,82,0],[0,79,8],[0,64,77],[0,0,0],
+    [173,173,173],[21,95,217],[66,64,255],[117,39,254],[160,26,204],[183,30,123],[181,49,32],[153,78,0],
+    [107,109,0],[56,135,0],[12,147,0],[0,143,50],[0,124,141],[79,79,79],
+    [255,254,255],[100,176,255],[146,144,255],[198,118,255],[243,106,255],[254,110,204],[254,129,112],[234,158,34],
+    [188,190,0],[136,216,0],[92,228,48],[69,224,130],[72,205,222],
+    [192,223,255],[211,210,255],[232,200,255],[251,194,255],[254,196,234],[254,204,197],[247,216,165],
+    [228,229,148],[207,239,150],[189,244,171],[179,243,204],[181,235,242],[184,184,184]
+  ],
+  sfc: (function() {
+    const levels = [0, 51, 102, 153, 204, 255];
+    const colors = [];
+    for (const r of levels)
+      for (const g of levels)
+        for (const b of levels)
+          colors.push([r, g, b]);
+    return colors; // 6×6×6 = 216色
+  })()
+};
 let flareScene = null;  // レンズフレア用オーバーレイシーン
 let flareCamera = null; // レンズフレア用正射影カメラ
 let flareMeshes = [];   // フレア要素のメッシュ配列
@@ -2417,12 +2454,15 @@ function setupThreeJS() {
     uniforms: {
       tDiffuse: { value: null },
       tPrevFrame: { value: null },
+      tPalette: { value: null },
       resolution: { value: new THREE.Vector2(width * renderer.getPixelRatio(), height * renderer.getPixelRatio()) },
       pixelSize: { value: 1.0 },
       colorLevels: { value: 8.0 },
       ditherAmount: { value: 0.5 },
       saturationBoost: { value: 1.0 },
-      colorSmooth: { value: 0.0 }
+      colorSmooth: { value: 0.0 },
+      paletteSize: { value: 0.0 },
+      hueBands: { value: 0.0 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -2434,12 +2474,15 @@ function setupThreeJS() {
     fragmentShader: `
       uniform sampler2D tDiffuse;
       uniform sampler2D tPrevFrame;
+      uniform sampler2D tPalette;
       uniform vec2 resolution;
       uniform float pixelSize;
       uniform float colorLevels;
       uniform float ditherAmount;
       uniform float saturationBoost;
       uniform float colorSmooth;
+      uniform float paletteSize;
+      uniform float hueBands;
       varying vec2 vUv;
 
       // Bayer 8x8 ordered dithering matrix (normalized to 0-1)
@@ -2501,27 +2544,51 @@ function setupThreeJS() {
           effPixel = pixelSize * scale;
           vec2 dxy = effPixel / resolution;
           vec2 coord = dxy * floor(vUv / dxy) + dxy * 0.5;
-          color = texture2D(tDiffuse, coord).rgb;
+          // ビッグピクセル内4点サンプリング（時間的ちらつき抑制）
+          vec2 q = dxy * 0.25;
+          color = (
+            texture2D(tDiffuse, coord + vec2(-q.x, -q.y)).rgb +
+            texture2D(tDiffuse, coord + vec2( q.x, -q.y)).rgb +
+            texture2D(tDiffuse, coord + vec2(-q.x,  q.y)).rgb +
+            texture2D(tDiffuse, coord + vec2( q.x,  q.y)).rgb
+          ) * 0.25;
         } else {
           effPixel = 1.0;
           color = texture2D(tDiffuse, vUv).rgb;
         }
 
-        // 2. Saturation boost (retro games have vivid colors)
+        // 2. Saturation boost + hue band quantization
         vec3 hsl = rgbToHsl(color);
         hsl.y = min(1.0, hsl.y * saturationBoost);
+        if (hueBands > 0.0 && hsl.y > 0.01) {
+          hsl.x = floor(hsl.x * hueBands + 0.5) / hueBands;
+        }
         color = hslToRgb(hsl);
 
-        // 3. Ordered dithering + posterization
+        // 3. Color quantization (fixed palette or per-channel)
         vec2 pixelCoord = floor(vUv * resolution / effPixel);
         float dither = bayer8(pixelCoord) * ditherAmount;
-        color = floor(color * colorLevels + dither) / colorLevels;
-        color = clamp(color, 0.0, 1.0);
 
-        // 前フレームとブレンド（色の時間的スムージング）
-        if (colorSmooth > 0.0) {
-          vec3 prev = texture2D(tPrevFrame, vUv).rgb;
-          color = mix(prev, color, 1.0 - colorSmooth);
+        if (paletteSize > 0.0) {
+          // Fixed palette: snap to nearest palette color with dithering
+          vec3 biased = clamp(color + vec3(dither * 0.25), 0.0, 1.0);
+          float minDist = 99999.0;
+          vec3 nearest = color;
+          for (int i = 0; i < 256; i++) {
+            if (float(i) >= paletteSize) break;
+            vec3 palColor = texture2D(tPalette, vec2((float(i) + 0.5) / 256.0, 0.5)).rgb;
+            vec3 dd = biased - palColor;
+            float dist = dot(dd, dd);
+            if (dist < minDist) {
+              minDist = dist;
+              nearest = palColor;
+            }
+          }
+          color = nearest;
+        } else {
+          // Per-channel quantization (legacy)
+          color = floor(color * colorLevels + dither) / colorLevels;
+          color = clamp(color, 0.0, 1.0);
         }
 
         gl_FragColor = vec4(color, 1.0);
@@ -2545,6 +2612,18 @@ function setupThreeJS() {
     vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main() { gl_FragColor = texture2D(tDiffuse, vUv); }'
   });
+  // prevRT書き込み用のScene（ShaderPass経由での書き込みが効かないため直接描画）
+  // ShaderMaterial使用（MeshBasicMaterialは色空間変換を入れるため不適）
+  _pixelPrevCopyMat = new THREE.ShaderMaterial({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main() { gl_FragColor = texture2D(tDiffuse, vUv); }',
+    depthWrite: false, depthTest: false
+  });
+  _pixelPrevCopyScene = new THREE.Scene();
+  _pixelPrevCopyScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), _pixelPrevCopyMat));
+  _pixelPrevCopyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  pixelPass.uniforms.tPrevFrame.value = _pixelPrevRT.texture;
   _pixelHoldReady = false;
 
   // フェードオーバーレイ（クロスフェード用）
@@ -4087,6 +4166,32 @@ function setupEventListeners() {
   });
 
   // ピクセレーション
+  function setPalette(key) {
+    if (!pixelPass) return;
+    const palette = key ? PIXEL_PALETTES[key] : null;
+    if (palette && palette.length > 0) {
+      const data = new Uint8Array(256 * 4);
+      for (let i = 0; i < palette.length && i < 256; i++) {
+        data[i * 4] = palette[i][0];
+        data[i * 4 + 1] = palette[i][1];
+        data[i * 4 + 2] = palette[i][2];
+        data[i * 4 + 3] = 255;
+      }
+      if (!_pixelPaletteTexture) {
+        _pixelPaletteTexture = new THREE.DataTexture(data, 256, 1, THREE.RGBAFormat);
+        _pixelPaletteTexture.minFilter = THREE.NearestFilter;
+        _pixelPaletteTexture.magFilter = THREE.NearestFilter;
+      } else {
+        _pixelPaletteTexture.image.data = data;
+      }
+      _pixelPaletteTexture.needsUpdate = true;
+      pixelPass.uniforms.tPalette.value = _pixelPaletteTexture;
+      pixelPass.uniforms.paletteSize.value = Math.min(palette.length, 256);
+    } else {
+      pixelPass.uniforms.paletteSize.value = 0.0;
+    }
+  }
+
   function syncPixelPassEnabled() {
     if (!pixelPass) return;
     // DOM値を全変数・uniformsに反映（チェックON時にスライダー操作なしでも正しく適用されるように）
@@ -4100,6 +4205,10 @@ function setupEventListeners() {
     if (satEl) pixelPass.uniforms.saturationBoost.value = parseFloat(satEl.value);
     const fpsEl = document.getElementById('pixelFps');
     if (fpsEl) pixelFpsLimit = parseInt(fpsEl.value);
+    const hbEl = document.getElementById('pixelHueBands');
+    if (hbEl) pixelPass.uniforms.hueBands.value = parseFloat(hbEl.value);
+    const palEl = document.getElementById('pixelPalette');
+    if (palEl) setPalette(palEl.value);
     const cb = document.getElementById('pixelArtEnabled');
     const enabled = cb && cb.checked;
     pixelPass.enabled = enabled;
@@ -4111,9 +4220,9 @@ function setupEventListeners() {
 
   // ピクセルアートプリセット
   const pixelArtPresets = {
-    gameboy:  { grid: 6, color: 3, dither: 0.4, saturation: 0, fps: 15 },
-    famicom:  { grid: 4, color: 2, dither: 0.5, saturation: 1.5, fps: 15 },
-    sfc:      { grid: 3, color: 6, dither: 0.3, saturation: 1.2, fps: 20 }
+    gameboy:  { grid: 6, palette: 'gameboy', color: 3, hueBands: 0, dither: 0.4, saturation: 0, fps: 60 },
+    famicom:  { grid: 4, palette: 'famicom', color: 2, hueBands: 0, dither: 0.3, saturation: 1.5, fps: 60 },
+    sfc:      { grid: 3, palette: 'sfc', color: 6, hueBands: 0, dither: 0.2, saturation: 1.2, fps: 60 }
   };
   let _pixelPresetApplying = false;
   function applyPixelArtPreset(key) {
@@ -4123,6 +4232,7 @@ function setupEventListeners() {
     const sets = [
       ['pixelGridSize', p.grid],
       ['pixelColorLevels', p.color],
+      ['pixelHueBands', p.hueBands],
       ['pixelDither', p.dither],
       ['pixelSaturation', p.saturation],
       ['pixelFps', p.fps]
@@ -4133,14 +4243,32 @@ function setupEventListeners() {
       if (el) { el.value = val; el.dispatchEvent(new Event('input')); }
       if (span) span.textContent = val;
     }
+    // パレット設定
+    const palEl = document.getElementById('pixelPalette');
+    if (palEl) palEl.value = p.palette || '';
+    setPalette(p.palette || '');
+    // 色数スライダーの表示切替
+    const colorRow = document.getElementById('pixelColorLevels')?.closest('.setting-item');
+    if (colorRow) colorRow.style.opacity = p.palette ? '0.4' : '1';
     _pixelPresetApplying = false;
   }
   document.getElementById('pixelArtPreset')?.addEventListener('change', (e) => {
     if (e.target.value) applyPixelArtPreset(e.target.value);
   });
 
+  // パレットドロップダウン変更
+  document.getElementById('pixelPalette')?.addEventListener('change', (e) => {
+    if (!_pixelPresetApplying) {
+      const sel = document.getElementById('pixelArtPreset');
+      if (sel) sel.value = '';
+    }
+    setPalette(e.target.value);
+    const colorRow = document.getElementById('pixelColorLevels')?.closest('.setting-item');
+    if (colorRow) colorRow.style.opacity = e.target.value ? '0.4' : '1';
+  });
+
   // スライダー変更時はプリセットを「カスタム」に戻す
-  for (const id of ['pixelGridSize', 'pixelColorLevels', 'pixelDither', 'pixelSaturation', 'pixelFps']) {
+  for (const id of ['pixelGridSize', 'pixelColorLevels', 'pixelHueBands', 'pixelDither', 'pixelSaturation', 'pixelFps']) {
     document.getElementById(id)?.addEventListener('input', () => {
       if (_pixelPresetApplying) return;
       const sel = document.getElementById('pixelArtPreset');
@@ -4159,6 +4287,12 @@ function setupEventListeners() {
     const v = parseInt(e.target.value);
     document.getElementById('pixelColorLevelsValue').textContent = v;
     if (pixelPass) pixelPass.uniforms.colorLevels.value = v;
+  });
+
+  document.getElementById('pixelHueBands')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('pixelHueBandsValue').textContent = v === 0 ? 'なし' : v;
+    if (pixelPass) pixelPass.uniforms.hueBands.value = v;
   });
 
   document.getElementById('pixelDither')?.addEventListener('input', (e) => {
@@ -13771,82 +13905,137 @@ function animate() {
     plyShadowUniforms.enabled.value = 0.0;
   }
 
+  // 色数モニター更新関数
+  function updateColorMonitor() {
+    if (!pixelPass || !pixelPass.enabled) {
+      if (_colorMonitor.el) _colorMonitor.el.style.display = 'none';
+      return;
+    }
+    // 3フレームに1回サンプリング（GPU readPixelsの負荷軽減）
+    _colorMonitor.skip++;
+    if (_colorMonitor.skip % 3 !== 0) return;
+
+    // オーバーレイ生成（初回のみ）
+    if (!_colorMonitor.el) {
+      _colorMonitor.el = document.createElement('div');
+      _colorMonitor.el.style.cssText =
+        'position:fixed;bottom:10px;left:10px;background:rgba(0,0,0,0.8);color:#0f0;' +
+        'font-family:monospace;font-size:12px;padding:6px 10px;border-radius:4px;' +
+        'z-index:9999;pointer-events:none;line-height:1.6;white-space:pre';
+      document.body.appendChild(_colorMonitor.el);
+    }
+    _colorMonitor.el.style.display = 'block';
+
+    const gl = renderer.getContext();
+    const w = gl.drawingBufferWidth;
+    const h = gl.drawingBufferHeight;
+    const pixels = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+    // ピクセルグリッド解像度でサンプリング（重複カウント回避）
+    const scale = w / 800;
+    const step = Math.max(2, Math.round(pixelGridSize * scale));
+    const colorSet = new Set();
+    const colorRGBs = []; // ユニーク色のRGB配列（分析用）
+    let adjDistSum = 0, adjDistN = 0; // 隣接色差の集計
+
+    for (let y = 0; y < h; y += step) {
+      let prevR = -1, prevG = -1, prevB = -1;
+      for (let x = 0; x < w; x += step) {
+        const i = (y * w + x) * 4;
+        const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+        const packed = (r << 16) | (g << 8) | b;
+        if (!colorSet.has(packed)) {
+          colorSet.add(packed);
+          colorRGBs.push([r, g, b]);
+        }
+        // 隣接ピクセル間のRGB距離
+        if (prevR >= 0) {
+          const dr = r - prevR, dg = g - prevG, db = b - prevB;
+          adjDistSum += Math.sqrt(dr * dr + dg * dg + db * db);
+          adjDistN++;
+        }
+        prevR = r; prevG = g; prevB = b;
+      }
+    }
+
+    const count = colorSet.size;
+    _colorMonitor.history.push(count);
+    _colorMonitor.allSum += count;
+    _colorMonitor.allCount++;
+    if (_colorMonitor.history.length > 90) _colorMonitor.history.shift();
+
+    const instant = count;
+    const h30 = _colorMonitor.history.slice(-10);
+    const avg30 = Math.round(h30.reduce((a, b) => a + b, 0) / h30.length);
+    const h90 = _colorMonitor.history;
+    const avg90 = Math.round(h90.reduce((a, b) => a + b, 0) / h90.length);
+    const avgAll = Math.round(_colorMonitor.allSum / _colorMonitor.allCount);
+
+    // 隣接色差（平均RGB距離 0-441）
+    const adjDist = adjDistN > 0 ? (adjDistSum / adjDistN).toFixed(1) : '---';
+
+    // 色相分布: 12色相環のうち何セクター使われているか
+    const hueSectors = new Set();
+    let chromaSum = 0; // 彩度の合計（分析用）
+    for (const [r, g, b] of colorRGBs) {
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const chroma = mx - mn;
+      chromaSum += chroma;
+      if (chroma > 10) { // 無彩色を除外
+        let hue;
+        if (mx === r) hue = ((g - b) / chroma + 6) % 6;
+        else if (mx === g) hue = (b - r) / chroma + 2;
+        else hue = (r - g) / chroma + 4;
+        hueSectors.add(Math.floor(hue * 2)); // 12セクター
+      }
+    }
+    const hueCount = hueSectors.size;
+    const avgChroma = colorRGBs.length > 0 ? Math.round(chromaSum / colorRGBs.length) : 0;
+
+    // 知覚クラスタ: RGB距離30未満の色を同グループとみなす
+    const sorted = colorRGBs.slice().sort((a, b) =>
+      (a[0] * 299 + a[1] * 587 + a[2] * 114) - (b[0] * 299 + b[1] * 587 + b[2] * 114)
+    ); // 輝度順ソート
+    let clusters = sorted.length > 0 ? 1 : 0;
+    for (let i = 1; i < sorted.length; i++) {
+      const dr = sorted[i][0] - sorted[i - 1][0];
+      const dg = sorted[i][1] - sorted[i - 1][1];
+      const db = sorted[i][2] - sorted[i - 1][2];
+      if (Math.sqrt(dr * dr + dg * dg + db * db) > 30) clusters++;
+    }
+
+    _colorMonitor.el.textContent =
+      `色数モニター\n` +
+      `瞬間:     ${instant}\n` +
+      `30f平均:  ${avg30}\n` +
+      `90f平均:  ${avg90}\n` +
+      `全体平均: ${avgAll}\n` +
+      `─────────\n` +
+      `隣接色差: ${adjDist}\n` +
+      `色相数:   ${hueCount}/12\n` +
+      `彩度:     ${avgChroma}\n` +
+      `クラスタ: ${clusters}`;
+  }
+
   // ブルーム描画 / ピクセレーション
   const useBloom = composer && bloomPass && bloomEnabled && bloomPass.strength > 0;
   const usePixel = pixelPass && pixelPass.enabled;
 
   // ピクセルアート フレームホールド: Nフレームごとに描画し、間は前回の画面を保持
-  if (usePixel && pixelPass.uniforms.colorSmooth) {
-    pixelPass.uniforms.colorSmooth.value = 0.0;  // ブレンドは使わない
-  }
   const usePixelHold = usePixel && pixelFpsLimit > 0 && _pixelPrevRT && _pixelCopyPass;
   const _pixelNow = performance.now();
   // rAFのタイミングジッター（±2ms）を吸収するため4msの許容誤差を設ける
   const pixelHoldSkip = usePixelHold && _pixelHoldReady &&
     (_pixelNow - _pixelLastUpdateTime < 1000 / pixelFpsLimit - 4);
 
-  if (pixelHoldSkip) {
-    // ホールド中: 前回キャプチャした画面をそのまま表示
-    _pixelCopyPass.renderToScreen = true;
-    _pixelCopyPass.render(renderer, null, _pixelPrevRT);
-  } else {
-    // 通常描画（フレームホールド時はcomposerをバッファに出力）
-    if (usePixelHold) composer.renderToScreen = false;
-
-    if (useBloom) {
-      if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
-        camera.layers.disable(1);
-        composer.render();
-        camera.layers.enable(1);
-        if (usePixelHold) {
-          _pixelCopyPass.renderToScreen = true;
-          _pixelCopyPass.render(renderer, null, composer.readBuffer);
-        }
-        const savedBg = scene.background;
-        scene.background = null;
-        camera.layers.set(1);
-        renderer.autoClear = false;
-        renderer.clearDepth();
-        renderer.render(scene, camera);
-        renderer.autoClear = true;
-        scene.background = savedBg;
-        camera.layers.set(0);
-        camera.layers.enable(1);
-      } else {
-        composer.render();
-        if (usePixelHold) {
-          _pixelCopyPass.renderToScreen = true;
-          _pixelCopyPass.render(renderer, null, composer.readBuffer);
-        }
-      }
-    } else if (usePixel) {
-      composer.render();
-      if (usePixelHold) {
-        _pixelCopyPass.renderToScreen = true;
-        _pixelCopyPass.render(renderer, null, composer.readBuffer);
-      }
-    } else {
-      renderer.render(scene, camera);
-    }
-
-    // フレームホールド: 描画結果をprevRTにキャプチャ
-    if (usePixelHold) {
-      composer.renderToScreen = true;
-      _pixelCopyPass.renderToScreen = false;
-      _pixelCopyPass.render(renderer, _pixelPrevRT, composer.readBuffer);
-      renderer.setRenderTarget(null);
-      _pixelLastUpdateTime = _pixelNow;
-      _pixelHoldReady = true;
-    }
-  }
-
-  // レンズフレアオーバーレイ（スクリーン空間）
+  // レンズフレア位置・表示状態の更新（描画先は後で決定）
+  let _flareVisible = false;
   if (flareEnabled && flareIntensity > 0 && sunLight && flareScene) {
-    // 光源方向を無限遠に投影（太陽のように振る舞う）
     const lightPos = sunLight.position.clone().normalize().multiplyScalar(10000);
     lightPos.project(camera);
-    // カメラ背面なら非表示
     if (lightPos.z <= 1) {
+      _flareVisible = true;
       const aspect = renderer.domElement.width / renderer.domElement.height;
       const vecX = -lightPos.x * 2;
       const vecY = -lightPos.y * 2;
@@ -13861,7 +14050,6 @@ function animate() {
         const s = mesh._flareBaseSize * flareIntensity * blurScale;
         mesh.scale.set(s, s * aspect, 1);
         mesh.material.color.copy(mesh._flareBaseColor).multiplyScalar(Math.min(flareIntensity, 1) * blurOpacity);
-        // ハロー（輪）
         if (mesh._haloMesh) {
           mesh._haloMesh.visible = true;
           mesh._haloMesh.position.set(px, py, 0);
@@ -13870,9 +14058,6 @@ function animate() {
           mesh._haloMesh.material.color.copy(mesh._flareBaseColor).multiplyScalar(Math.min(flareIntensity, 1) * blurOpacity * 0.5);
         }
       });
-      renderer.autoClear = false;
-      renderer.render(flareScene, flareCamera);
-      renderer.autoClear = true;
     } else {
       flareMeshes.forEach(mesh => {
         mesh.visible = false;
@@ -13880,6 +14065,108 @@ function animate() {
       });
     }
   }
+
+  if (pixelHoldSkip) {
+    // ホールド中: 前回キャプチャした画面をそのまま表示
+    _pixelCopyPass.renderToScreen = true;
+    _pixelCopyPass.render(renderer, null, _pixelPrevRT);
+  } else if (usePixel) {
+    // ピクセルアートON: scene+bloom→バッファ → フレア→バッファ → ピクセルパス手動適用
+    pixelPass.enabled = false;
+    composer.renderToScreen = false;
+
+    if (useBloom) {
+      if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
+        camera.layers.disable(1);
+        composer.render();
+        camera.layers.enable(1);
+        // レイヤー1をreadBufferに描画
+        renderer.setRenderTarget(composer.readBuffer);
+        const savedBg = scene.background;
+        scene.background = null;
+        camera.layers.set(1);
+        renderer.autoClear = false;
+        renderer.clearDepth();
+        renderer.render(scene, camera);
+        renderer.autoClear = true;
+        scene.background = savedBg;
+        camera.layers.set(0);
+        camera.layers.enable(1);
+      } else {
+        composer.render();
+      }
+    } else {
+      composer.render();
+    }
+
+    // レンズフレアをreadBufferに描画（ピクセル化の対象にする）
+    if (_flareVisible) {
+      renderer.setRenderTarget(composer.readBuffer);
+      renderer.autoClear = false;
+      renderer.render(flareScene, flareCamera);
+      renderer.autoClear = true;
+    }
+    renderer.setRenderTarget(null);
+
+    // ピクセルパスを手動適用
+    pixelPass.enabled = true;
+    composer.renderToScreen = true;
+
+    // ピクセルシェーダーをwriteBufferに出力
+    pixelPass.renderToScreen = false;
+    pixelPass.render(renderer, composer.writeBuffer, composer.readBuffer);
+
+    if (usePixelHold) {
+      // writeBufferに描画 → 画面とprevRTにコピー
+      _pixelCopyPass.renderToScreen = true;
+      _pixelCopyPass.render(renderer, null, composer.writeBuffer);
+      // prevRTにキャプチャ（Scene方式）
+      if (_pixelPrevCopyMat) {
+        _pixelPrevCopyMat.uniforms.tDiffuse.value = composer.writeBuffer.texture;
+        renderer.setRenderTarget(_pixelPrevRT);
+        renderer.render(_pixelPrevCopyScene, _pixelPrevCopyCamera);
+        renderer.setRenderTarget(null);
+      }
+      _pixelLastUpdateTime = _pixelNow;
+      _pixelHoldReady = true;
+    } else {
+      pixelPass.renderToScreen = true;
+      pixelPass.render(renderer, null, composer.readBuffer);
+    }
+  } else {
+    // ピクセルアートOFF: 通常描画
+    if (useBloom) {
+      if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
+        camera.layers.disable(1);
+        composer.render();
+        camera.layers.enable(1);
+        const savedBg = scene.background;
+        scene.background = null;
+        camera.layers.set(1);
+        renderer.autoClear = false;
+        renderer.clearDepth();
+        renderer.render(scene, camera);
+        renderer.autoClear = true;
+        scene.background = savedBg;
+        camera.layers.set(0);
+        camera.layers.enable(1);
+      } else {
+        composer.render();
+      }
+    } else {
+      renderer.render(scene, camera);
+    }
+
+    // レンズフレアを画面に直接描画
+    if (_flareVisible) {
+      renderer.autoClear = false;
+      renderer.render(flareScene, flareCamera);
+      renderer.autoClear = true;
+    }
+  }
+
+  // 色数モニター（ピクセルアートON時のみ）
+  updateColorMonitor();
 }
 
 function updateTimeDisplay() {
@@ -14385,7 +14672,9 @@ async function loadViewerData() {
         if (s.pixelColorLevels !== undefined) pixelPass.uniforms.colorLevels.value = parseInt(s.pixelColorLevels);
         if (s.pixelDither !== undefined) pixelPass.uniforms.ditherAmount.value = parseFloat(s.pixelDither);
         if (s.pixelSaturation !== undefined) pixelPass.uniforms.saturationBoost.value = parseFloat(s.pixelSaturation);
+        if (s.pixelHueBands !== undefined) pixelPass.uniforms.hueBands.value = parseFloat(s.pixelHueBands);
         if (s.pixelFps !== undefined) pixelFpsLimit = parseInt(s.pixelFps);
+        if (s.pixelPalette !== undefined) setPalette(s.pixelPalette);
       }
     }, 500);
   }

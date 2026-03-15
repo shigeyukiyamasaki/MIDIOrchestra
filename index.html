@@ -1160,9 +1160,23 @@
           <span id="pixelGridSizeValue">4</span>
         </div>
         <div class="setting-item">
+          <label>パレット</label>
+          <select id="pixelPalette">
+            <option value="">なし（色数で制御）</option>
+            <option value="gameboy">ゲームボーイ（4色）</option>
+            <option value="famicom">ファミコン（54色）</option>
+            <option value="sfc">スーファミ（216色）</option>
+          </select>
+        </div>
+        <div class="setting-item">
           <label>色数</label>
           <input type="range" id="pixelColorLevels" min="2" max="32" step="1" value="8">
           <span id="pixelColorLevelsValue">8</span>
+        </div>
+        <div class="setting-item">
+          <label>色相バンド</label>
+          <input type="range" id="pixelHueBands" min="0" max="24" step="1" value="0">
+          <span id="pixelHueBandsValue">なし</span>
         </div>
         <div class="setting-item">
           <label>ディザ</label>
@@ -1442,6 +1456,6 @@
 
   <script src="src/presetManager.js?v=20260313g"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260315s"></script>
+  <script type="module" src="src/main.js?v=20260316b"></script>
 </body>
 </html>
