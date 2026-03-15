@@ -2415,7 +2415,7 @@ function setupThreeJS() {
       pixelSize: { value: 1.0 },
       colorLevels: { value: 8.0 },
       ditherAmount: { value: 0.5 },
-      saturationBoost: { value: 0.3 }
+      saturationBoost: { value: 1.0 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -2488,20 +2488,22 @@ function setupThreeJS() {
           return;
         }
 
-        // 1. Pixelate
-        vec2 dxy = pixelSize / resolution;
+        // 1. Pixelate (resolution-independent: same look regardless of canvas size)
+        float scale = resolution.x / 800.0;
+        float effPixel = pixelSize * scale;
+        vec2 dxy = effPixel / resolution;
         vec2 coord = dxy * floor(vUv / dxy) + dxy * 0.5;
         vec3 color = texture2D(tDiffuse, coord).rgb;
 
         // 2. Saturation boost (retro games have vivid colors)
         vec3 hsl = rgbToHsl(color);
-        hsl.y = min(1.0, hsl.y * (1.0 + saturationBoost));
+        hsl.y = min(1.0, hsl.y * saturationBoost);
         color = hslToRgb(hsl);
 
         // 3. Ordered dithering + posterization
-        vec2 pixelCoord = floor(vUv * resolution / pixelSize);
-        float dither = bayer8(pixelCoord) * ditherAmount / colorLevels;
-        color = floor(color * colorLevels + dither + 0.5) / colorLevels;
+        vec2 pixelCoord = floor(vUv * resolution / effPixel);
+        float dither = bayer8(pixelCoord) * ditherAmount;
+        color = floor(color * colorLevels + dither) / colorLevels;
         color = clamp(color, 0.0, 1.0);
 
         gl_FragColor = vec4(color, 1.0);
@@ -4047,14 +4049,59 @@ function setupEventListeners() {
   });
 
   // ピクセレーション
+  function syncPixelPassEnabled() {
+    if (!pixelPass) return;
+    const cb = document.getElementById('pixelArtEnabled');
+    const enabled = cb && cb.checked && pixelGridSize > 1;
+    pixelPass.enabled = enabled;
+    pixelPass.uniforms.pixelSize.value = pixelGridSize;
+  }
+
+  document.getElementById('pixelArtEnabled')?.addEventListener('change', syncPixelPassEnabled);
+
+  // ピクセルアートプリセット
+  const pixelArtPresets = {
+    gameboy:  { grid: 6, color: 3, dither: 0.4, saturation: 0 },
+    famicom:  { grid: 4, color: 2, dither: 0.5, saturation: 1.5 },
+    sfc:      { grid: 3, color: 6, dither: 0.3, saturation: 1.2 }
+  };
+  let _pixelPresetApplying = false;
+  function applyPixelArtPreset(key) {
+    const p = pixelArtPresets[key];
+    if (!p) return;
+    _pixelPresetApplying = true;
+    const sets = [
+      ['pixelGridSize', p.grid],
+      ['pixelColorLevels', p.color],
+      ['pixelDither', p.dither],
+      ['pixelSaturation', p.saturation]
+    ];
+    for (const [id, val] of sets) {
+      const el = document.getElementById(id);
+      const span = document.getElementById(id + 'Value');
+      if (el) { el.value = val; el.dispatchEvent(new Event('input')); }
+      if (span) span.textContent = val;
+    }
+    _pixelPresetApplying = false;
+  }
+  document.getElementById('pixelArtPreset')?.addEventListener('change', (e) => {
+    if (e.target.value) applyPixelArtPreset(e.target.value);
+  });
+
+  // スライダー変更時はプリセットを「カスタム」に戻す
+  for (const id of ['pixelGridSize', 'pixelColorLevels', 'pixelDither', 'pixelSaturation']) {
+    document.getElementById(id)?.addEventListener('input', () => {
+      if (_pixelPresetApplying) return;
+      const sel = document.getElementById('pixelArtPreset');
+      if (sel) sel.value = '';
+    });
+  }
+
   document.getElementById('pixelGridSize')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
     document.getElementById('pixelGridSizeValue').textContent = v;
     pixelGridSize = v;
-    if (pixelPass) {
-      pixelPass.uniforms.pixelSize.value = v;
-      pixelPass.enabled = v > 1;
-    }
+    syncPixelPassEnabled();
   });
 
   document.getElementById('pixelColorLevels')?.addEventListener('input', (e) => {
@@ -14220,8 +14267,9 @@ async function loadViewerData() {
       if (pixelPass && s.pixelGridSize !== undefined) {
         const pv = parseInt(s.pixelGridSize);
         pixelGridSize = pv;
+        const pixelEnabled = s.pixelArtEnabled === true || s.pixelArtEnabled === 'true';
         pixelPass.uniforms.pixelSize.value = pv;
-        pixelPass.enabled = pv > 1;
+        pixelPass.enabled = pixelEnabled && pv > 1;
         if (s.pixelColorLevels !== undefined) pixelPass.uniforms.colorLevels.value = parseInt(s.pixelColorLevels);
         if (s.pixelDither !== undefined) pixelPass.uniforms.ditherAmount.value = parseFloat(s.pixelDither);
         if (s.pixelSaturation !== undefined) pixelPass.uniforms.saturationBoost.value = parseFloat(s.pixelSaturation);
