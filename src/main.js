@@ -385,6 +385,8 @@ let beatEffectState = {
 let fadeOverlay = null; // フェード用オーバーレイ
 let composer = null;    // EffectComposer（ブルーム用）
 let bloomPass = null;   // UnrealBloomPass
+let pixelPass = null;   // ピクセレーションShaderPass
+let pixelGridSize = 1;  // ピクセルグリッド幅（1=オフ）
 let flareScene = null;  // レンズフレア用オーバーレイシーン
 let flareCamera = null; // レンズフレア用正射影カメラ
 let flareMeshes = [];   // フレア要素のメッシュ配列
@@ -2405,6 +2407,111 @@ function setupThreeJS() {
   );
   composer.addPass(bloomPass);
 
+  // ピクセレーションパス（レトロピクセルアート風）
+  const pixelShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      resolution: { value: new THREE.Vector2(width * renderer.getPixelRatio(), height * renderer.getPixelRatio()) },
+      pixelSize: { value: 1.0 },
+      colorLevels: { value: 8.0 },
+      ditherAmount: { value: 0.5 },
+      saturationBoost: { value: 0.3 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform vec2 resolution;
+      uniform float pixelSize;
+      uniform float colorLevels;
+      uniform float ditherAmount;
+      uniform float saturationBoost;
+      varying vec2 vUv;
+
+      // Bayer 8x8 ordered dithering matrix (normalized to 0-1)
+      float bayer8(vec2 p) {
+        ivec2 ip = ivec2(mod(p, 8.0));
+        int b4[64];
+        b4[0]=0;  b4[1]=32; b4[2]=8;  b4[3]=40; b4[4]=2;  b4[5]=34; b4[6]=10; b4[7]=42;
+        b4[8]=48; b4[9]=16; b4[10]=56;b4[11]=24;b4[12]=50;b4[13]=18;b4[14]=58;b4[15]=26;
+        b4[16]=12;b4[17]=44;b4[18]=4; b4[19]=36;b4[20]=14;b4[21]=46;b4[22]=6; b4[23]=38;
+        b4[24]=60;b4[25]=28;b4[26]=52;b4[27]=20;b4[28]=62;b4[29]=30;b4[30]=54;b4[31]=22;
+        b4[32]=3; b4[33]=35;b4[34]=11;b4[35]=43;b4[36]=1; b4[37]=33;b4[38]=9; b4[39]=41;
+        b4[40]=51;b4[41]=19;b4[42]=59;b4[43]=27;b4[44]=49;b4[45]=17;b4[46]=57;b4[47]=25;
+        b4[48]=15;b4[49]=47;b4[50]=7; b4[51]=39;b4[52]=13;b4[53]=45;b4[54]=5; b4[55]=37;
+        b4[56]=63;b4[57]=31;b4[58]=55;b4[59]=23;b4[60]=61;b4[61]=29;b4[62]=53;b4[63]=21;
+        return float(b4[ip.y * 8 + ip.x]) / 64.0 - 0.5;
+      }
+
+      vec3 rgbToHsl(vec3 c) {
+        float mx = max(c.r, max(c.g, c.b));
+        float mn = min(c.r, min(c.g, c.b));
+        float l = (mx + mn) * 0.5;
+        if (mx == mn) return vec3(0.0, 0.0, l);
+        float d = mx - mn;
+        float s = l > 0.5 ? d / (2.0 - mx - mn) : d / (mx + mn);
+        float h;
+        if (mx == c.r) h = (c.g - c.b) / d + (c.g < c.b ? 6.0 : 0.0);
+        else if (mx == c.g) h = (c.b - c.r) / d + 2.0;
+        else h = (c.r - c.g) / d + 4.0;
+        return vec3(h / 6.0, s, l);
+      }
+
+      float hue2rgb(float p, float q, float t) {
+        if (t < 0.0) t += 1.0;
+        if (t > 1.0) t -= 1.0;
+        if (t < 1.0/6.0) return p + (q - p) * 6.0 * t;
+        if (t < 0.5) return q;
+        if (t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
+        return p;
+      }
+
+      vec3 hslToRgb(vec3 hsl) {
+        if (hsl.y == 0.0) return vec3(hsl.z);
+        float q = hsl.z < 0.5 ? hsl.z * (1.0 + hsl.y) : hsl.z + hsl.y - hsl.z * hsl.y;
+        float p = 2.0 * hsl.z - q;
+        return vec3(
+          hue2rgb(p, q, hsl.x + 1.0/3.0),
+          hue2rgb(p, q, hsl.x),
+          hue2rgb(p, q, hsl.x - 1.0/3.0)
+        );
+      }
+
+      void main() {
+        if (pixelSize <= 1.0) {
+          gl_FragColor = texture2D(tDiffuse, vUv);
+          return;
+        }
+
+        // 1. Pixelate
+        vec2 dxy = pixelSize / resolution;
+        vec2 coord = dxy * floor(vUv / dxy) + dxy * 0.5;
+        vec3 color = texture2D(tDiffuse, coord).rgb;
+
+        // 2. Saturation boost (retro games have vivid colors)
+        vec3 hsl = rgbToHsl(color);
+        hsl.y = min(1.0, hsl.y * (1.0 + saturationBoost));
+        color = hslToRgb(hsl);
+
+        // 3. Ordered dithering + posterization
+        vec2 pixelCoord = floor(vUv * resolution / pixelSize);
+        float dither = bayer8(pixelCoord) * ditherAmount / colorLevels;
+        color = floor(color * colorLevels + dither + 0.5) / colorLevels;
+        color = clamp(color, 0.0, 1.0);
+
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `
+  };
+  pixelPass = new THREE.ShaderPass(pixelShader);
+  pixelPass.enabled = false;
+  composer.addPass(pixelPass);
+
   // フェードオーバーレイ（クロスフェード用）
   fadeOverlay = document.createElement('div');
   fadeOverlay.style.cssText = `
@@ -2887,6 +2994,9 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(width, height);
   if (composer) composer.setSize(width, height);
+  if (pixelPass) {
+    pixelPass.uniforms.resolution.value.set(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
+  }
   updateCreditsPosition();
   updateViewerSideControlsWidth();
 
@@ -3934,6 +4044,35 @@ function setupEventListeners() {
     document.getElementById('effectGlitchValue').textContent = value;
     effects.glitch.intensity = value;
     syncSelectableEffect('glitch');
+  });
+
+  // ピクセレーション
+  document.getElementById('pixelGridSize')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('pixelGridSizeValue').textContent = v;
+    pixelGridSize = v;
+    if (pixelPass) {
+      pixelPass.uniforms.pixelSize.value = v;
+      pixelPass.enabled = v > 1;
+    }
+  });
+
+  document.getElementById('pixelColorLevels')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('pixelColorLevelsValue').textContent = v;
+    if (pixelPass) pixelPass.uniforms.colorLevels.value = v;
+  });
+
+  document.getElementById('pixelDither')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('pixelDitherValue').textContent = v;
+    if (pixelPass) pixelPass.uniforms.ditherAmount.value = v;
+  });
+
+  document.getElementById('pixelSaturation')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('pixelSaturationValue').textContent = v;
+    if (pixelPass) pixelPass.uniforms.saturationBoost.value = v;
   });
 
   // スペクトラム スタイル変更 → 再構築
@@ -13515,8 +13654,10 @@ function animate() {
     plyShadowUniforms.enabled.value = 0.0;
   }
 
-  // ブルーム描画
-  if (composer && bloomPass && bloomEnabled && bloomPass.strength > 0) {
+  // ブルーム描画 / ピクセレーション
+  const useBloom = composer && bloomPass && bloomEnabled && bloomPass.strength > 0;
+  const usePixel = pixelPass && pixelPass.enabled;
+  if (useBloom) {
     if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
       camera.layers.disable(1);
       composer.render();
@@ -13534,6 +13675,8 @@ function animate() {
     } else {
       composer.render();
     }
+  } else if (usePixel) {
+    composer.render();
   } else {
     renderer.render(scene, camera);
   }
@@ -14072,6 +14215,16 @@ async function loadViewerData() {
         const pixelArt = parseInt(s.glbPixelArt || 0);
         if (pixelArt > 0) applyGlbPixelArt(pixelArt);
         console.log('[Viewer] GLB settings applied:', { posX, posY, posZ, scaleVal, rotY, hue, brightness, contrast, pixelArt });
+      }
+      // ピクセレーション同期
+      if (pixelPass && s.pixelGridSize !== undefined) {
+        const pv = parseInt(s.pixelGridSize);
+        pixelGridSize = pv;
+        pixelPass.uniforms.pixelSize.value = pv;
+        pixelPass.enabled = pv > 1;
+        if (s.pixelColorLevels !== undefined) pixelPass.uniforms.colorLevels.value = parseInt(s.pixelColorLevels);
+        if (s.pixelDither !== undefined) pixelPass.uniforms.ditherAmount.value = parseFloat(s.pixelDither);
+        if (s.pixelSaturation !== undefined) pixelPass.uniforms.saturationBoost.value = parseFloat(s.pixelSaturation);
       }
     }, 500);
   }
