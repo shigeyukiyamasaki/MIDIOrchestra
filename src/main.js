@@ -387,6 +387,11 @@ let composer = null;    // EffectComposer（ブルーム用）
 let bloomPass = null;   // UnrealBloomPass
 let pixelPass = null;   // ピクセレーションShaderPass
 let pixelGridSize = 1;  // ピクセルグリッド幅（1=オフ）
+let pixelFpsLimit = 0;  // ピクセルアート色変化速度（0=即時、1-30=遅い）
+let _pixelPrevRT = null;       // フレームホールド用：前フレームRenderTarget
+let _pixelCopyPass = null;     // フレームホールド用：コピーパス
+let _pixelHoldReady = false;   // フレームホールド用：初回キャプチャ済みか
+let _pixelLastUpdateTime = 0;  // フレームホールド用：最終更新時刻
 let flareScene = null;  // レンズフレア用オーバーレイシーン
 let flareCamera = null; // レンズフレア用正射影カメラ
 let flareMeshes = [];   // フレア要素のメッシュ配列
@@ -2411,11 +2416,13 @@ function setupThreeJS() {
   const pixelShader = {
     uniforms: {
       tDiffuse: { value: null },
+      tPrevFrame: { value: null },
       resolution: { value: new THREE.Vector2(width * renderer.getPixelRatio(), height * renderer.getPixelRatio()) },
       pixelSize: { value: 1.0 },
       colorLevels: { value: 8.0 },
       ditherAmount: { value: 0.5 },
-      saturationBoost: { value: 1.0 }
+      saturationBoost: { value: 1.0 },
+      colorSmooth: { value: 0.0 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -2426,11 +2433,13 @@ function setupThreeJS() {
     `,
     fragmentShader: `
       uniform sampler2D tDiffuse;
+      uniform sampler2D tPrevFrame;
       uniform vec2 resolution;
       uniform float pixelSize;
       uniform float colorLevels;
       uniform float ditherAmount;
       uniform float saturationBoost;
+      uniform float colorSmooth;
       varying vec2 vUv;
 
       // Bayer 8x8 ordered dithering matrix (normalized to 0-1)
@@ -2483,17 +2492,20 @@ function setupThreeJS() {
       }
 
       void main() {
-        if (pixelSize <= 1.0) {
-          gl_FragColor = texture2D(tDiffuse, vUv);
-          return;
-        }
+        vec3 color;
+        float effPixel;
 
-        // 1. Pixelate (resolution-independent: same look regardless of canvas size)
-        float scale = resolution.x / 800.0;
-        float effPixel = pixelSize * scale;
-        vec2 dxy = effPixel / resolution;
-        vec2 coord = dxy * floor(vUv / dxy) + dxy * 0.5;
-        vec3 color = texture2D(tDiffuse, coord).rgb;
+        if (pixelSize > 1.0) {
+          // 1. Pixelate (resolution-independent: same look regardless of canvas size)
+          float scale = resolution.x / 800.0;
+          effPixel = pixelSize * scale;
+          vec2 dxy = effPixel / resolution;
+          vec2 coord = dxy * floor(vUv / dxy) + dxy * 0.5;
+          color = texture2D(tDiffuse, coord).rgb;
+        } else {
+          effPixel = 1.0;
+          color = texture2D(tDiffuse, vUv).rgb;
+        }
 
         // 2. Saturation boost (retro games have vivid colors)
         vec3 hsl = rgbToHsl(color);
@@ -2506,6 +2518,12 @@ function setupThreeJS() {
         color = floor(color * colorLevels + dither) / colorLevels;
         color = clamp(color, 0.0, 1.0);
 
+        // 前フレームとブレンド（色の時間的スムージング）
+        if (colorSmooth > 0.0) {
+          vec3 prev = texture2D(tPrevFrame, vUv).rgb;
+          color = mix(prev, color, 1.0 - colorSmooth);
+        }
+
         gl_FragColor = vec4(color, 1.0);
       }
     `
@@ -2513,6 +2531,21 @@ function setupThreeJS() {
   pixelPass = new THREE.ShaderPass(pixelShader);
   pixelPass.enabled = false;
   composer.addPass(pixelPass);
+
+  // ピクセルアート色スムージング用RenderTarget + コピーパス
+  const ppW = Math.floor(width * renderer.getPixelRatio());
+  const ppH = Math.floor(height * renderer.getPixelRatio());
+  _pixelPrevRT = new THREE.WebGLRenderTarget(ppW, ppH, {
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    format: THREE.RGBAFormat
+  });
+  _pixelCopyPass = new THREE.ShaderPass({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main() { gl_FragColor = texture2D(tDiffuse, vUv); }'
+  });
+  _pixelHoldReady = false;
 
   // フェードオーバーレイ（クロスフェード用）
   fadeOverlay = document.createElement('div');
@@ -2998,6 +3031,11 @@ function onWindowResize() {
   if (composer) composer.setSize(width, height);
   if (pixelPass) {
     pixelPass.uniforms.resolution.value.set(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
+  }
+  if (_pixelPrevRT) {
+    const ppW = Math.floor(width * renderer.getPixelRatio()), ppH = Math.floor(height * renderer.getPixelRatio());
+    _pixelPrevRT.setSize(ppW, ppH);
+    _pixelHoldReady = false;
   }
   updateCreditsPosition();
   updateViewerSideControlsWidth();
@@ -4051,19 +4089,31 @@ function setupEventListeners() {
   // ピクセレーション
   function syncPixelPassEnabled() {
     if (!pixelPass) return;
+    // DOM値を全変数・uniformsに反映（チェックON時にスライダー操作なしでも正しく適用されるように）
+    const gridEl = document.getElementById('pixelGridSize');
+    if (gridEl) pixelGridSize = parseInt(gridEl.value);
+    const colorEl = document.getElementById('pixelColorLevels');
+    if (colorEl) pixelPass.uniforms.colorLevels.value = parseInt(colorEl.value);
+    const ditherEl = document.getElementById('pixelDither');
+    if (ditherEl) pixelPass.uniforms.ditherAmount.value = parseFloat(ditherEl.value);
+    const satEl = document.getElementById('pixelSaturation');
+    if (satEl) pixelPass.uniforms.saturationBoost.value = parseFloat(satEl.value);
+    const fpsEl = document.getElementById('pixelFps');
+    if (fpsEl) pixelFpsLimit = parseInt(fpsEl.value);
     const cb = document.getElementById('pixelArtEnabled');
-    const enabled = cb && cb.checked && pixelGridSize > 1;
+    const enabled = cb && cb.checked;
     pixelPass.enabled = enabled;
     pixelPass.uniforms.pixelSize.value = pixelGridSize;
+    if (!enabled) _pixelHoldReady = false;
   }
 
   document.getElementById('pixelArtEnabled')?.addEventListener('change', syncPixelPassEnabled);
 
   // ピクセルアートプリセット
   const pixelArtPresets = {
-    gameboy:  { grid: 6, color: 3, dither: 0.4, saturation: 0 },
-    famicom:  { grid: 4, color: 2, dither: 0.5, saturation: 1.5 },
-    sfc:      { grid: 3, color: 6, dither: 0.3, saturation: 1.2 }
+    gameboy:  { grid: 6, color: 3, dither: 0.4, saturation: 0, fps: 15 },
+    famicom:  { grid: 4, color: 2, dither: 0.5, saturation: 1.5, fps: 15 },
+    sfc:      { grid: 3, color: 6, dither: 0.3, saturation: 1.2, fps: 20 }
   };
   let _pixelPresetApplying = false;
   function applyPixelArtPreset(key) {
@@ -4074,7 +4124,8 @@ function setupEventListeners() {
       ['pixelGridSize', p.grid],
       ['pixelColorLevels', p.color],
       ['pixelDither', p.dither],
-      ['pixelSaturation', p.saturation]
+      ['pixelSaturation', p.saturation],
+      ['pixelFps', p.fps]
     ];
     for (const [id, val] of sets) {
       const el = document.getElementById(id);
@@ -4089,7 +4140,7 @@ function setupEventListeners() {
   });
 
   // スライダー変更時はプリセットを「カスタム」に戻す
-  for (const id of ['pixelGridSize', 'pixelColorLevels', 'pixelDither', 'pixelSaturation']) {
+  for (const id of ['pixelGridSize', 'pixelColorLevels', 'pixelDither', 'pixelSaturation', 'pixelFps']) {
     document.getElementById(id)?.addEventListener('input', () => {
       if (_pixelPresetApplying) return;
       const sel = document.getElementById('pixelArtPreset');
@@ -4120,6 +4171,13 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('pixelSaturationValue').textContent = v;
     if (pixelPass) pixelPass.uniforms.saturationBoost.value = v;
+  });
+
+  document.getElementById('pixelFps')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('pixelFpsValue').textContent = v === 0 ? 'なし' : v + 'fps';
+    pixelFpsLimit = v;
+    if (v === 0) _pixelHoldReady = false;
   });
 
   // スペクトラム スタイル変更 → 再構築
@@ -6522,6 +6580,18 @@ function setupEventListeners() {
           } else {
             child.material.size = val;
           }
+        }
+      });
+    }
+  });
+
+  // 点サイズ遠近切り替え
+  document.getElementById('glbPointAttenuation')?.addEventListener('change', (e) => {
+    if (glbModel && glbModel.userData.is3DGS) {
+      glbModel.traverse((child) => {
+        if (child.isPoints && child.material) {
+          child.material.sizeAttenuation = e.target.checked;
+          child.material.needsUpdate = true;
         }
       });
     }
@@ -13704,28 +13774,70 @@ function animate() {
   // ブルーム描画 / ピクセレーション
   const useBloom = composer && bloomPass && bloomEnabled && bloomPass.strength > 0;
   const usePixel = pixelPass && pixelPass.enabled;
-  if (useBloom) {
-    if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
-      camera.layers.disable(1);
-      composer.render();
-      camera.layers.enable(1);
-      const savedBg = scene.background;
-      scene.background = null;
-      camera.layers.set(1);
-      renderer.autoClear = false;
-      renderer.clearDepth();
-      renderer.render(scene, camera);
-      renderer.autoClear = true;
-      scene.background = savedBg;
-      camera.layers.set(0);
-      camera.layers.enable(1);
-    } else {
-      composer.render();
-    }
-  } else if (usePixel) {
-    composer.render();
+
+  // ピクセルアート フレームホールド: Nフレームごとに描画し、間は前回の画面を保持
+  if (usePixel && pixelPass.uniforms.colorSmooth) {
+    pixelPass.uniforms.colorSmooth.value = 0.0;  // ブレンドは使わない
+  }
+  const usePixelHold = usePixel && pixelFpsLimit > 0 && _pixelPrevRT && _pixelCopyPass;
+  const _pixelNow = performance.now();
+  // rAFのタイミングジッター（±2ms）を吸収するため4msの許容誤差を設ける
+  const pixelHoldSkip = usePixelHold && _pixelHoldReady &&
+    (_pixelNow - _pixelLastUpdateTime < 1000 / pixelFpsLimit - 4);
+
+  if (pixelHoldSkip) {
+    // ホールド中: 前回キャプチャした画面をそのまま表示
+    _pixelCopyPass.renderToScreen = true;
+    _pixelCopyPass.render(renderer, null, _pixelPrevRT);
   } else {
-    renderer.render(scene, camera);
+    // 通常描画（フレームホールド時はcomposerをバッファに出力）
+    if (usePixelHold) composer.renderToScreen = false;
+
+    if (useBloom) {
+      if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
+        camera.layers.disable(1);
+        composer.render();
+        camera.layers.enable(1);
+        if (usePixelHold) {
+          _pixelCopyPass.renderToScreen = true;
+          _pixelCopyPass.render(renderer, null, composer.readBuffer);
+        }
+        const savedBg = scene.background;
+        scene.background = null;
+        camera.layers.set(1);
+        renderer.autoClear = false;
+        renderer.clearDepth();
+        renderer.render(scene, camera);
+        renderer.autoClear = true;
+        scene.background = savedBg;
+        camera.layers.set(0);
+        camera.layers.enable(1);
+      } else {
+        composer.render();
+        if (usePixelHold) {
+          _pixelCopyPass.renderToScreen = true;
+          _pixelCopyPass.render(renderer, null, composer.readBuffer);
+        }
+      }
+    } else if (usePixel) {
+      composer.render();
+      if (usePixelHold) {
+        _pixelCopyPass.renderToScreen = true;
+        _pixelCopyPass.render(renderer, null, composer.readBuffer);
+      }
+    } else {
+      renderer.render(scene, camera);
+    }
+
+    // フレームホールド: 描画結果をprevRTにキャプチャ
+    if (usePixelHold) {
+      composer.renderToScreen = true;
+      _pixelCopyPass.renderToScreen = false;
+      _pixelCopyPass.render(renderer, _pixelPrevRT, composer.readBuffer);
+      renderer.setRenderTarget(null);
+      _pixelLastUpdateTime = _pixelNow;
+      _pixelHoldReady = true;
+    }
   }
 
   // レンズフレアオーバーレイ（スクリーン空間）
@@ -14273,6 +14385,7 @@ async function loadViewerData() {
         if (s.pixelColorLevels !== undefined) pixelPass.uniforms.colorLevels.value = parseInt(s.pixelColorLevels);
         if (s.pixelDither !== undefined) pixelPass.uniforms.ditherAmount.value = parseFloat(s.pixelDither);
         if (s.pixelSaturation !== undefined) pixelPass.uniforms.saturationBoost.value = parseFloat(s.pixelSaturation);
+        if (s.pixelFps !== undefined) pixelFpsLimit = parseInt(s.pixelFps);
       }
     }, 500);
   }
