@@ -702,6 +702,68 @@
           <input type="range" id="plyWaterCausticsScale" min="0.01" max="1" step="0.01" value="0.1">
           <span id="plyWaterCausticsScaleValue">0.1</span>
         </div>
+        <h4 class="setting-category"><span>PLY樹木そよぎ</span><input type="checkbox" id="plyTreeEnabled"></h4>
+        <div class="setting-item">
+          <label>対象色</label>
+          <input type="color" id="plyTreeColor" value="#2d5a1e">
+        </div>
+        <div class="setting-item">
+          <label>許容範囲</label>
+          <input type="range" id="plyTreeThreshold" min="0.05" max="1" step="0.05" value="0.3">
+          <span id="plyTreeThresholdValue">0.3</span>
+        </div>
+        <div class="setting-item">
+          <label>振幅</label>
+          <input type="range" id="plyTreeAmplitude" min="0.01" max="3" step="0.01" value="0.3">
+          <span id="plyTreeAmplitudeValue">0.3</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="plyTreeSpeed" min="0.1" max="5" step="0.1" value="1">
+          <span id="plyTreeSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>波長</label>
+          <input type="range" id="plyTreeWavelength" min="1" max="50" step="1" value="15">
+          <span id="plyTreeWavelengthValue">15</span>
+        </div>
+        <h4 class="setting-category"><span>PLY煙</span><input type="checkbox" id="plySmokeEnabled"></h4>
+        <div class="setting-item">
+          <label>上昇方向</label>
+          <select id="plySmokeDirection">
+            <option value="world">ワールド（常に上）</option>
+            <option value="local">ローカル（オブジェクト基準）</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <label>対象色</label>
+          <input type="color" id="plySmokeColor" value="#888888">
+        </div>
+        <div class="setting-item">
+          <label>許容範囲</label>
+          <input type="range" id="plySmokeThreshold" min="0.05" max="1" step="0.05" value="0.3">
+          <span id="plySmokeThresholdValue">0.3</span>
+        </div>
+        <div class="setting-item">
+          <label>上昇速度</label>
+          <input type="range" id="plySmokeRiseSpeed" min="0.01" max="3" step="0.01" value="0.3">
+          <span id="plySmokeRiseSpeedValue">0.3</span>
+        </div>
+        <div class="setting-item">
+          <label>揺らぎ</label>
+          <input type="range" id="plySmokeSwirl" min="0" max="3" step="0.01" value="0.5">
+          <span id="plySmokeSwirlValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>拡散</label>
+          <input type="range" id="plySmokeSpread" min="0" max="3" step="0.05" value="0.5">
+          <span id="plySmokeSpreadValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>周期</label>
+          <input type="range" id="plySmokeCycle" min="1" max="30" step="0.5" value="8">
+          <span id="plySmokeCycleValue">8</span>
+        </div>
       </div>
     </div>
     </div>
@@ -1047,7 +1109,7 @@
             <div class="control-row"><label>X</label><input type="range" id="glbPosX" min="-500" max="500" step="5" value="0"><span id="glbPosXValue">0</span></div>
             <div class="control-row"><label>Y</label><input type="range" id="glbPosY" min="-500" max="500" step="5" value="0"><span id="glbPosYValue">0</span></div>
             <div class="control-row"><label>Z</label><input type="range" id="glbPosZ" min="-500" max="500" step="5" value="0"><span id="glbPosZValue">0</span></div>
-            <div class="control-row"><label>サイズ</label><input type="range" id="glbScale" min="1" max="100000" step="1" value="100"><span id="glbScaleValue">100</span></div>
+            <div class="control-row"><label>サイズ</label><input type="range" id="glbScale" min="1" max="150000" step="1" value="100"><span id="glbScaleValue">100</span></div>
           </div>
         </div>
       </div>
@@ -1144,6 +1206,27 @@
         </div>
       </div>
       <div class="display-section">
+        <h4 class="setting-category">クレジット</h4>
+        <div class="setting-item credits-row"><label>1行目</label><input type="text" id="creditsLine1" class="credits-input" placeholder="曲名"><input type="number" id="creditsSize1" class="credits-size-input" min="8" max="72" value="22"></div>
+        <div class="setting-item credits-row"><label>2行目</label><input type="text" id="creditsLine2" class="credits-input" placeholder="作曲"><input type="number" id="creditsSize2" class="credits-size-input" min="8" max="72" value="30"></div>
+        <div class="setting-item credits-row"><label>3行目</label><input type="text" id="creditsLine3" class="credits-input" placeholder="編曲"><input type="number" id="creditsSize3" class="credits-size-input" min="8" max="72" value="16"></div>
+        <div class="setting-item credits-row"><label>4行目</label><span style="color:#888;font-size:11px;">Arr. Romashige（固定）</span><input type="number" id="creditsSize4" class="credits-size-input" min="8" max="72" value="16"></div>
+        <div class="setting-item">
+          <label>色</label>
+          <input type="color" id="creditsColor" value="#ffffff">
+        </div>
+        <div class="setting-item">
+          <label>透明度</label>
+          <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8">
+          <span id="creditsOpacityValue">0.8</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 描画スタイルタブ -->
+    <div class="settings-column">
+      <h3>描画スタイル</h3>
+      <div class="display-section">
         <h4 class="setting-category"><span>ピクセルアート</span><input type="checkbox" id="pixelArtEnabled"></h4>
         <div class="setting-item">
           <label>プリセット</label>
@@ -1193,21 +1276,36 @@
           <input type="range" id="pixelFps" min="0" max="60" step="1" value="0">
           <span id="pixelFpsValue">なし</span>
         </div>
+        <div class="setting-item">
+          <label>トゥーンを除外</label>
+          <input type="checkbox" id="pixelExcludeToon">
+        </div>
       </div>
       <div class="display-section">
-        <h4 class="setting-category">クレジット</h4>
-        <div class="setting-item credits-row"><label>1行目</label><input type="text" id="creditsLine1" class="credits-input" placeholder="曲名"><input type="number" id="creditsSize1" class="credits-size-input" min="8" max="72" value="22"></div>
-        <div class="setting-item credits-row"><label>2行目</label><input type="text" id="creditsLine2" class="credits-input" placeholder="作曲"><input type="number" id="creditsSize2" class="credits-size-input" min="8" max="72" value="30"></div>
-        <div class="setting-item credits-row"><label>3行目</label><input type="text" id="creditsLine3" class="credits-input" placeholder="編曲"><input type="number" id="creditsSize3" class="credits-size-input" min="8" max="72" value="16"></div>
-        <div class="setting-item credits-row"><label>4行目</label><span style="color:#888;font-size:11px;">Arr. Romashige（固定）</span><input type="number" id="creditsSize4" class="credits-size-input" min="8" max="72" value="16"></div>
+        <h4 class="setting-category"><span>トゥーンレンダリング</span><input type="checkbox" id="toonEnabled"></h4>
         <div class="setting-item">
-          <label>色</label>
-          <input type="color" id="creditsColor" value="#ffffff">
+          <label>アウトライン強度</label>
+          <input type="range" id="toonOutlineStrength" min="0" max="1" step="0.05" value="0">
+          <span id="toonOutlineStrengthValue">0</span>
         </div>
         <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8">
-          <span id="creditsOpacityValue">0.8</span>
+          <label>アウトライン閾値</label>
+          <input type="range" id="toonOutlineThreshold" min="0.01" max="0.5" step="0.01" value="0.5">
+          <span id="toonOutlineThresholdValue">0.1</span>
+        </div>
+        <div class="setting-item">
+          <label>アウトライン色</label>
+          <input type="color" id="toonOutlineColor" value="#000000">
+        </div>
+        <div class="setting-item">
+          <label>陰影段階</label>
+          <input type="range" id="toonShades" min="2" max="10" step="1" value="4">
+          <span id="toonShadesValue">10</span>
+        </div>
+        <div class="setting-item">
+          <label>暗部強調</label>
+          <input type="range" id="toonDarkness" min="0" max="1" step="0.05" value="0">
+          <span id="toonDarknessValue">0.5</span>
         </div>
       </div>
     </div>
@@ -1456,6 +1554,6 @@
 
   <script src="src/presetManager.js?v=20260313g"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260316b"></script>
+  <script type="module" src="src/main.js?v=20260316n"></script>
 </body>
 </html>

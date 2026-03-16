@@ -1,0 +1,3303 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3DGS PLY Editor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #1a1a2e; color: #e0e0e0;
+  display: flex; flex-direction: column;
+}
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px; background: #16213e; border-bottom: 1px solid #2a3a5c;
+}
+.header h1 { font-size: 1.1rem; color: #a0c4ff; }
+.header-buttons { display: flex; gap: 8px; }
+.toolbar {
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 16px; background: #0f1a30; border-bottom: 1px solid #2a3a5c;
+  flex-wrap: wrap;
+}
+.toolbar-group {
+  display: flex; gap: 2px; padding: 0 8px;
+  border-right: 1px solid #2a3a5c;
+}
+.toolbar-group:last-child { border-right: none; }
+.main {
+  flex: 1; display: grid;
+  grid-template-columns: 1fr 320px;
+  overflow: hidden;
+}
+.viewport {
+  position: relative; overflow: hidden; background: #0d1117;
+}
+#canvas3d { display: block; }
+#overlayCanvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+.settings {
+  background: #16213e; border-left: 1px solid #2a3a5c;
+  padding: 16px; overflow-y: auto;
+}
+.settings h3 {
+  font-size: 0.85rem; color: #7ec8e3;
+  margin-bottom: 8px; margin-top: 16px;
+  border-bottom: 1px solid #2a3a5c; padding-bottom: 4px;
+}
+.settings h3:first-child { margin-top: 0; }
+.setting-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.setting-row label { font-size: 0.8rem; color: #8899aa; min-width: 80px; }
+.setting-row input[type="range"] { flex: 1; accent-color: #7ec8e3; }
+.setting-row .val {
+  font-size: 0.8rem; color: #a0c4ff; min-width: 40px; text-align: right;
+}
+.info-row {
+  display: flex; justify-content: space-between;
+  font-size: 0.8rem; color: #8899aa; margin-bottom: 4px;
+}
+.info-val { color: #e0e0e0; }
+.statusbar {
+  padding: 4px 16px; background: #16213e;
+  border-top: 1px solid #2a3a5c; font-size: 0.8rem; color: #8899aa;
+}
+.btn {
+  padding: 6px 12px; border: 1px solid #2a3a5c; border-radius: 4px;
+  background: #0f1a30; color: #e0e0e0; font-size: 0.8rem;
+  cursor: pointer; white-space: nowrap;
+}
+.btn:hover { background: #1a2a4c; }
+.btn.active { background: #4361ee; border-color: #4361ee; color: white; }
+.btn.danger { border-color: #5c2a2a; color: #ff9999; }
+.btn.danger:hover { background: #3a1a1a; }
+.btn.primary { background: #2a5c3a; border-color: #2a5c3a; color: #99ff99; }
+.btn.primary:hover { background: #3a6c4a; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.drop-overlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(67, 97, 238, 0.2); border: 3px dashed #4361ee;
+  display: none; align-items: center; justify-content: center; z-index: 10;
+}
+.drop-overlay.visible { display: flex; }
+.drop-overlay p { font-size: 1.2rem; color: #a0c4ff; }
+.placeholder {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  text-align: center; color: #445; pointer-events: none;
+}
+.placeholder p { font-size: 0.95rem; margin-bottom: 4px; }
+.layer-item {
+  display: flex; align-items: center; gap: 4px; padding: 3px 6px;
+  border-radius: 3px; cursor: pointer; font-size: 0.78rem;
+  border: 1px solid transparent; margin-bottom: 2px;
+}
+.layer-item:hover { background: #1a2a4c; }
+.layer-item.active { background: #2a3a6c; border-color: #4361ee; }
+.layer-item .layer-vis {
+  width: 18px; height: 18px; cursor: pointer; text-align: center;
+  line-height: 18px; font-size: 0.7rem; border-radius: 3px;
+  background: #0f1a30; border: 1px solid #2a3a5c; flex-shrink: 0;
+}
+.layer-item .layer-vis.hidden { opacity: 0.3; }
+.layer-item .layer-lock {
+  width: 18px; height: 18px; cursor: pointer; text-align: center;
+  line-height: 18px; font-size: 0.7rem; border-radius: 3px;
+  background: #0f1a30; border: 1px solid #2a3a5c; flex-shrink: 0;
+}
+.layer-item .layer-lock.locked { opacity: 1; color: #ff9944; }
+.layer-item .layer-order {
+  display: flex; flex-direction: column; gap: 0; flex-shrink: 0; margin-left: auto;
+}
+.layer-item .layer-order button {
+  background: none; border: none; color: #667; cursor: pointer;
+  font-size: 0.6rem; line-height: 1; padding: 0 2px;
+}
+.layer-item .layer-order button:hover { color: #e0e0e0; }
+.layer-item .layer-order button:disabled { opacity: 0.2; cursor: default; }
+.layer-item .layer-name {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.layer-item .layer-count {
+  font-size: 0.7rem; color: #667; min-width: 35px; text-align: right;
+}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div class="header">
+  <h1>3DGS PLY Editor</h1>
+  <div class="header-buttons">
+    <button class="btn" id="btnLoad">Load PLY</button>
+    <input type="file" id="fileInput" accept=".ply,.plyproj" style="display:none">
+    <button class="btn" id="btnSaveProj" disabled>Save Project</button>
+    <button class="btn primary" id="btnExport" disabled>Export PLY</button>
+  </div>
+</div>
+
+<div class="toolbar">
+  <div class="toolbar-group">
+    <button class="btn active" id="toolNavigate" title="Navigate (V)">Navigate</button>
+    <button class="btn" id="toolBrush" title="Brush (B)">Brush</button>
+    <button class="btn" id="toolRect" title="Rectangle (R)">Rect</button>
+    <button class="btn" id="toolWarp" title="Warp (W)">Warp</button>
+    <button class="btn" id="toolDensifyBrush" title="Densify Brush (D)">Densify</button>
+    <button class="btn" id="toolMove" title="Move (G)">Move</button>
+    <button class="btn" id="toolScale" title="Scale (S)">Scale</button>
+    <button class="btn" id="toolRotate" title="Rotate (T)">Rotate</button>
+  </div>
+  <div class="toolbar-group">
+    <button class="btn danger" id="btnDelete" title="Delete (Del)" disabled>Delete</button>
+    <button class="btn" id="btnDensify" title="Densify" disabled>Densify</button>
+    <button class="btn primary" id="btnDensifyApply" style="display:none">Apply</button>
+    <button class="btn danger" id="btnDensifyCancel" style="display:none">Cancel</button>
+  </div>
+  <div class="toolbar-group">
+    <button class="btn" id="btnInvert" title="Invert (Ctrl+I)" disabled>Invert</button>
+    <button class="btn" id="btnSelectAll" title="Select All (Ctrl+A)" disabled>Select All</button>
+    <button class="btn" id="btnClearSel" title="Clear Selection" disabled>Clear</button>
+  </div>
+  <div class="toolbar-group">
+    <button class="btn" id="btnMask" title="Mask Selection (M)" disabled>Mask</button>
+    <button class="btn" id="btnUnmask" title="Unmask All (U)" disabled>Unmask</button>
+  </div>
+  <div class="toolbar-group">
+    <button class="btn" id="btnUndo" title="Undo (Ctrl+Z)" disabled>Undo</button>
+    <button class="btn" id="btnRedo" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="viewport" id="viewport">
+    <canvas id="canvas3d"></canvas>
+    <canvas id="overlayCanvas"></canvas>
+    <div class="drop-overlay" id="dropOverlay"><p>Drop PLY file here</p></div>
+    <div class="placeholder" id="placeholder">
+      <p>Drop a 3DGS PLY file here</p>
+      <p>or click "Load PLY"</p>
+    </div>
+  </div>
+  <div class="settings">
+    <h3>Display</h3>
+    <div class="setting-row">
+      <label>Background</label>
+      <input type="color" id="bgColor" value="#b4b4b4" style="width:40px; height:24px; border:1px solid #2a3a5c; border-radius:3px; background:none; cursor:pointer; padding:0;">
+    </div>
+    <div class="setting-row">
+      <label>Point Size</label>
+      <input type="range" id="pointSize" min="1" max="10" step="0.5" value="2">
+      <span class="val" id="pointSizeVal">2</span>
+    </div>
+    <h3>Brush</h3>
+    <div class="setting-row">
+      <label>Size</label>
+      <input type="range" id="brushSize" min="10" max="200" step="5" value="50">
+      <span class="val" id="brushSizeVal">50</span>
+    </div>
+    <div class="setting-row">
+      <label style="min-width:auto"><input type="checkbox" id="sparseMode" style="accent-color:#7ec8e3; vertical-align:middle; margin-right:4px">Sparse</label>
+      <input type="range" id="densityThreshold" min="1" max="100" step="1" value="20" disabled>
+      <span class="val" id="densityThresholdVal">20</span>
+    </div>
+    <h3>Densify</h3>
+    <div class="setting-row">
+      <label>Count</label>
+      <input type="range" id="densifyCount" min="1" max="10" step="1" value="2">
+      <span class="val" id="densifyCountVal">2x</span>
+    </div>
+    <div class="setting-row">
+      <label>Jitter</label>
+      <input type="range" id="densifyJitter" min="0" max="0.5" step="0.01" value="0.05">
+      <span class="val" id="densifyJitterVal">0.05</span>
+    </div>
+    <h3>Warp</h3>
+    <div class="setting-row">
+      <label>Strength</label>
+      <input type="range" id="warpStrength" min="0.1" max="5" step="0.1" value="1">
+      <span class="val" id="warpStrengthVal">1.0</span>
+    </div>
+    <h3>Scale</h3>
+    <div class="setting-row">
+      <label>Falloff</label>
+      <input type="range" id="scaleFalloff" min="0" max="5" step="0.1" value="0">
+      <span class="val" id="scaleFalloffVal">0 (uniform)</span>
+    </div>
+    <h3>Select by Color</h3>
+    <div class="setting-row">
+      <label>Color</label>
+      <input type="color" id="selColor" value="#000000" style="width:40px; height:24px; border:1px solid #2a3a5c; border-radius:3px; background:none; cursor:pointer; padding:0;">
+      <button class="btn" id="btnPickColor" title="Pick color from point (P)" style="padding:4px 8px; font-size:0.75rem;">Pick</button>
+    </div>
+    <div class="setting-row">
+      <label>Threshold</label>
+      <input type="range" id="selColorThreshold" min="0.01" max="0.5" step="0.01" value="0.1">
+      <span class="val" id="selColorThresholdVal">0.1</span>
+    </div>
+    <div class="setting-row">
+      <button class="btn" id="btnSelectByColor" disabled style="flex:1">Select by Color</button>
+      <button class="btn" id="btnAddByColor" disabled style="flex:1">Add to Sel</button>
+    </div>
+    <h3>Layers</h3>
+    <div id="layerPanel" style="margin-bottom:8px;">
+      <div id="layerList"></div>
+      <div style="display:flex; gap:4px; margin-top:6px;">
+        <button class="btn" id="btnLayerAdd" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled>+ Add</button>
+        <button class="btn" id="btnLayerMovesel" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled>Move Sel →</button>
+        <button class="btn danger" id="btnLayerDel" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled>Delete</button>
+        <button class="btn" id="btnLayerMerge" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled>Merge ↓</button>
+      </div>
+    </div>
+    <h3>Info</h3>
+    <div class="info-row"><span>Total</span><span class="info-val" id="infoTotal">-</span></div>
+    <div class="info-row"><span>Selected</span><span class="info-val" id="infoSelected">0</span></div>
+    <div class="info-row"><span>Masked</span><span class="info-val" id="infoMasked">0</span></div>
+    <div class="info-row"><span>Original</span><span class="info-val" id="infoOriginal">-</span></div>
+  </div>
+</div>
+
+<div class="statusbar" id="statusbar">Ready</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = id => document.getElementById(id);
+const C0 = 0.28209479177387814;
+
+// ===== State =====
+const state = {
+  rawBuffer: null,    // vertex binary data (after header)
+  headerStr: '',
+  properties: [],
+  vertexSize: 0,
+  offsets: {},        // { propName: byteOffset }
+  dataView: null,
+  originalCount: 0,
+
+  vertices: [],       // [{srcIndex}|{data: Uint8Array}]
+  selected: new Set(),
+  rawSelected: new Set(),  // brush/rect region before density filter
+  masked: new Set(),
+
+  baseColors: null,   // Float32Array(n*3)
+  positions: null,    // Float32Array(n*3)
+  density: null,      // Uint32Array(n) — neighbor count per vertex
+  cellSize: 0.01,     // grid cell size from density computation
+  pointCloud: null,
+
+  undoStack: [],
+  redoStack: [],
+
+  layers: [],         // [{id, name, visible, vertexIndices: Set}]
+  activeLayerId: 0,
+  nextLayerId: 1,
+
+  currentTool: 'navigate',
+  fileName: '',
+
+  // Densify preview
+  previewMode: false,
+  previewSourceIndices: [],  // selected indices at preview start
+  previewSelPos: [],         // positions of selected points
+  previewNeighbors: [],      // KNN result
+  previewCount: 0,           // number of preview vertices appended
+};
+
+// ===== Three.js Setup =====
+const canvas = $('canvas3d');
+const overlay = $('overlayCanvas');
+const overlayCtx = overlay.getContext('2d');
+const viewport = $('viewport');
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // SH DC colors are already sRGB
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xb4b4b4);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
+camera.position.set(0, 2, 5);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+const grid = new THREE.GridHelper(10, 20, 0x2a3a5c, 0x1a2a4c);
+scene.add(grid);
+
+// ===== Resize & Animate =====
+function resize() {
+  const w = viewport.clientWidth;
+  const h = viewport.clientHeight;
+  renderer.setSize(w, h);
+  overlay.width = w;
+  overlay.height = h;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+requestAnimationFrame(resize);
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ===== PLY Parser =====
+function parsePLY(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  let headerEnd = 0;
+  const endStr = 'end_header';
+  for (let i = 0; i < Math.min(bytes.length, 50000); i++) {
+    let match = true;
+    for (let j = 0; j < endStr.length; j++) {
+      if (bytes[i + j] !== endStr.charCodeAt(j)) { match = false; break; }
+    }
+    if (match) {
+      headerEnd = i + endStr.length;
+      while (headerEnd < bytes.length && bytes[headerEnd] !== 0x0A) headerEnd++;
+      headerEnd++;
+      break;
+    }
+  }
+  if (headerEnd === 0) throw new Error('Invalid PLY: no header end found');
+
+  const headerStr = new TextDecoder().decode(bytes.slice(0, headerEnd));
+  if (!headerStr.includes('f_dc_0')) throw new Error('Not a 3DGS PLY (missing f_dc_0)');
+
+  const lines = headerStr.split('\n');
+  let vertexCount = 0;
+  const properties = [];
+  let inVertex = false;
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (t.startsWith('element vertex')) {
+      vertexCount = parseInt(t.split(/\s+/)[2]);
+      inVertex = true;
+    } else if (t.startsWith('element')) {
+      inVertex = false;
+    } else if (inVertex && t.startsWith('property')) {
+      const parts = t.split(/\s+/);
+      properties.push({ type: parts[1], name: parts[2] });
+    }
+  }
+  if (vertexCount === 0) throw new Error('No vertices in PLY');
+
+  const sizeMap = { float: 4, double: 8, uchar: 1, uint8: 1, char: 1, int: 4, uint: 4, short: 2, ushort: 2 };
+  let vertexSize = 0;
+  const offsets = {};
+  for (const prop of properties) {
+    offsets[prop.name] = vertexSize;
+    vertexSize += sizeMap[prop.type] || 4;
+  }
+
+  for (const r of ['x', 'y', 'z', 'f_dc_0', 'f_dc_1', 'f_dc_2']) {
+    if (offsets[r] === undefined) throw new Error('Missing property: ' + r);
+  }
+
+  state.rawBuffer = arrayBuffer.slice(headerEnd);
+  state.headerStr = headerStr;
+  state.properties = properties;
+  state.vertexSize = vertexSize;
+  state.offsets = offsets;
+  state.dataView = new DataView(state.rawBuffer);
+  state.originalCount = vertexCount;
+
+  state.vertices = [];
+  for (let i = 0; i < vertexCount; i++) state.vertices.push({ srcIndex: i });
+
+  state.selected.clear(); state.rawSelected.clear();
+  state.masked.clear();
+  state.undoStack = [];
+  state.redoStack = [];
+
+  // レイヤー初期化: 全頂点をデフォルトレイヤーに
+  const allIndices = new Set();
+  for (let i = 0; i < vertexCount; i++) allIndices.add(i);
+  state.layers = [{ id: 0, name: 'Layer 0', visible: true, locked: false, vertexIndices: allIndices }];
+  state.activeLayerId = 0;
+  state.nextLayerId = 1;
+
+  return vertexCount;
+}
+
+// ===== Geometry Management =====
+function rebuildGeometry() {
+  const n = state.vertices.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+
+  const { x: xOff, y: yOff, z: zOff, f_dc_0: dc0Off, f_dc_1: dc1Off, f_dc_2: dc2Off } = state.offsets;
+  const vs = state.vertexSize;
+  const dv = state.dataView;
+
+  for (let i = 0; i < n; i++) {
+    const v = state.vertices[i];
+    let x, y, z, dc0, dc1, dc2;
+    if ('srcIndex' in v) {
+      const base = v.srcIndex * vs;
+      x = dv.getFloat32(base + xOff, true);
+      y = dv.getFloat32(base + yOff, true);
+      z = dv.getFloat32(base + zOff, true);
+      dc0 = dv.getFloat32(base + dc0Off, true);
+      dc1 = dv.getFloat32(base + dc1Off, true);
+      dc2 = dv.getFloat32(base + dc2Off, true);
+    } else {
+      const vdv = new DataView(v.data.buffer, v.data.byteOffset, v.data.byteLength);
+      x = vdv.getFloat32(xOff, true);
+      y = vdv.getFloat32(yOff, true);
+      z = vdv.getFloat32(zOff, true);
+      dc0 = vdv.getFloat32(dc0Off, true);
+      dc1 = vdv.getFloat32(dc1Off, true);
+      dc2 = vdv.getFloat32(dc2Off, true);
+    }
+    const j = i * 3;
+    positions[j] = x; positions[j + 1] = y; positions[j + 2] = z;
+    colors[j]     = Math.max(0, Math.min(1, 0.5 + C0 * dc0));
+    colors[j + 1] = Math.max(0, Math.min(1, 0.5 + C0 * dc1));
+    colors[j + 2] = Math.max(0, Math.min(1, 0.5 + C0 * dc2));
+  }
+
+  state.positions = positions;
+  state.basePositions = new Float32Array(positions);
+  state.baseColors = new Float32Array(colors);
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  if (state.pointCloud) {
+    state.pointCloud.geometry.dispose();
+    state.pointCloud.geometry = geom;
+  } else {
+    const mat = new THREE.PointsMaterial({
+      size: parseFloat($('pointSize').value),
+      sizeAttenuation: false,
+      vertexColors: true,
+    });
+    state.pointCloud = new THREE.Points(geom, mat);
+    state.pointCloud.rotation.x = Math.PI;
+    scene.add(state.pointCloud);
+  }
+
+  state.selected.clear(); state.rawSelected.clear();
+  computeDensity();
+  updateSelectionDisplay();
+  updateInfo();
+  updateButtons();
+}
+
+// ===== Density Computation (3D grid) =====
+function computeDensity() {
+  const pos = state.positions;
+  const n = state.vertices.length;
+  if (n === 0) { state.density = null; return; }
+
+  // Bounding box
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const j = i * 3;
+    if (pos[j] < minX) minX = pos[j];     if (pos[j] > maxX) maxX = pos[j];
+    if (pos[j+1] < minY) minY = pos[j+1]; if (pos[j+1] > maxY) maxY = pos[j+1];
+    if (pos[j+2] < minZ) minZ = pos[j+2]; if (pos[j+2] > maxZ) maxZ = pos[j+2];
+  }
+
+  // Cell size: aim for ~50 cells along longest axis
+  const extent = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 0.001);
+  const cellSize = extent / 50;
+  const invCell = 1 / cellSize;
+
+  // Assign points to grid cells and count
+  const cellCounts = new Map();
+  const cellKeys = new Int32Array(n * 3); // store grid coords per point
+
+  for (let i = 0; i < n; i++) {
+    const j = i * 3;
+    const cx = Math.floor((pos[j] - minX) * invCell);
+    const cy = Math.floor((pos[j+1] - minY) * invCell);
+    const cz = Math.floor((pos[j+2] - minZ) * invCell);
+    cellKeys[j] = cx; cellKeys[j+1] = cy; cellKeys[j+2] = cz;
+    const key = cx + ',' + cy + ',' + cz;
+    cellCounts.set(key, (cellCounts.get(key) || 0) + 1);
+  }
+
+  // Density = sum of 27 neighboring cells (3x3x3)
+  const density = new Uint32Array(n);
+  for (let i = 0; i < n; i++) {
+    const j = i * 3;
+    const cx = cellKeys[j], cy = cellKeys[j+1], cz = cellKeys[j+2];
+    let count = 0;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const k = (cx+dx) + ',' + (cy+dy) + ',' + (cz+dz);
+          count += cellCounts.get(k) || 0;
+        }
+      }
+    }
+    density[i] = count;
+  }
+
+  state.density = density;
+  state.cellSize = cellSize;
+
+  // Update slider max to a useful percentile
+  const sorted = Array.from(density).sort((a, b) => a - b);
+  const p50 = sorted[Math.floor(n * 0.5)];
+  const p95 = sorted[Math.floor(n * 0.95)];
+  const sliderMax = Math.max(p95, 2);
+  const slider = $('densityThreshold');
+  slider.max = sliderMax;
+  slider.value = Math.min(parseInt(slider.value), sliderMax) || Math.round(p50);
+  $('densityThresholdVal').textContent = slider.value;
+
+  console.log('[Density] computed for', n, 'points. min:', sorted[0], 'median:', p50, 'p95:', p95, 'max:', sorted[n-1]);
+}
+
+function cloneVertexData(idx) {
+  const v = state.vertices[idx];
+  if ('srcIndex' in v) {
+    const start = v.srcIndex * state.vertexSize;
+    return new Uint8Array(state.rawBuffer.slice(start, start + state.vertexSize));
+  }
+  return new Uint8Array(v.data);
+}
+
+// ===== Selection Display =====
+function updateSelectionDisplay() {
+  if (!state.pointCloud || !state.basePositions) return;
+  const colors = state.pointCloud.geometry.attributes.color.array;
+  const positions = state.pointCloud.geometry.attributes.position.array;
+  const base = state.baseColors;
+  const basePos = state.basePositions;
+  const sel = state.selected;
+  const mask = state.masked;
+  const n = state.vertices.length;
+
+  // 非表示レイヤーの頂点セットを構築
+  const hiddenSet = getHiddenVertexSet();
+
+  for (let i = 0; i < n; i++) {
+    const j = i * 3;
+    if (hiddenSet.has(i)) {
+      // 非表示レイヤー: 位置を無限遠に飛ばして完全に見えなくする
+      positions[j] = 1e10; positions[j + 1] = 1e10; positions[j + 2] = 1e10;
+      colors[j] = 0; colors[j + 1] = 0; colors[j + 2] = 0;
+    } else {
+      // 位置を復元
+      positions[j] = basePos[j]; positions[j + 1] = basePos[j + 1]; positions[j + 2] = basePos[j + 2];
+      if (sel.has(i)) {
+        colors[j] = 0; colors[j + 1] = 1; colors[j + 2] = 1;
+      } else if (mask.has(i)) {
+        colors[j] = base[j] * 0.25; colors[j + 1] = base[j + 1] * 0.25; colors[j + 2] = base[j + 2] * 0.25;
+      } else {
+        colors[j] = base[j]; colors[j + 1] = base[j + 1]; colors[j + 2] = base[j + 2];
+      }
+    }
+  }
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+  state.pointCloud.geometry.attributes.color.needsUpdate = true;
+  updateSelectionBox();
+  updateInfo();
+  updateButtons();
+  renderLayerList();
+}
+
+// ===== Layer Functions =====
+function getActiveLayer() {
+  return state.layers.find(l => l.id === state.activeLayerId) || state.layers[0];
+}
+
+function getHiddenVertexSet() {
+  const hidden = new Set();
+  for (const layer of state.layers) {
+    if (!layer.visible) {
+      for (const idx of layer.vertexIndices) hidden.add(idx);
+    }
+  }
+  return hidden;
+}
+
+function getSelectableVertexSet() {
+  // 可視かつロックされていない全レイヤーの頂点が選択可能
+  const result = new Set();
+  for (const layer of state.layers) {
+    if (layer.visible && !layer.locked) {
+      for (const idx of layer.vertexIndices) result.add(idx);
+    }
+  }
+  return result;
+}
+
+function getLayerForVertex(idx) {
+  for (const layer of state.layers) {
+    if (layer.vertexIndices.has(idx)) return layer;
+  }
+  return null;
+}
+
+function renderLayerList() {
+  const list = $('layerList');
+  if (!list) return;
+  list.innerHTML = '';
+  for (const layer of state.layers) {
+    const item = document.createElement('div');
+    item.className = 'layer-item' + (layer.id === state.activeLayerId ? ' active' : '');
+
+    const vis = document.createElement('div');
+    vis.className = 'layer-vis' + (layer.visible ? '' : ' hidden');
+    vis.textContent = layer.visible ? '👁' : '—';
+    vis.addEventListener('click', (e) => {
+      e.stopPropagation();
+      layer.visible = !layer.visible;
+      updateSelectionDisplay();
+    });
+
+    const lock = document.createElement('div');
+    lock.className = 'layer-lock' + (layer.locked ? ' locked' : '');
+    lock.textContent = layer.locked ? '🔒' : '🔓';
+    lock.addEventListener('click', (e) => {
+      e.stopPropagation();
+      layer.locked = !layer.locked;
+      renderLayerList();
+    });
+
+    const name = document.createElement('div');
+    name.className = 'layer-name';
+    name.textContent = layer.name;
+    name.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = layer.name;
+      input.style.cssText = 'width:100%; background:#0f1a30; color:#e0e0e0; border:1px solid #4361ee; border-radius:2px; font-size:0.78rem; padding:1px 4px;';
+      name.replaceWith(input);
+      input.focus();
+      input.select();
+      const commit = () => { layer.name = input.value || layer.name; renderLayerList(); };
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', (ke) => { if (ke.key === 'Enter') input.blur(); });
+    });
+
+    const count = document.createElement('div');
+    count.className = 'layer-count';
+    count.textContent = layer.vertexIndices.size.toLocaleString();
+
+    const layerIdx = state.layers.indexOf(layer);
+    const orderBtns = document.createElement('div');
+    orderBtns.className = 'layer-order';
+    const upBtn = document.createElement('button');
+    upBtn.textContent = '▲';
+    upBtn.disabled = layerIdx === 0;
+    upBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (layerIdx > 0) {
+        [state.layers[layerIdx - 1], state.layers[layerIdx]] = [state.layers[layerIdx], state.layers[layerIdx - 1]];
+        renderLayerList();
+      }
+    });
+    const downBtn = document.createElement('button');
+    downBtn.textContent = '▼';
+    downBtn.disabled = layerIdx === state.layers.length - 1;
+    downBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (layerIdx < state.layers.length - 1) {
+        [state.layers[layerIdx], state.layers[layerIdx + 1]] = [state.layers[layerIdx + 1], state.layers[layerIdx]];
+        renderLayerList();
+      }
+    });
+    orderBtns.appendChild(upBtn);
+    orderBtns.appendChild(downBtn);
+
+    item.appendChild(vis);
+    item.appendChild(lock);
+    item.appendChild(name);
+    item.appendChild(count);
+    item.appendChild(orderBtns);
+    item.addEventListener('click', () => {
+      state.activeLayerId = layer.id;
+      renderLayerList();
+    });
+    list.appendChild(item);
+  }
+  updateLayerButtons();
+}
+
+function updateLayerButtons() {
+  const hasData = state.vertices.length > 0;
+  const hasSel = state.selected.size > 0;
+  $('btnLayerAdd').disabled = !hasData;
+  $('btnLayerMovesel').disabled = !hasSel || state.layers.length < 2;
+  $('btnLayerDel').disabled = state.layers.length <= 1;
+  $('btnLayerMerge').disabled = state.layers.length <= 1;
+}
+
+function addLayer(name) {
+  const id = state.nextLayerId++;
+  const layer = { id, name: name || `Layer ${id}`, visible: true, locked: false, vertexIndices: new Set() };
+  state.layers.unshift(layer);
+  state.activeLayerId = id;
+  renderLayerList();
+  return layer;
+}
+
+function moveSelectionToLayer(targetLayerId) {
+  if (state.selected.size === 0) return;
+  const target = state.layers.find(l => l.id === targetLayerId);
+  if (!target) return;
+
+  const count = state.selected.size;
+  for (const idx of state.selected) {
+    for (const layer of state.layers) {
+      layer.vertexIndices.delete(idx);
+    }
+    target.vertexIndices.add(idx);
+  }
+  state.selected.clear();
+  state.rawSelected.clear();
+  updateSelectionDisplay();
+  setStatus(`Moved ${count.toLocaleString()} points to "${target.name}"`);
+}
+
+function deleteLayer(layerId) {
+  if (state.layers.length <= 1) return;
+  const layer = state.layers.find(l => l.id === layerId);
+  if (!layer) return;
+
+  // この層の頂点を次のレイヤー(またはひとつ前)に移動
+  const idx = state.layers.indexOf(layer);
+  const targetIdx = idx > 0 ? idx - 1 : 1;
+  const target = state.layers[targetIdx];
+  for (const vi of layer.vertexIndices) target.vertexIndices.add(vi);
+
+  state.layers.splice(idx, 1);
+  if (state.activeLayerId === layerId) {
+    state.activeLayerId = target.id;
+  }
+  updateSelectionDisplay();
+}
+
+function mergeLayerDown() {
+  if (state.layers.length <= 1) return;
+  const activeIdx = state.layers.findIndex(l => l.id === state.activeLayerId);
+  if (activeIdx < 0) return;
+  // アクティブを下のレイヤーにマージ（最下段なら上にマージ）
+  const targetIdx = activeIdx < state.layers.length - 1 ? activeIdx + 1 : activeIdx - 1;
+  const active = state.layers[activeIdx];
+  const target = state.layers[targetIdx];
+  for (const vi of active.vertexIndices) target.vertexIndices.add(vi);
+  state.layers.splice(activeIdx, 1);
+  state.activeLayerId = target.id;
+  updateSelectionDisplay();
+  setStatus(`Merged "${active.name}" into "${target.name}"`);
+}
+
+// 頂点削除時にレイヤーのインデックスを更新
+function updateLayerIndicesAfterDelete(deletedIndices) {
+  const sorted = [...deletedIndices].sort((a, b) => a - b);
+  for (const layer of state.layers) {
+    const newSet = new Set();
+    for (const idx of layer.vertexIndices) {
+      if (deletedIndices.has(idx)) continue;
+      // 削除されたインデックスより小さいものの数をカウントしてシフト
+      let shift = 0;
+      for (const d of sorted) {
+        if (d < idx) shift++;
+        else break;
+      }
+      newSet.add(idx - shift);
+    }
+    layer.vertexIndices = newSet;
+  }
+}
+
+// 頂点追加時にレイヤーのインデックスを更新（アクティブレイヤーに追加）
+function updateLayerIndicesAfterAdd(startIdx, count) {
+  const active = getActiveLayer();
+  for (let i = 0; i < count; i++) {
+    active.vertexIndices.add(startIdx + i);
+  }
+}
+
+// Undo delete: 再挿入された頂点のレイヤーインデックスを復元
+function rebuildLayerIndicesForUndelete(entries, prevLayerMap) {
+  // まず既存インデックスを挿入分だけシフト（昇順で処理）
+  const insertedIndices = entries.map(e => e.index).sort((a, b) => a - b);
+  for (const layer of state.layers) {
+    const newSet = new Set();
+    for (const idx of layer.vertexIndices) {
+      let shift = 0;
+      for (const ins of insertedIndices) {
+        if (ins <= idx + shift) shift++;
+        else break;
+      }
+      newSet.add(idx + shift);
+    }
+    layer.vertexIndices = newSet;
+  }
+  // 再挿入された頂点を元のレイヤーに追加
+  if (prevLayerMap) {
+    for (const entry of entries) {
+      const layerId = prevLayerMap.get(entry.index);
+      const layer = state.layers.find(l => l.id === layerId);
+      if (layer) layer.vertexIndices.add(entry.index);
+      else if (state.layers[0]) state.layers[0].vertexIndices.add(entry.index);
+    }
+  } else {
+    // fallback: アクティブレイヤーに追加
+    const active = getActiveLayer();
+    for (const entry of entries) active.vertexIndices.add(entry.index);
+  }
+}
+
+// ===== Selection Bounding Box =====
+let selBoxMesh = null;
+let selBoxBounds = null; // {min:[x,y,z], max:[x,y,z], center:[x,y,z]}
+
+function getSelectionBounds() {
+  if (state.selected.size < 2 || !state.pointCloud) return null;
+  const pos = state.positions;
+  let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
+  let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
+  for (const i of state.selected) {
+    const j = i * 3;
+    if (pos[j] < mnX) mnX = pos[j];     if (pos[j] > mxX) mxX = pos[j];
+    if (pos[j+1] < mnY) mnY = pos[j+1]; if (pos[j+1] > mxY) mxY = pos[j+1];
+    if (pos[j+2] < mnZ) mnZ = pos[j+2]; if (pos[j+2] > mxZ) mxZ = pos[j+2];
+  }
+  const sx = mxX - mnX, sy = mxY - mnY, sz = mxZ - mnZ;
+  if (sx < 0.0001 && sy < 0.0001 && sz < 0.0001) return null;
+  return {
+    min: [mnX, mnY, mnZ], max: [mxX, mxY, mxZ],
+    center: [(mnX+mxX)/2, (mnY+mxY)/2, (mnZ+mxZ)/2],
+    size: [sx, sy, sz],
+  };
+}
+
+function updateSelectionBox() {
+  if (selBoxMesh && state.pointCloud) {
+    state.pointCloud.remove(selBoxMesh);
+    selBoxMesh.geometry.dispose();
+    selBoxMesh.material.dispose();
+    selBoxMesh = null;
+  }
+  removeMoveArrows();
+  removeScaleHandles();
+  removeRotateRings();
+  selBoxBounds = getSelectionBounds();
+  if (!selBoxBounds) return;
+
+  const { size: [sx, sy, sz], center: [cx, cy, cz] } = selBoxBounds;
+  const geom = new THREE.BoxGeometry(Math.max(sx, 0.001), Math.max(sy, 0.001), Math.max(sz, 0.001));
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 });
+  selBoxMesh = new THREE.Mesh(geom, mat);
+  selBoxMesh.position.set(cx, cy, cz);
+  state.pointCloud.add(selBoxMesh);
+
+  if (state.currentTool === 'move') createMoveArrows();
+  else if (state.currentTool === 'scale') createScaleHandles();
+  else if (state.currentTool === 'rotate') createRotateRings();
+}
+
+// ===== Warp (Liquify) Tool =====
+let warpActive = false;
+let warpLastX = 0, warpLastY = 0;
+let warpOrigPositions = null;  // Float32Array snapshot at stroke start
+let warpModifiedIndices = null; // Set of indices modified during stroke
+
+function startWarp(e) {
+  if (!state.pointCloud) return;
+  warpActive = true;
+  const coords = getCanvasCoords(e);
+  warpLastX = coords.x;
+  warpLastY = coords.y;
+  cacheScreenPositions();
+  warpOrigPositions = new Float32Array(state.positions);
+  warpModifiedIndices = new Set();
+  canvas.style.cursor = 'none';
+}
+
+function updateWarp(e) {
+  if (!warpActive || !cachedScreenPos) return;
+  const coords = getCanvasCoords(e);
+  const dx = coords.x - warpLastX;
+  const dy = coords.y - warpLastY;
+
+  // Skip tiny movements
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+
+  const brushR = parseInt($('brushSize').value);
+  const strength = parseFloat($('warpStrength').value);
+  const r2 = brushR * brushR;
+  const n = state.vertices.length;
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+
+  // Convert screen-space drag direction to a 3D displacement.
+  // Use camera's right and up vectors, scaled by distance-dependent factor.
+  const camRight = new THREE.Vector3();
+  const camUp = new THREE.Vector3();
+  camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+
+  // Apply inverse of pointCloud's rotation to get local-space directions
+  const invQ = state.pointCloud.quaternion.clone().invert();
+  camRight.applyQuaternion(invQ);
+  camUp.applyQuaternion(invQ);
+
+  for (let i = 0; i < n; i++) {
+    const sx = cachedScreenPos[i * 2];
+    const sy = cachedScreenPos[i * 2 + 1];
+    const bx = sx - coords.x, by = sy - coords.y;
+    const dist2 = bx * bx + by * by;
+    if (dist2 > r2) continue;
+
+    // Smooth falloff: (1 - (d/r)^2)^2 (like Photoshop's liquify)
+    const t = dist2 / r2;
+    const falloff = (1 - t) * (1 - t);
+
+    // Scale displacement by distance from camera to point for consistent feel
+    const j = i * 3;
+    const wp = new THREE.Vector3(posArr[j], posArr[j + 1], posArr[j + 2]);
+    state.pointCloud.localToWorld(wp);
+    const distToCam = wp.distanceTo(camera.position);
+    const pixelScale = distToCam * 0.001; // convert pixel movement to world units
+
+    const moveAmount = falloff * strength * pixelScale;
+    posArr[j]     += camRight.x * dx * moveAmount + camUp.x * (-dy) * moveAmount;
+    posArr[j + 1] += camRight.y * dx * moveAmount + camUp.y * (-dy) * moveAmount;
+    posArr[j + 2] += camRight.z * dx * moveAmount + camUp.z * (-dy) * moveAmount;
+
+    warpModifiedIndices.add(i);
+  }
+
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+  // Update cached screen positions for affected points
+  state.pointCloud.updateMatrixWorld();
+  const mvp = new THREE.Matrix4();
+  mvp.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  mvp.multiply(state.pointCloud.matrixWorld);
+  const el = mvp.elements;
+  const w = viewport.clientWidth / 2, h = viewport.clientHeight / 2;
+  for (const i of warpModifiedIndices) {
+    const j = i * 3;
+    const x = posArr[j], y = posArr[j + 1], z = posArr[j + 2];
+    const clipW = el[3] * x + el[7] * y + el[11] * z + el[15];
+    if (clipW <= 0) {
+      cachedScreenPos[i * 2] = -99999;
+      cachedScreenPos[i * 2 + 1] = -99999;
+    } else {
+      const clipX = el[0] * x + el[4] * y + el[8] * z + el[12];
+      const clipY = el[1] * x + el[5] * y + el[9] * z + el[13];
+      cachedScreenPos[i * 2]     = (clipX / clipW + 1) * w;
+      cachedScreenPos[i * 2 + 1] = (1 - clipY / clipW) * h;
+    }
+  }
+
+  warpLastX = coords.x;
+  warpLastY = coords.y;
+}
+
+function commitWarp() {
+  if (!warpActive) return;
+  warpActive = false;
+  canvas.style.cursor = 'crosshair';
+
+  if (!warpModifiedIndices || warpModifiedIndices.size === 0) {
+    warpOrigPositions = null;
+    warpModifiedIndices = null;
+    return;
+  }
+
+  // Commit modified positions to vertex data + undo stack
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+  const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
+  const undoEntries = [];
+
+  for (const i of warpModifiedIndices) {
+    const j = i * 3;
+    const nx = posArr[j], ny = posArr[j + 1], nz = posArr[j + 2];
+    const ox = warpOrigPositions[j], oy = warpOrigPositions[j + 1], oz = warpOrigPositions[j + 2];
+    if (Math.abs(nx - ox) < 0.0001 && Math.abs(ny - oy) < 0.0001 && Math.abs(nz - oz) < 0.0001) continue;
+
+    const oldVertex = state.vertices[i];
+    const newData = cloneVertexData(i);
+    const dv = new DataView(newData.buffer, newData.byteOffset, newData.byteLength);
+    dv.setFloat32(xOff, nx, true);
+    dv.setFloat32(yOff, ny, true);
+    dv.setFloat32(zOff, nz, true);
+    const newVertex = { data: newData };
+    undoEntries.push({ index: i, oldVertex, newVertex });
+    state.vertices[i] = newVertex;
+  }
+
+  if (undoEntries.length > 0) {
+    state.undoStack.push({ type: 'warp', entries: undoEntries, prevSelection: new Set(state.selected) });
+    state.redoStack = [];
+    // Update positions array to match vertex data
+    state.positions = posArr;
+    // Sync basePositions with warped positions
+    for (const entry of undoEntries) {
+      const j = entry.index * 3;
+      state.basePositions[j] = posArr[j];
+      state.basePositions[j + 1] = posArr[j + 1];
+      state.basePositions[j + 2] = posArr[j + 2];
+    }
+  }
+
+  warpOrigPositions = null;
+  warpModifiedIndices = null;
+  updateInfo();
+  updateButtons();
+  setStatus(`Warp applied (${undoEntries.length.toLocaleString()} points)`);
+}
+
+// ===== Densify Brush Tool =====
+let densifyBrushActive = false;
+let densifySourceUsed = null;     // Set<int> — source indices already densified this stroke
+let densifyNewVerts = [];         // Array of { data: Uint8Array }
+let densifyPreviewPoints = null;  // THREE.Points for real-time preview
+let densifyPreviewPosArr = [];    // flat [x,y,z,...] for preview geometry
+let densifyPreviewColArr = [];    // flat [r,g,b,...] for preview geometry
+
+function startDensifyBrush(e) {
+  if (!state.pointCloud) return;
+  densifyBrushActive = true;
+  cacheScreenPositions();
+  densifySourceUsed = new Set();
+  densifyNewVerts = [];
+  densifyPreviewPosArr = [];
+  densifyPreviewColArr = [];
+
+  // Create preview Points object (separate from main pointCloud for perf)
+  const geom = new THREE.BufferGeometry();
+  const mat = new THREE.PointsMaterial({
+    size: parseFloat($('pointSize').value),
+    sizeAttenuation: false,
+    vertexColors: true,
+  });
+  densifyPreviewPoints = new THREE.Points(geom, mat);
+  densifyPreviewPoints.rotation.x = Math.PI;
+  scene.add(densifyPreviewPoints);
+
+  // Process first brush position
+  densifyBrushAt(getCanvasCoords(e));
+}
+
+function densifyBrushAt(coords) {
+  if (!cachedScreenPos) return;
+
+  const brushR = parseInt($('brushSize').value);
+  const r2 = brushR * brushR;
+  const copies = parseInt($('densifyCount').value);
+  const jitterRatio = parseFloat($('densifyJitter').value);
+  const cellSize = state.cellSize || 0.01;
+  const n = state.vertices.length; // only original+previously committed
+  const mask = state.masked;
+  const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
+  const { f_dc_0: dc0Off, f_dc_1: dc1Off, f_dc_2: dc2Off } = state.offsets;
+  let added = 0;
+
+  for (let i = 0; i < n; i++) {
+    if (densifySourceUsed.has(i)) continue;
+    if (mask.has(i)) continue;
+
+    const sx = cachedScreenPos[i * 2];
+    const sy = cachedScreenPos[i * 2 + 1];
+    const bx = sx - coords.x, by = sy - coords.y;
+    const dist2 = bx * bx + by * by;
+    if (dist2 > r2) continue;
+
+    // Soft edge: probability falls off toward edge, random scatter each time
+    const t = dist2 / r2;  // 0=center, 1=edge
+    const prob = (1 - t) * (1 - t);  // quadratic falloff
+    if (Math.random() > prob) continue;
+
+    densifySourceUsed.add(i);
+
+    const j = i * 3;
+    const px = state.positions[j], py = state.positions[j + 1], pz = state.positions[j + 2];
+
+    for (let c = 0; c < copies; c++) {
+      const data = cloneVertexData(i);
+      const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+      const jx = (Math.random() - 0.5) * 2 * cellSize * jitterRatio;
+      const jy = (Math.random() - 0.5) * 2 * cellSize * jitterRatio;
+      const jz = (Math.random() - 0.5) * 2 * cellSize * jitterRatio;
+      const nx = px + jx, ny = py + jy, nz = pz + jz;
+      dv.setFloat32(xOff, nx, true);
+      dv.setFloat32(yOff, ny, true);
+      dv.setFloat32(zOff, nz, true);
+
+      densifyNewVerts.push({ data });
+      densifyPreviewPosArr.push(nx, ny, nz);
+
+      // Read SH DC color for preview
+      const dc0 = dv.getFloat32(dc0Off, true);
+      const dc1 = dv.getFloat32(dc1Off, true);
+      const dc2 = dv.getFloat32(dc2Off, true);
+      densifyPreviewColArr.push(
+        Math.max(0, Math.min(1, 0.5 + C0 * dc0)),
+        Math.max(0, Math.min(1, 0.5 + C0 * dc1)),
+        Math.max(0, Math.min(1, 0.5 + C0 * dc2))
+      );
+      added++;
+    }
+  }
+
+  if (added > 0) updateDensifyBrushPreview();
+}
+
+function updateDensifyBrushPreview() {
+  if (!densifyPreviewPoints) return;
+  const positions = new Float32Array(densifyPreviewPosArr);
+  const colors = new Float32Array(densifyPreviewColArr);
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  if (densifyPreviewPoints.geometry) densifyPreviewPoints.geometry.dispose();
+  densifyPreviewPoints.geometry = geom;
+}
+
+function commitDensifyBrush() {
+  if (!densifyBrushActive) return;
+  densifyBrushActive = false;
+
+  // Remove preview
+  if (densifyPreviewPoints) {
+    scene.remove(densifyPreviewPoints);
+    densifyPreviewPoints.geometry.dispose();
+    densifyPreviewPoints.material.dispose();
+    densifyPreviewPoints = null;
+  }
+
+  if (densifyNewVerts.length === 0) {
+    densifySourceUsed = null;
+    densifyNewVerts = [];
+    densifyPreviewPosArr = [];
+    densifyPreviewColArr = [];
+    return;
+  }
+
+  const count = densifyNewVerts.length;
+  const startIdx = state.vertices.length;
+  state.vertices.push(...densifyNewVerts);
+  updateLayerIndicesAfterAdd(startIdx, count);
+  state.undoStack.push({ type: 'densify', count, vertices: densifyNewVerts, prevSelection: new Set(state.selected) });
+  state.redoStack = [];
+
+  densifySourceUsed = null;
+  densifyNewVerts = [];
+  densifyPreviewPosArr = [];
+  densifyPreviewColArr = [];
+
+  rebuildGeometry();
+  setStatus(`Densify brush: +${count.toLocaleString()} points`);
+}
+
+// ===== Move Tool =====
+let moveArrows = []; // [{mesh, axis, axisIdx, origColor}]
+const moveRaycaster = new THREE.Raycaster();
+const ARROW_COLORS = { x: 0xff5555, y: 0x55ff55, z: 0x5599ff };
+
+function createMoveArrows() {
+  removeMoveArrows();
+  if (!selBoxBounds || !state.pointCloud) return;
+
+  const { center, size } = selBoxBounds;
+  const maxDim = Math.max(size[0], size[1], size[2], 0.01);
+  const arrowLen = maxDim * 0.3;
+  const arrowRadius = maxDim * 0.025;
+  const coneLen = arrowLen * 0.3;
+  const coneRadius = arrowRadius * 3;
+
+  const configs = [
+    { axis: 'x', axisIdx: 0, dir: [1, 0, 0], rot: [0, 0, -Math.PI / 2] },
+    { axis: 'y', axisIdx: 1, dir: [0, 1, 0], rot: [0, 0, 0] },
+    { axis: 'z', axisIdx: 2, dir: [0, 0, 1], rot: [Math.PI / 2, 0, 0] },
+  ];
+
+  for (const cfg of configs) {
+    const color = ARROW_COLORS[cfg.axis];
+    const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.85 });
+
+    // Shaft (cylinder)
+    const shaftGeom = new THREE.CylinderGeometry(arrowRadius, arrowRadius, arrowLen, 8);
+    shaftGeom.translate(0, arrowLen / 2, 0);
+    // Cone (tip)
+    const coneGeom = new THREE.ConeGeometry(coneRadius, coneLen, 8);
+    coneGeom.translate(0, arrowLen + coneLen / 2, 0);
+    // Merge into one
+    const merged = new THREE.BufferGeometry();
+    const shaftMesh = new THREE.Mesh(shaftGeom);
+    const coneMesh = new THREE.Mesh(coneGeom);
+    shaftMesh.updateMatrix();
+    coneMesh.updateMatrix();
+    // Use group instead
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(shaftGeom, mat));
+    group.add(new THREE.Mesh(coneGeom, mat));
+    group.position.set(center[0], center[1], center[2]);
+    group.rotation.set(cfg.rot[0], cfg.rot[1], cfg.rot[2]);
+    group.renderOrder = 999;
+    state.pointCloud.add(group);
+    moveArrows.push({ group, axis: cfg.axis, axisIdx: cfg.axisIdx, origColor: color, mat });
+  }
+}
+
+function removeMoveArrows() {
+  for (const a of moveArrows) {
+    if (state.pointCloud) state.pointCloud.remove(a.group);
+    a.group.traverse(c => { if (c.geometry) c.geometry.dispose(); });
+    a.mat.dispose();
+  }
+  moveArrows = [];
+}
+
+function getMoveArrowAtMouse(e) {
+  if (moveArrows.length === 0) return null;
+  const rect = viewport.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  moveRaycaster.setFromCamera(mouse, camera);
+  for (const a of moveArrows) {
+    const meshes = [];
+    a.group.traverse(c => { if (c.isMesh) meshes.push(c); });
+    const hits = moveRaycaster.intersectObjects(meshes);
+    if (hits.length > 0) return a;
+  }
+  return null;
+}
+
+// Move tool state
+let moveActive = false;
+let moveInitMouseX = 0;
+let moveInitMouseY = 0;
+let moveOrigPositions = null;
+let moveSelectedArr = null;
+let moveAxisConstraint = null; // null = free, 'x'/'y'/'z' = axis
+let moveScreenAxisDir = null;
+
+function startMoveDrag(e) {
+  const arrow = getMoveArrowAtMouse(e);
+  moveActive = true;
+  moveInitMouseX = e.clientX;
+  moveInitMouseY = e.clientY;
+  moveOrigPositions = new Float32Array(state.positions);
+  moveSelectedArr = Array.from(state.selected);
+
+  if (arrow) {
+    moveAxisConstraint = arrow.axis;
+    moveScreenAxisDir = getScreenAxisDir(arrow.axis);
+  } else {
+    moveAxisConstraint = null;
+    moveScreenAxisDir = null;
+  }
+}
+
+function updateMovePreview(e) {
+  if (!moveActive) return;
+
+  const rect = viewport.getBoundingClientRect();
+  const dx = (e.clientX - moveInitMouseX) / rect.width * 2;
+  const dy = -(e.clientY - moveInitMouseY) / rect.height * 2;
+  const posArr = state.positions;
+
+  if (moveAxisConstraint) {
+    // Axis-constrained movement
+    const mouseDelta = new THREE.Vector2(dx, dy);
+    let projected = mouseDelta.dot(moveScreenAxisDir);
+
+    // Scale by distance to camera for consistent feel
+    const center = new THREE.Vector3(selBoxBounds.center[0], selBoxBounds.center[1], selBoxBounds.center[2]);
+    state.pointCloud.localToWorld(center);
+    const dist = camera.position.distanceTo(center);
+    const amount = projected * dist * 0.5;
+
+    const ai = moveAxisConstraint === 'x' ? 0 : moveAxisConstraint === 'y' ? 1 : 2;
+
+    for (const i of moveSelectedArr) {
+      const j = i * 3;
+      posArr[j]     = moveOrigPositions[j];
+      posArr[j + 1] = moveOrigPositions[j + 1];
+      posArr[j + 2] = moveOrigPositions[j + 2];
+      posArr[j + ai] = moveOrigPositions[j + ai] + amount;
+    }
+
+    const label = moveAxisConstraint.toUpperCase();
+    setStatus(`Move ${label}: ${amount.toFixed(3)}`);
+  } else {
+    // Free movement in camera plane
+    const center = new THREE.Vector3(selBoxBounds.center[0], selBoxBounds.center[1], selBoxBounds.center[2]);
+    state.pointCloud.localToWorld(center);
+    const dist = camera.position.distanceTo(center);
+    const scale = dist * 0.5;
+
+    const camRight = new THREE.Vector3();
+    const camUp = new THREE.Vector3();
+    camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+
+    // Convert camera-space movement to local space
+    const worldDelta = new THREE.Vector3()
+      .addScaledVector(camRight, dx * scale)
+      .addScaledVector(camUp, dy * scale);
+
+    // World to local
+    const invMat = new THREE.Matrix4().copy(state.pointCloud.matrixWorld).invert();
+    const localDelta = worldDelta.clone().transformDirection(invMat);
+
+    for (const i of moveSelectedArr) {
+      const j = i * 3;
+      posArr[j]     = moveOrigPositions[j]     + localDelta.x;
+      posArr[j + 1] = moveOrigPositions[j + 1] + localDelta.y;
+      posArr[j + 2] = moveOrigPositions[j + 2] + localDelta.z;
+    }
+
+    setStatus(`Move: dx=${(dx * scale).toFixed(3)} dy=${(dy * scale).toFixed(3)}`);
+  }
+
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+  updateMoveArrowPositions();
+}
+
+function commitMove() {
+  if (!moveActive) return;
+  moveActive = false;
+
+  const posArr = state.positions;
+  const undoEntries = [];
+
+  for (const i of moveSelectedArr) {
+    const j = i * 3;
+    const ox = moveOrigPositions[j], oy = moveOrigPositions[j + 1], oz = moveOrigPositions[j + 2];
+    const nx = posArr[j], ny = posArr[j + 1], nz = posArr[j + 2];
+    if (ox === nx && oy === ny && oz === nz) continue;
+
+    const oldVertex = { ...state.vertices[i] };
+    // Update stored vertex data
+    if (state.vertices[i].data) {
+      const d = state.vertices[i].data;
+      const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
+      dv.setFloat32(state.offsets.x, nx, true);
+      dv.setFloat32(state.offsets.y, ny, true);
+      dv.setFloat32(state.offsets.z, nz, true);
+    } else {
+      // srcIndex vertex: convert to data vertex
+      const src = state.vertices[i].srcIndex;
+      const newData = new Uint8Array(state.vertexSize);
+      newData.set(new Uint8Array(state.rawBuffer, state.headerLength + src * state.vertexSize, state.vertexSize));
+      const dv = new DataView(newData.buffer);
+      dv.setFloat32(state.offsets.x, nx, true);
+      dv.setFloat32(state.offsets.y, ny, true);
+      dv.setFloat32(state.offsets.z, nz, true);
+      state.vertices[i] = { data: newData };
+    }
+    undoEntries.push({ index: i, oldVertex, newVertex: { ...state.vertices[i] } });
+  }
+
+  if (undoEntries.length > 0) {
+    state.undoStack.push({ type: 'move', entries: undoEntries, prevSelection: new Set(state.selected) });
+    state.redoStack = [];
+    // Sync basePositions with moved positions
+    for (const entry of undoEntries) {
+      const j = entry.index * 3;
+      state.basePositions[j] = state.positions[j];
+      state.basePositions[j + 1] = state.positions[j + 1];
+      state.basePositions[j + 2] = state.positions[j + 2];
+    }
+  }
+
+  moveOrigPositions = null;
+  moveSelectedArr = null;
+  moveAxisConstraint = null;
+
+  updateSelectionDisplay();
+  if (state.currentTool === 'move') createMoveArrows();
+  setStatus(`Move applied (${undoEntries.length.toLocaleString()} points)`);
+}
+
+function cancelMove() {
+  if (!moveActive || !moveOrigPositions) return;
+  const posArr = state.positions;
+  for (const i of moveSelectedArr) {
+    const j = i * 3;
+    posArr[j]     = moveOrigPositions[j];
+    posArr[j + 1] = moveOrigPositions[j + 1];
+    posArr[j + 2] = moveOrigPositions[j + 2];
+  }
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+  moveActive = false;
+  moveOrigPositions = null;
+  moveSelectedArr = null;
+  moveAxisConstraint = null;
+  updateMoveArrowPositions();
+  setStatus('Move cancelled');
+}
+
+function updateMoveArrowPositions() {
+  if (moveArrows.length === 0 || !state.pointCloud) return;
+  // Recalculate center of selected points
+  const posArr = state.positions;
+  const sel = moveSelectedArr || Array.from(state.selected);
+  let cx = 0, cy = 0, cz = 0;
+  for (const i of sel) {
+    const j = i * 3;
+    cx += posArr[j]; cy += posArr[j + 1]; cz += posArr[j + 2];
+  }
+  const n = sel.length || 1;
+  cx /= n; cy /= n; cz /= n;
+  for (const a of moveArrows) {
+    a.group.position.set(cx, cy, cz);
+  }
+  // Update selBoxMesh position too
+  if (selBoxMesh) {
+    selBoxMesh.position.set(cx, cy, cz);
+  }
+}
+
+// ===== Scale Handles =====
+let scaleHandles = []; // [{mesh, axis, axisIdx, sign, origColor}]
+const scaleRaycaster = new THREE.Raycaster();
+const HANDLE_COLORS = { x: 0xff5555, y: 0x55ff55, z: 0x5599ff };
+
+function createScaleHandles() {
+  removeScaleHandles();
+  if (!selBoxBounds || !state.pointCloud) return;
+
+  const { min, max, center, size } = selBoxBounds;
+  const maxDim = Math.max(size[0], size[1], size[2], 0.01);
+  const handleRadius = maxDim * 0.04;
+  const handleGeom = new THREE.SphereGeometry(handleRadius, 8, 8);
+
+  const configs = [
+    { axis: 'x', axisIdx: 0, sign: -1, pos: [min[0], center[1], center[2]] },
+    { axis: 'x', axisIdx: 0, sign: +1, pos: [max[0], center[1], center[2]] },
+    { axis: 'y', axisIdx: 1, sign: -1, pos: [center[0], min[1], center[2]] },
+    { axis: 'y', axisIdx: 1, sign: +1, pos: [center[0], max[1], center[2]] },
+    { axis: 'z', axisIdx: 2, sign: -1, pos: [center[0], center[1], min[2]] },
+    { axis: 'z', axisIdx: 2, sign: +1, pos: [center[0], center[1], max[2]] },
+  ];
+
+  for (const cfg of configs) {
+    const color = HANDLE_COLORS[cfg.axis];
+    const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.85 });
+    const mesh = new THREE.Mesh(handleGeom, mat);
+    mesh.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
+    mesh.renderOrder = 999;
+    state.pointCloud.add(mesh);
+    scaleHandles.push({ mesh, axis: cfg.axis, axisIdx: cfg.axisIdx, sign: cfg.sign, origColor: color });
+  }
+}
+
+function removeScaleHandles() {
+  for (const h of scaleHandles) {
+    if (state.pointCloud) state.pointCloud.remove(h.mesh);
+    h.mesh.geometry.dispose();
+    h.mesh.material.dispose();
+  }
+  scaleHandles = [];
+}
+
+function getHandleAtMouse(e) {
+  if (scaleHandles.length === 0) return null;
+  const rect = viewport.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  scaleRaycaster.setFromCamera(mouse, camera);
+  const meshes = scaleHandles.map(h => h.mesh);
+  const intersects = scaleRaycaster.intersectObjects(meshes);
+  if (intersects.length > 0) {
+    return scaleHandles.find(h => h.mesh === intersects[0].object);
+  }
+  return null;
+}
+
+// Get screen-space direction of an axis (for projecting mouse movement)
+function getScreenAxisDir(axis) {
+  const center = new THREE.Vector3(selBoxBounds.center[0], selBoxBounds.center[1], selBoxBounds.center[2]);
+  const axisEnd = center.clone();
+  if (axis === 'x') axisEnd.x += 1;
+  else if (axis === 'y') axisEnd.y += 1;
+  else axisEnd.z += 1;
+
+  // Transform through pointCloud's world matrix
+  state.pointCloud.localToWorld(center);
+  state.pointCloud.localToWorld(axisEnd);
+
+  // Project to NDC
+  const c2d = center.clone().project(camera);
+  const e2d = axisEnd.clone().project(camera);
+  const dir = new THREE.Vector2(e2d.x - c2d.x, e2d.y - c2d.y);
+  const len = dir.length();
+  if (len > 0.0001) dir.divideScalar(len);
+  return dir;
+}
+
+// ===== Scale Tool State =====
+let scaleActive = false;
+let scaleInitMouseX = 0;
+let scaleInitMouseY = 0;
+let scaleOrigPositions = null;
+let scaleCenter = [0, 0, 0];
+let scaleBBoxMin = [0, 0, 0];
+let scaleBBoxMax = [0, 0, 0];
+let scaleSelectedArr = null;
+let activeHandle = null;
+let scaleScreenAxisDir = null;
+let scaleOrigBoxCenter = [0, 0, 0]; // for box visual update
+let scalePreviewMode = false; // post-drag preview for slider adjustment
+let scaleLockedFactor = 1;   // factor locked at end of drag
+let scaleLockedUseCenter = false;
+let scaleLockedUniform = false;
+
+function startScaleDrag(e) {
+  const handle = getHandleAtMouse(e);
+  if (!handle) return;
+
+  activeHandle = handle;
+  scaleActive = true;
+  scaleInitMouseX = e.clientX;
+  scaleInitMouseY = e.clientY;
+  scaleOrigPositions = new Float32Array(state.positions);
+  scaleSelectedArr = Array.from(state.selected);
+
+  const bounds = selBoxBounds;
+  scaleCenter = [...bounds.center];
+  scaleBBoxMin = [...bounds.min];
+  scaleBBoxMax = [...bounds.max];
+  scaleOrigBoxCenter = [...bounds.center];
+
+  scaleScreenAxisDir = getScreenAxisDir(handle.axis);
+
+  // Highlight active handle
+  handle.mesh.material.color.setHex(0xffffff);
+  handle.mesh.material.opacity = 1;
+  canvas.style.cursor = 'grabbing';
+}
+
+function updateScalePreview(e) {
+  if (!scaleActive || !activeHandle) return;
+
+  const useCenter = e.altKey;   // Option: scale from center
+  const uniform = e.shiftKey;   // Shift: uniform scale
+
+  // Mouse delta in NDC
+  const rect = viewport.getBoundingClientRect();
+  const dx = (e.clientX - scaleInitMouseX) / rect.width * 2;
+  const dy = -(e.clientY - scaleInitMouseY) / rect.height * 2;
+  const mouseDelta = new THREE.Vector2(dx, dy);
+
+  // Project mouse movement onto axis screen direction
+  let projected = mouseDelta.dot(scaleScreenAxisDir);
+  // Make the handle side move with the mouse (flip if sign < 0)
+  if (activeHandle.sign < 0) projected = -projected;
+
+  const factor = Math.max(0.01, 1 + projected * 2);
+  const ai = activeHandle.axisIdx;
+  const falloff = parseFloat($('scaleFalloff').value);
+
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+
+  for (const i of scaleSelectedArr) {
+    const j = i * 3;
+    const ox = scaleOrigPositions[j], oy = scaleOrigPositions[j+1], oz = scaleOrigPositions[j+2];
+
+    // Compute falloff t value (0=anchor side, 1=handle side)
+    let ef = factor;
+    if (falloff > 0) {
+      const origAxisVal = [ox, oy, oz][ai];
+      const handleFace = activeHandle.sign > 0 ? scaleBBoxMax[ai] : scaleBBoxMin[ai];
+      const anchorFace = useCenter ? scaleCenter[ai] : (activeHandle.sign > 0 ? scaleBBoxMin[ai] : scaleBBoxMax[ai]);
+      const range = handleFace - anchorFace;
+      const t = range !== 0 ? Math.max(0, Math.min(1, (origAxisVal - anchorFace) / range)) : 0;
+      ef = 1 + (factor - 1) * Math.pow(t, falloff);
+    }
+
+    if (uniform) {
+      // Uniform scale all axes (with per-point falloff)
+      const anchor = useCenter ? scaleCenter : [
+        activeHandle.sign > 0 ? scaleBBoxMin[0] : scaleBBoxMax[0],
+        activeHandle.sign > 0 ? scaleBBoxMin[1] : scaleBBoxMax[1],
+        activeHandle.sign > 0 ? scaleBBoxMin[2] : scaleBBoxMax[2],
+      ];
+      posArr[j]   = anchor[0] + (ox - anchor[0]) * ef;
+      posArr[j+1] = anchor[1] + (oy - anchor[1]) * ef;
+      posArr[j+2] = anchor[2] + (oz - anchor[2]) * ef;
+    } else {
+      // Single-axis scale
+      const anchor = useCenter ? scaleCenter[ai] : (activeHandle.sign > 0 ? scaleBBoxMin[ai] : scaleBBoxMax[ai]);
+      posArr[j]   = ox;
+      posArr[j+1] = oy;
+      posArr[j+2] = oz;
+      const origVal = [ox, oy, oz][ai];
+      posArr[j + ai] = anchor + (origVal - anchor) * ef;
+    }
+  }
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+
+  // Update bounding box and handle positions from actual point positions
+  updateScaleHandlesPositions();
+
+  const label = uniform ? 'uniform' : activeHandle.axis.toUpperCase();
+  const anchor = useCenter ? 'center' : 'edge';
+  setStatus(`Scale ${label} (${anchor}): ${factor.toFixed(3)}x`);
+}
+
+// On mouse-up: enter scale preview mode (factor locked, falloff adjustable)
+function endScaleDrag(e) {
+  if (!scaleActive) return;
+  scaleActive = false;
+
+  // Compute and lock the factor
+  const rect = viewport.getBoundingClientRect();
+  const dx = (e.clientX - scaleInitMouseX) / rect.width * 2;
+  const dy = -(e.clientY - scaleInitMouseY) / rect.height * 2;
+  const mouseDelta = new THREE.Vector2(dx, dy);
+  let projected = mouseDelta.dot(scaleScreenAxisDir);
+  if (activeHandle.sign < 0) projected = -projected;
+  scaleLockedFactor = Math.max(0.01, 1 + projected * 2);
+  scaleLockedUseCenter = e.altKey;
+  scaleLockedUniform = e.shiftKey;
+
+  if (Math.abs(scaleLockedFactor - 1) < 0.001) {
+    cancelScalePreview();
+    return;
+  }
+
+  scalePreviewMode = true;
+  canvas.style.cursor = 'default';
+  updateScaleHandlesPositions();
+  setStatus(`Scale preview: ${scaleLockedFactor.toFixed(3)}x — adjust Falloff, then Enter to apply / Esc to cancel`);
+}
+
+// Regenerate scale preview with current falloff (called from slider)
+function regenerateScalePreview() {
+  if (!scalePreviewMode || !scaleOrigPositions) return;
+
+  const factor = scaleLockedFactor;
+  const useCenter = scaleLockedUseCenter;
+  const uniform = scaleLockedUniform;
+  const ai = activeHandle.axisIdx;
+  const falloff = parseFloat($('scaleFalloff').value);
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+
+  for (const i of scaleSelectedArr) {
+    const j = i * 3;
+    const ox = scaleOrigPositions[j], oy = scaleOrigPositions[j+1], oz = scaleOrigPositions[j+2];
+
+    let ef = factor;
+    if (falloff > 0) {
+      const origAxisVal = [ox, oy, oz][ai];
+      const handleFace = activeHandle.sign > 0 ? scaleBBoxMax[ai] : scaleBBoxMin[ai];
+      const anchorFace = useCenter ? scaleCenter[ai] : (activeHandle.sign > 0 ? scaleBBoxMin[ai] : scaleBBoxMax[ai]);
+      const range = handleFace - anchorFace;
+      const t = range !== 0 ? Math.max(0, Math.min(1, (origAxisVal - anchorFace) / range)) : 0;
+      ef = 1 + (factor - 1) * Math.pow(t, falloff);
+    }
+
+    if (uniform) {
+      const anchor = useCenter ? scaleCenter : [
+        activeHandle.sign > 0 ? scaleBBoxMin[0] : scaleBBoxMax[0],
+        activeHandle.sign > 0 ? scaleBBoxMin[1] : scaleBBoxMax[1],
+        activeHandle.sign > 0 ? scaleBBoxMin[2] : scaleBBoxMax[2],
+      ];
+      posArr[j]   = anchor[0] + (ox - anchor[0]) * ef;
+      posArr[j+1] = anchor[1] + (oy - anchor[1]) * ef;
+      posArr[j+2] = anchor[2] + (oz - anchor[2]) * ef;
+    } else {
+      const anchor = useCenter ? scaleCenter[ai] : (activeHandle.sign > 0 ? scaleBBoxMin[ai] : scaleBBoxMax[ai]);
+      posArr[j]   = ox;
+      posArr[j+1] = oy;
+      posArr[j+2] = oz;
+      const origVal = [ox, oy, oz][ai];
+      posArr[j + ai] = anchor + (origVal - anchor) * ef;
+    }
+  }
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+  // Update handles/bbox to reflect new positions
+  updateScaleHandlesPositions();
+  setStatus(`Scale preview: ${factor.toFixed(3)}x, falloff: ${falloff} — Enter to apply / Esc to cancel`);
+}
+
+// Update scale handle + bbox positions based on current selected point positions
+function updateScaleHandlesPositions() {
+  if (scaleHandles.length === 0 || !state.pointCloud) return;
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+
+  // Recompute bbox from current selected positions
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const i of scaleSelectedArr) {
+    const j = i * 3;
+    const x = posArr[j], y = posArr[j+1], z = posArr[j+2];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2;
+
+  // Update selBoxBounds
+  selBoxBounds = {
+    min: [minX, minY, minZ], max: [maxX, maxY, maxZ],
+    center: [cx, cy, cz],
+    size: [maxX - minX, maxY - minY, maxZ - minZ],
+  };
+
+  // Update bbox wireframe mesh
+  if (selBoxMesh) {
+    const sx = maxX - minX, sy = maxY - minY, sz = maxZ - minZ;
+    selBoxMesh.geometry.dispose();
+    selBoxMesh.geometry = new THREE.BoxGeometry(Math.max(sx, 0.001), Math.max(sy, 0.001), Math.max(sz, 0.001));
+    selBoxMesh.position.set(cx, cy, cz);
+    selBoxMesh.scale.set(1, 1, 1); // Reset scale (was modified during drag)
+  }
+
+  // Update handle positions: order matches createScaleHandles configs
+  const facePositions = [
+    [minX, cy, cz], [maxX, cy, cz],  // -X, +X
+    [cx, minY, cz], [cx, maxY, cz],  // -Y, +Y
+    [cx, cy, minZ], [cx, cy, maxZ],  // -Z, +Z
+  ];
+  for (let h = 0; h < scaleHandles.length && h < facePositions.length; h++) {
+    scaleHandles[h].mesh.position.set(facePositions[h][0], facePositions[h][1], facePositions[h][2]);
+  }
+}
+
+// Apply scale preview (commit to undo stack)
+function applyScalePreview() {
+  if (!scalePreviewMode) return;
+  scalePreviewMode = false;
+
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+  const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
+  const undoEntries = [];
+
+  for (const i of scaleSelectedArr) {
+    const j = i * 3;
+    const nx = posArr[j], ny = posArr[j+1], nz = posArr[j+2];
+    const ox = scaleOrigPositions[j], oy = scaleOrigPositions[j+1], oz = scaleOrigPositions[j+2];
+    if (Math.abs(nx-ox) > 0.0001 || Math.abs(ny-oy) > 0.0001 || Math.abs(nz-oz) > 0.0001) {
+      const oldVertex = state.vertices[i];
+      const newData = cloneVertexData(i);
+      const dv = new DataView(newData.buffer, newData.byteOffset, newData.byteLength);
+      dv.setFloat32(xOff, nx, true);
+      dv.setFloat32(yOff, ny, true);
+      dv.setFloat32(zOff, nz, true);
+      const newVertex = { data: newData };
+      undoEntries.push({ index: i, oldVertex, newVertex });
+      state.vertices[i] = newVertex;
+    }
+  }
+
+  if (undoEntries.length > 0) {
+    state.undoStack.push({ type: 'scale', entries: undoEntries, prevSelection: new Set(state.selected) });
+    state.redoStack = [];
+  }
+
+  resetScaleState();
+  const savedSel = new Set(state.selected);
+  const savedRaw = new Set(state.rawSelected);
+  rebuildGeometry();
+  state.selected = savedSel;
+  state.rawSelected = savedRaw;
+  updateSelectionDisplay();
+  // Re-create handles at updated positions
+  if (state.currentTool === 'scale') createScaleHandles();
+  setStatus(`Scale applied (${undoEntries.length.toLocaleString()} points)`);
+}
+
+// Cancel scale preview (revert positions)
+function cancelScalePreview() {
+  if (scalePreviewMode && scaleOrigPositions) {
+    const posArr = state.pointCloud.geometry.attributes.position.array;
+    for (const i of scaleSelectedArr) {
+      const j = i * 3;
+      posArr[j] = scaleOrigPositions[j];
+      posArr[j+1] = scaleOrigPositions[j+1];
+      posArr[j+2] = scaleOrigPositions[j+2];
+    }
+    state.pointCloud.geometry.attributes.position.needsUpdate = true;
+  }
+  scalePreviewMode = false;
+  resetScaleState();
+  if (selBoxMesh) { selBoxMesh.rotation.set(0, 0, 0); selBoxMesh.scale.set(1, 1, 1); selBoxMesh.position.set(scaleOrigBoxCenter[0], scaleOrigBoxCenter[1], scaleOrigBoxCenter[2]); }
+  setStatus('Scale cancelled');
+}
+
+function resetScaleState() {
+  if (activeHandle) {
+    activeHandle.mesh.material.color.setHex(activeHandle.origColor);
+    activeHandle.mesh.material.opacity = 0.85;
+  }
+  activeHandle = null;
+  scaleOrigPositions = null;
+  scaleSelectedArr = null;
+  scaleActive = false;
+}
+
+// ===== Rotate Tool =====
+let rotateRings = []; // [{mesh, axis, axisIdx, axisVec, origColor}]
+
+function createRotateRings() {
+  removeRotateRings();
+  if (!selBoxBounds || !state.pointCloud) return;
+
+  const { center, size } = selBoxBounds;
+  const maxDim = Math.max(size[0], size[1], size[2], 0.01);
+  const radius = maxDim * 0.65;
+  const tube = Math.max(radius * 0.035, 0.003);
+
+  const configs = [
+    { axis: 'x', axisIdx: 0, color: 0xff5555, rx: 0, ry: Math.PI / 2, rz: 0 },
+    { axis: 'y', axisIdx: 1, color: 0x55ff55, rx: Math.PI / 2, ry: 0, rz: 0 },
+    { axis: 'z', axisIdx: 2, color: 0x5599ff, rx: 0, ry: 0, rz: 0 },
+  ];
+
+  for (const cfg of configs) {
+    const geom = new THREE.TorusGeometry(radius, tube, 8, 64);
+    const mat = new THREE.MeshBasicMaterial({
+      color: cfg.color, depthTest: false, transparent: true, opacity: 0.6, side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.position.set(center[0], center[1], center[2]);
+    mesh.rotation.set(cfg.rx, cfg.ry, cfg.rz);
+    mesh.renderOrder = 998;
+    state.pointCloud.add(mesh);
+
+    const axisVec = new THREE.Vector3(cfg.axisIdx === 0 ? 1 : 0, cfg.axisIdx === 1 ? 1 : 0, cfg.axisIdx === 2 ? 1 : 0);
+    rotateRings.push({ mesh, axis: cfg.axis, axisIdx: cfg.axisIdx, axisVec, origColor: cfg.color });
+  }
+}
+
+function removeRotateRings() {
+  for (const r of rotateRings) {
+    if (state.pointCloud) state.pointCloud.remove(r.mesh);
+    r.mesh.geometry.dispose();
+    r.mesh.material.dispose();
+  }
+  rotateRings = [];
+}
+
+function getRingAtMouse(e) {
+  if (rotateRings.length === 0) return null;
+  const rect = viewport.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  scaleRaycaster.setFromCamera(mouse, camera);
+  const meshes = rotateRings.map(r => r.mesh);
+  const intersects = scaleRaycaster.intersectObjects(meshes);
+  if (intersects.length > 0) {
+    return rotateRings.find(r => r.mesh === intersects[0].object);
+  }
+  return null;
+}
+
+// Rotate state
+let rotateActive = false;
+let activeRing = null;
+let rotateInitAngle = 0;
+let rotateOrigPositions = null;
+let rotateCenter = [0, 0, 0];
+let rotateSelectedArr = null;
+let rotateScreenCenter = null;
+
+function startRotateDrag(e) {
+  const ring = getRingAtMouse(e);
+  if (!ring) return;
+
+  activeRing = ring;
+  rotateActive = true;
+  rotateOrigPositions = new Float32Array(state.positions);
+  rotateSelectedArr = Array.from(state.selected);
+  rotateCenter = [...selBoxBounds.center];
+
+  // Project center to screen for angle computation
+  const centerWorld = new THREE.Vector3(rotateCenter[0], rotateCenter[1], rotateCenter[2]);
+  state.pointCloud.localToWorld(centerWorld);
+  const centerNDC = centerWorld.clone().project(camera);
+  const rect = viewport.getBoundingClientRect();
+  rotateScreenCenter = {
+    x: (centerNDC.x + 1) / 2 * rect.width + rect.left,
+    y: (-centerNDC.y + 1) / 2 * rect.height + rect.top,
+  };
+
+  rotateInitAngle = Math.atan2(e.clientY - rotateScreenCenter.y, e.clientX - rotateScreenCenter.x);
+
+  ring.mesh.material.color.setHex(0xffffff);
+  ring.mesh.material.opacity = 1;
+  canvas.style.cursor = 'grabbing';
+}
+
+function updateRotatePreview(e) {
+  if (!rotateActive || !activeRing) return;
+
+  const currentAngle = Math.atan2(e.clientY - rotateScreenCenter.y, e.clientX - rotateScreenCenter.x);
+  let angle = currentAngle - rotateInitAngle;
+
+  // Shift: snap to 15°
+  if (e.shiftKey) {
+    const snap = Math.PI / 12;
+    angle = Math.round(angle / snap) * snap;
+  }
+
+  // Flip rotation if axis points away from camera
+  const axisWorld = activeRing.axisVec.clone().applyQuaternion(state.pointCloud.quaternion);
+  const camDir = new THREE.Vector3();
+  camera.getWorldDirection(camDir);
+  if (axisWorld.dot(camDir) <= 0) angle = -angle;
+
+  // Apply rotation around axis through center
+  const rotMatrix = new THREE.Matrix4().makeRotationAxis(activeRing.axisVec, angle);
+  const [cx, cy, cz] = rotateCenter;
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+
+  for (const i of rotateSelectedArr) {
+    const j = i * 3;
+    const p = new THREE.Vector3(
+      rotateOrigPositions[j] - cx, rotateOrigPositions[j+1] - cy, rotateOrigPositions[j+2] - cz
+    ).applyMatrix4(rotMatrix);
+    posArr[j] = p.x + cx; posArr[j+1] = p.y + cy; posArr[j+2] = p.z + cz;
+  }
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+
+  // Rotate the bounding box visual
+  if (selBoxMesh) {
+    const ai = activeRing.axisIdx;
+    selBoxMesh.rotation.set(0, 0, 0);
+    if (ai === 0) selBoxMesh.rotation.x = angle;
+    else if (ai === 1) selBoxMesh.rotation.y = angle;
+    else selBoxMesh.rotation.z = angle;
+  }
+
+  const degrees = (angle * 180 / Math.PI).toFixed(1);
+  setStatus(`Rotate ${activeRing.axis.toUpperCase()}: ${degrees}°`);
+}
+
+function commitRotate() {
+  if (!rotateActive) return;
+  rotateActive = false;
+
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+  const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
+  const undoEntries = [];
+  let changed = false;
+
+  for (const i of rotateSelectedArr) {
+    const j = i * 3;
+    const nx = posArr[j], ny = posArr[j+1], nz = posArr[j+2];
+    const ox = rotateOrigPositions[j], oy = rotateOrigPositions[j+1], oz = rotateOrigPositions[j+2];
+    if (Math.abs(nx-ox) > 0.0001 || Math.abs(ny-oy) > 0.0001 || Math.abs(nz-oz) > 0.0001) {
+      changed = true;
+      const oldVertex = state.vertices[i];
+      const newData = cloneVertexData(i);
+      const dv = new DataView(newData.buffer, newData.byteOffset, newData.byteLength);
+      dv.setFloat32(xOff, nx, true);
+      dv.setFloat32(yOff, ny, true);
+      dv.setFloat32(zOff, nz, true);
+      const newVertex = { data: newData };
+      undoEntries.push({ index: i, oldVertex, newVertex });
+      state.vertices[i] = newVertex;
+    }
+  }
+
+  if (changed) {
+    state.undoStack.push({ type: 'rotate', entries: undoEntries, prevSelection: new Set(state.selected) });
+    state.redoStack = [];
+  }
+
+  if (activeRing) {
+    activeRing.mesh.material.color.setHex(activeRing.origColor);
+    activeRing.mesh.material.opacity = 0.6;
+  }
+  activeRing = null;
+  rotateOrigPositions = null;
+  rotateSelectedArr = null;
+  canvas.style.cursor = 'default';
+
+  const savedSel = new Set(state.selected);
+  const savedRaw = new Set(state.rawSelected);
+  rebuildGeometry();
+  state.selected = savedSel;
+  state.rawSelected = savedRaw;
+  updateSelectionDisplay();
+
+  setStatus(changed ? `Rotation applied (${undoEntries.length.toLocaleString()} points)` : 'Rotation cancelled');
+}
+
+// ===== File Loading =====
+function loadFile(file) {
+  if (!file) return;
+  setStatus('Loading: ' + file.name + '...');
+  state.fileName = file.name;
+
+  if (file.name.endsWith('.plyproj')) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        loadProject(e.target.result);
+      } catch (err) {
+        setStatus('Error: ' + err.message);
+        console.error(err);
+      }
+    };
+    reader.readAsText(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        if (state.pointCloud) {
+          scene.remove(state.pointCloud);
+          state.pointCloud.geometry.dispose();
+          state.pointCloud.material.dispose();
+          state.pointCloud = null;
+        }
+        const count = parsePLY(e.target.result);
+        rebuildGeometry();
+        autoFitCamera();
+        $('placeholder').style.display = 'none';
+        $('btnExport').disabled = false;
+        $('btnSaveProj').disabled = false;
+        setStatus(`Loaded ${file.name} — ${count.toLocaleString()} splats`);
+      } catch (err) {
+        setStatus('Error: ' + err.message);
+        console.error(err);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+// Load button
+$('btnLoad').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', () => loadFile($('fileInput').files[0]));
+
+// Drag & drop (counter prevents flicker from child element events)
+let dragCounter = 0;
+viewport.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  if (++dragCounter === 1) $('dropOverlay').classList.add('visible');
+});
+viewport.addEventListener('dragover', (e) => e.preventDefault());
+viewport.addEventListener('dragleave', () => {
+  if (--dragCounter === 0) $('dropOverlay').classList.remove('visible');
+});
+viewport.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragCounter = 0;
+  $('dropOverlay').classList.remove('visible');
+  const file = e.dataTransfer.files[0];
+  const lname = file ? file.name.toLowerCase() : '';
+  if (file && (lname.endsWith('.ply') || lname.endsWith('.plyproj'))) loadFile(file);
+});
+
+// ===== Camera Auto-fit =====
+function autoFitCamera() {
+  if (!state.positions || state.positions.length === 0) return;
+  const pos = state.positions;
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < pos.length; i += 3) {
+    const x = pos[i], y = pos[i + 1], z = pos[i + 2];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  // Account for display rotation (rotateX PI): y→-y, z→-z
+  const cx = (minX + maxX) / 2;
+  const cy = -(minY + maxY) / 2;
+  const cz = -(minZ + maxZ) / 2;
+  const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+  const dist = size * 1.5;
+
+  controls.target.set(cx, cy, cz);
+  camera.position.set(cx, cy + dist * 0.3, cz + dist);
+  controls.update();
+}
+
+// ===== Tool Management =====
+const toolButtons = {
+  navigate: $('toolNavigate'),
+  brush: $('toolBrush'),
+  rect: $('toolRect'),
+  warp: $('toolWarp'),
+  densifyBrush: $('toolDensifyBrush'),
+  move: $('toolMove'),
+  scale: $('toolScale'),
+  rotate: $('toolRotate'),
+};
+
+function setTool(tool) {
+  state.currentTool = tool;
+  controls.enabled = (tool === 'navigate');
+  for (const [t, btn] of Object.entries(toolButtons)) {
+    btn.classList.toggle('active', t === tool);
+  }
+  clearOverlay();
+  if (tool === 'navigate') canvas.style.cursor = 'grab';
+  else if (tool === 'move' || tool === 'scale' || tool === 'rotate') canvas.style.cursor = 'default';
+  else canvas.style.cursor = 'crosshair';
+
+  // Show/hide gizmos
+  removeMoveArrows();
+  removeScaleHandles();
+  removeRotateRings();
+  if (tool === 'move') createMoveArrows();
+  else if (tool === 'scale') createScaleHandles();
+  else if (tool === 'rotate') createRotateRings();
+}
+
+$('toolNavigate').addEventListener('click', () => setTool('navigate'));
+$('toolBrush').addEventListener('click', () => setTool('brush'));
+$('toolRect').addEventListener('click', () => setTool('rect'));
+$('toolWarp').addEventListener('click', () => setTool('warp'));
+$('toolDensifyBrush').addEventListener('click', () => setTool('densifyBrush'));
+$('toolMove').addEventListener('click', () => setTool('move'));
+$('toolScale').addEventListener('click', () => setTool('scale'));
+$('toolRotate').addEventListener('click', () => setTool('rotate'));
+
+// ===== Screen Projection =====
+let cachedScreenPos = null;
+
+function cacheScreenPositions() {
+  if (!state.pointCloud || !state.positions) return;
+  const n = state.vertices.length;
+  const positions = state.positions;
+
+  state.pointCloud.updateMatrixWorld();
+  const mvp = new THREE.Matrix4();
+  mvp.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  mvp.multiply(state.pointCloud.matrixWorld);
+  const el = mvp.elements;
+
+  const w = viewport.clientWidth / 2;
+  const h = viewport.clientHeight / 2;
+  cachedScreenPos = new Float32Array(n * 2);
+
+  for (let i = 0; i < n; i++) {
+    const j = i * 3;
+    const x = positions[j], y = positions[j + 1], z = positions[j + 2];
+    const clipW = el[3] * x + el[7] * y + el[11] * z + el[15];
+    if (clipW <= 0) {
+      cachedScreenPos[i * 2] = -99999;
+      cachedScreenPos[i * 2 + 1] = -99999;
+      continue;
+    }
+    const clipX = el[0] * x + el[4] * y + el[8] * z + el[12];
+    const clipY = el[1] * x + el[5] * y + el[9] * z + el[13];
+    cachedScreenPos[i * 2]     = (clipX / clipW + 1) * w;
+    cachedScreenPos[i * 2 + 1] = (1 - clipY / clipW) * h;
+  }
+}
+
+function getCanvasCoords(e) {
+  const rect = viewport.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+// ===== Space-to-Navigate (temporary orbit in brush/rect mode) =====
+let spaceNavigating = false;
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === ' ' && (state.currentTool === 'brush' || state.currentTool === 'rect' || state.currentTool === 'warp' || state.currentTool === 'densifyBrush' || state.currentTool === 'move' || state.currentTool === 'scale' || state.currentTool === 'rotate') && !spaceNavigating) {
+    e.preventDefault();
+    spaceNavigating = true;
+    controls.enabled = true;
+    canvas.style.cursor = 'grab';
+    clearOverlay();
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.key === ' ' && spaceNavigating) {
+    spaceNavigating = false;
+    controls.enabled = false;
+    canvas.style.cursor = (state.currentTool === 'move' || state.currentTool === 'scale' || state.currentTool === 'rotate') ? 'default' : 'crosshair';
+  }
+});
+
+// ===== Wheel zoom always enabled (even in brush/rect mode) =====
+canvas.addEventListener('wheel', (e) => {
+  if (state.currentTool !== 'navigate' && !spaceNavigating) {
+    // Temporarily enable controls for zoom, then disable
+    controls.enabled = true;
+    controls.update();
+    // Let OrbitControls handle this wheel event, then disable on next frame
+    requestAnimationFrame(() => {
+      if (!spaceNavigating && state.currentTool !== 'navigate') {
+        controls.enabled = false;
+      }
+    });
+  }
+}, { passive: true });
+
+// ===== Brush & Rect Selection =====
+let isDragging = false;
+let rectStart = null;
+let rectEnd = null;
+let mousePos = null;
+let lastSelectionUpdate = 0;
+
+viewport.addEventListener('pointerdown', (e) => {
+  if (!state.pointCloud) return;
+  if (state.currentTool === 'navigate' || spaceNavigating) return;
+  if (state.previewMode) return;
+
+  // Move / Scale / Rotate tool
+  if (state.currentTool === 'move') {
+    if (state.selected.size >= 1) startMoveDrag(e);
+    return;
+  }
+  if (state.currentTool === 'scale') {
+    if (scalePreviewMode) return; // in preview, use Enter/Esc
+    if (state.selected.size >= 2) startScaleDrag(e);
+    return;
+  }
+  if (state.currentTool === 'rotate') {
+    if (state.selected.size >= 2) startRotateDrag(e);
+    return;
+  }
+  if (state.currentTool === 'warp') {
+    startWarp(e);
+    return;
+  }
+  if (state.currentTool === 'densifyBrush') {
+    startDensifyBrush(e);
+    return;
+  }
+
+  isDragging = true;
+  const coords = getCanvasCoords(e);
+  cacheScreenPositions();
+
+  if (state.currentTool === 'brush') {
+    brushSelectAt(coords.x, coords.y, e.altKey);
+    updateSelectionDisplay();
+  } else if (state.currentTool === 'rect') {
+    rectStart = coords;
+    rectEnd = coords;
+  }
+});
+
+viewport.addEventListener('pointermove', (e) => {
+  const coords = getCanvasCoords(e);
+  mousePos = coords;
+
+  // Move / Scale / Rotate / Warp drag
+  if (moveActive) { updateMovePreview(e); return; }
+  if (scaleActive) { updateScalePreview(e); return; }
+  if (rotateActive) { updateRotatePreview(e); return; }
+  if (warpActive) { updateWarp(e); drawWarpOverlay(coords.x, coords.y); return; }
+  if (densifyBrushActive) { densifyBrushAt(coords); drawDensifyBrushOverlay(coords.x, coords.y); return; }
+
+  // Move arrow hover highlight
+  if (state.currentTool === 'move' && !spaceNavigating && moveArrows.length > 0) {
+    const arrow = getMoveArrowAtMouse(e);
+    for (const a of moveArrows) {
+      const isHit = a === arrow;
+      a.group.traverse(c => {
+        if (c.isMesh) {
+          c.material.color.setHex(isHit ? 0xffffff : a.origColor);
+          c.material.opacity = isHit ? 1 : 0.85;
+        }
+      });
+    }
+    canvas.style.cursor = arrow ? 'grab' : 'default';
+  }
+
+  // Scale handle hover highlight
+  if (state.currentTool === 'scale' && !spaceNavigating && scaleHandles.length > 0) {
+    const handle = getHandleAtMouse(e);
+    for (const h of scaleHandles) {
+      h.mesh.material.color.setHex(h === handle ? 0xffffff : h.origColor);
+      h.mesh.material.opacity = h === handle ? 1 : 0.85;
+    }
+    canvas.style.cursor = handle ? 'grab' : 'default';
+  }
+
+  // Rotate ring hover highlight
+  if (state.currentTool === 'rotate' && !spaceNavigating && rotateRings.length > 0) {
+    const ring = getRingAtMouse(e);
+    for (const r of rotateRings) {
+      r.mesh.material.color.setHex(r === ring ? 0xffffff : r.origColor);
+      r.mesh.material.opacity = r === ring ? 1 : 0.6;
+    }
+    canvas.style.cursor = ring ? 'grab' : 'default';
+  }
+
+  if (state.currentTool === 'brush' && !spaceNavigating) drawBrushOverlay(coords.x, coords.y, e.altKey);
+  if (state.currentTool === 'warp' && !spaceNavigating) drawWarpOverlay(coords.x, coords.y);
+  if (state.currentTool === 'densifyBrush' && !spaceNavigating) drawDensifyBrushOverlay(coords.x, coords.y);
+
+  if (!isDragging || !state.pointCloud) return;
+
+  if (state.currentTool === 'brush') {
+    const now = performance.now();
+    if (now - lastSelectionUpdate > 30) {
+      brushSelectAt(coords.x, coords.y, e.altKey);
+      updateSelectionDisplay();
+      lastSelectionUpdate = now;
+    }
+  } else if (state.currentTool === 'rect') {
+    rectEnd = coords;
+    drawRectOverlay();
+  }
+});
+
+window.addEventListener('pointerup', (e) => {
+  // Move / Scale / Rotate / Warp commit
+  if (moveActive) { commitMove(); return; }
+  if (scaleActive) { endScaleDrag(e); return; }
+  if (rotateActive) { commitRotate(); return; }
+  if (warpActive) { commitWarp(); return; }
+  if (densifyBrushActive) { commitDensifyBrush(); return; }
+
+  if (!isDragging) return;
+  isDragging = false;
+
+  if (state.currentTool === 'rect' && rectStart && rectEnd && state.pointCloud) {
+    rectSelectRegion();
+    updateSelectionDisplay();
+    rectStart = null;
+    rectEnd = null;
+    clearOverlay();
+  }
+});
+
+function brushSelectAt(mx, my, erase = false) {
+  if (!cachedScreenPos) return;
+  const r = parseInt($('brushSize').value);
+  const r2 = r * r;
+  const n = state.vertices.length;
+  const mask = state.masked;
+  const selectable = getSelectableVertexSet();
+  const sparse = $('sparseMode').checked && state.density;
+  const densityMax = sparse ? parseInt($('densityThreshold').value) : Infinity;
+  for (let i = 0; i < n; i++) {
+    if (mask.has(i) || !selectable.has(i)) continue;
+    const sx = cachedScreenPos[i * 2];
+    const sy = cachedScreenPos[i * 2 + 1];
+    const dx = sx - mx, dy = sy - my;
+    if (dx * dx + dy * dy <= r2) {
+      if (erase) {
+        state.rawSelected.delete(i);
+        state.selected.delete(i);
+      } else {
+        state.rawSelected.add(i);
+        if (!sparse || state.density[i] <= densityMax) state.selected.add(i);
+      }
+    }
+  }
+}
+
+function rectSelectRegion() {
+  if (!cachedScreenPos || !rectStart || !rectEnd) return;
+  const x1 = Math.min(rectStart.x, rectEnd.x);
+  const y1 = Math.min(rectStart.y, rectEnd.y);
+  const x2 = Math.max(rectStart.x, rectEnd.x);
+  const y2 = Math.max(rectStart.y, rectEnd.y);
+  const n = state.vertices.length;
+  const mask = state.masked;
+  const selectable = getSelectableVertexSet();
+  const sparse = $('sparseMode').checked && state.density;
+  const densityMax = sparse ? parseInt($('densityThreshold').value) : Infinity;
+  for (let i = 0; i < n; i++) {
+    if (mask.has(i) || !selectable.has(i)) continue;
+    const sx = cachedScreenPos[i * 2];
+    const sy = cachedScreenPos[i * 2 + 1];
+    if (sx >= x1 && sx <= x2 && sy >= y1 && sy <= y2) {
+      state.rawSelected.add(i);
+      if (!sparse || state.density[i] <= densityMax) state.selected.add(i);
+    }
+  }
+}
+
+// ===== Overlay Drawing =====
+function clearOverlay() {
+  overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+}
+
+function drawBrushOverlay(x, y, erase = false) {
+  clearOverlay();
+  if (state.currentTool !== 'brush') return;
+  const r = parseInt($('brushSize').value);
+  overlayCtx.beginPath();
+  overlayCtx.arc(x, y, r, 0, Math.PI * 2);
+  overlayCtx.strokeStyle = erase ? 'rgba(255, 100, 100, 0.6)' : 'rgba(0, 255, 255, 0.5)';
+  overlayCtx.lineWidth = 1.5;
+  overlayCtx.stroke();
+}
+
+function drawWarpOverlay(x, y) {
+  clearOverlay();
+  const r = parseInt($('brushSize').value);
+  overlayCtx.beginPath();
+  overlayCtx.arc(x, y, r, 0, Math.PI * 2);
+  overlayCtx.strokeStyle = 'rgba(255, 165, 0, 0.6)';
+  overlayCtx.lineWidth = 1.5;
+  overlayCtx.stroke();
+  // Inner falloff ring (50% strength boundary)
+  overlayCtx.beginPath();
+  overlayCtx.arc(x, y, r * 0.5, 0, Math.PI * 2);
+  overlayCtx.strokeStyle = 'rgba(255, 165, 0, 0.25)';
+  overlayCtx.lineWidth = 1;
+  overlayCtx.stroke();
+}
+
+function drawDensifyBrushOverlay(x, y) {
+  clearOverlay();
+  const r = parseInt($('brushSize').value);
+  // Soft radial gradient fill to visualize falloff
+  const grad = overlayCtx.createRadialGradient(x, y, 0, x, y, r);
+  grad.addColorStop(0, 'rgba(100, 255, 100, 0.25)');
+  grad.addColorStop(0.5, 'rgba(100, 255, 100, 0.12)');
+  grad.addColorStop(1, 'rgba(100, 255, 100, 0)');
+  overlayCtx.beginPath();
+  overlayCtx.arc(x, y, r, 0, Math.PI * 2);
+  overlayCtx.fillStyle = grad;
+  overlayCtx.fill();
+  // Outer edge
+  overlayCtx.strokeStyle = 'rgba(100, 255, 100, 0.3)';
+  overlayCtx.lineWidth = 1;
+  overlayCtx.stroke();
+}
+
+function drawRectOverlay() {
+  clearOverlay();
+  if (!rectStart || !rectEnd) return;
+  const x = Math.min(rectStart.x, rectEnd.x);
+  const y = Math.min(rectStart.y, rectEnd.y);
+  const w = Math.abs(rectEnd.x - rectStart.x);
+  const h = Math.abs(rectEnd.y - rectStart.y);
+  overlayCtx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+  overlayCtx.fillRect(x, y, w, h);
+  overlayCtx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+  overlayCtx.lineWidth = 1;
+  overlayCtx.strokeRect(x, y, w, h);
+}
+
+// ===== K-Nearest Neighbors (grid-accelerated) =====
+function findKNearestNeighbors(points, K) {
+  const n = points.length;
+  if (n <= 1 || K === 0) return points.map(() => []);
+
+  // Bounding box
+  let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
+  let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
+  for (const [x, y, z] of points) {
+    if (x < mnX) mnX = x; if (x > mxX) mxX = x;
+    if (y < mnY) mnY = y; if (y > mxY) mxY = y;
+    if (z < mnZ) mnZ = z; if (z > mxZ) mxZ = z;
+  }
+  const extent = Math.max(mxX - mnX, mxY - mnY, mxZ - mnZ, 0.001);
+  const gridSize = Math.max(3, Math.min(50, Math.cbrt(n) | 0));
+  const cell = extent / gridSize;
+  const invCell = 1 / cell;
+
+  // Build grid
+  const grid = new Map();
+  for (let i = 0; i < n; i++) {
+    const [x, y, z] = points[i];
+    const cx = Math.floor((x - mnX) * invCell);
+    const cy = Math.floor((y - mnY) * invCell);
+    const cz = Math.floor((z - mnZ) * invCell);
+    const key = cx + ',' + cy + ',' + cz;
+    if (!grid.has(key)) grid.set(key, []);
+    grid.get(key).push(i);
+  }
+
+  // For each point, search neighboring cells for K nearest
+  const result = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const [px, py, pz] = points[i];
+    const cx = Math.floor((px - mnX) * invCell);
+    const cy = Math.floor((py - mnY) * invCell);
+    const cz = Math.floor((pz - mnZ) * invCell);
+
+    // Expand search radius until we have enough candidates
+    let best = []; // [{dist, idx}]
+    for (let r = 1; r <= gridSize && best.length < K; r++) {
+      best = [];
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dz = -r; dz <= r; dz++) {
+            const k = (cx+dx) + ',' + (cy+dy) + ',' + (cz+dz);
+            const bucket = grid.get(k);
+            if (!bucket) continue;
+            for (const j of bucket) {
+              if (j === i) continue;
+              const [qx, qy, qz] = points[j];
+              const d = (px-qx)**2 + (py-qy)**2 + (pz-qz)**2;
+              best.push({ d, j });
+            }
+          }
+        }
+      }
+    }
+    best.sort((a, b) => a.d - b.d);
+    result[i] = best.slice(0, K).map(b => b.j);
+  }
+  return result;
+}
+
+// ===== Edit Operations =====
+function deleteSelected() {
+  if (state.selected.size === 0) return;
+  const prevSelection = new Set(state.selected);
+  // レイヤー情報を保存（undo用）
+  const prevLayerMap = new Map();
+  for (const idx of state.selected) {
+    const layer = getLayerForVertex(idx);
+    if (layer) prevLayerMap.set(idx, layer.id);
+  }
+  const sorted = Array.from(state.selected).sort((a, b) => b - a); // descending
+  const entries = [];
+  for (const idx of sorted) {
+    const vertex = state.vertices.splice(idx, 1)[0];
+    entries.unshift({ index: idx, vertex }); // ascending order
+  }
+  updateLayerIndicesAfterDelete(state.selected);
+  state.undoStack.push({ type: 'delete', entries, prevSelection, prevLayerMap });
+  state.redoStack = [];
+  rebuildGeometry();
+  setStatus(`Deleted ${entries.length.toLocaleString()} points`);
+}
+
+// Generate densify vertices from given parameters (returns array of {data})
+function generateDensifyVertices(selectedIndices, selPos, neighbors, copies, jitterRatio) {
+  const cellSize = state.cellSize || 0.01;
+  const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
+  const result = [];
+
+  for (let si = 0; si < selectedIndices.length; si++) {
+    const idx = selectedIndices[si];
+    const [px, py, pz] = selPos[si];
+    const nn = neighbors[si];
+
+    if (nn.length === 0) {
+      const tiny = cellSize * jitterRatio;
+      for (let c = 0; c < copies; c++) {
+        const data = cloneVertexData(idx);
+        const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        dv.setFloat32(xOff, px + (Math.random()-0.5)*2*tiny, true);
+        dv.setFloat32(yOff, py + (Math.random()-0.5)*2*tiny, true);
+        dv.setFloat32(zOff, pz + (Math.random()-0.5)*2*tiny, true);
+        result.push({ data });
+      }
+      continue;
+    }
+
+    for (let c = 0; c < copies; c++) {
+      const ni = nn[Math.floor(Math.random() * nn.length)];
+      const [qx, qy, qz] = selPos[ni];
+
+      const t = 0.2 + Math.random() * 0.6;
+      let nx = px + t * (qx - px);
+      let ny = py + t * (qy - py);
+      let nz = pz + t * (qz - pz);
+
+      const dx = qx - px, dy = qy - py, dz = qz - pz;
+      const ax = Math.abs(dx) < Math.abs(dy) ? 1 : 0;
+      const ay = Math.abs(dx) < Math.abs(dy) ? 0 : 1;
+      let p1x = dy * 0 - dz * ay, p1y = dz * ax - dx * 0, p1z = dx * ay - dy * ax;
+      const p1len = Math.sqrt(p1x*p1x + p1y*p1y + p1z*p1z) || 1;
+      p1x /= p1len; p1y /= p1len; p1z /= p1len;
+      let p2x = dy * p1z - dz * p1y, p2y = dz * p1x - dx * p1z, p2z = dx * p1y - dy * p1x;
+      const p2len = Math.sqrt(p2x*p2x + p2y*p2y + p2z*p2z) || 1;
+      p2x /= p2len; p2y /= p2len; p2z /= p2len;
+
+      const perpAmount = cellSize * jitterRatio;
+      const j1 = (Math.random() - 0.5) * 2 * perpAmount;
+      const j2 = (Math.random() - 0.5) * 2 * perpAmount;
+      nx += p1x * j1 + p2x * j2;
+      ny += p1y * j1 + p2y * j2;
+      nz += p1z * j1 + p2z * j2;
+
+      const data = cloneVertexData(idx);
+      const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      dv.setFloat32(xOff, nx, true);
+      dv.setFloat32(yOff, ny, true);
+      dv.setFloat32(zOff, nz, true);
+      result.push({ data });
+    }
+  }
+  return result;
+}
+
+// Enter densify preview mode
+function startDensifyPreview() {
+  if (state.selected.size === 0 || state.previewMode) return;
+
+  const selectedIndices = Array.from(state.selected);
+  const pos = state.positions;
+  const selPos = selectedIndices.map(idx => {
+    const j = idx * 3;
+    return [pos[j], pos[j+1], pos[j+2]];
+  });
+  const K = Math.min(20, selPos.length - 1);
+  const neighbors = findKNearestNeighbors(selPos, K);
+
+  state.previewMode = true;
+  state.previewSourceIndices = selectedIndices;
+  state.previewSelPos = selPos;
+  state.previewNeighbors = neighbors;
+
+  // Generate initial preview
+  regenerateDensifyPreview();
+
+  // Show Apply/Cancel, hide Densify
+  $('btnDensify').style.display = 'none';
+  $('btnDensifyApply').style.display = '';
+  $('btnDensifyCancel').style.display = '';
+  setStatus(`Densify preview — adjust Count/Jitter, then Apply or Cancel`);
+}
+
+// Regenerate preview vertices (called when sliders change during preview)
+function regenerateDensifyPreview() {
+  if (!state.previewMode) return;
+
+  // Remove previous preview vertices
+  if (state.previewCount > 0) {
+    state.vertices.splice(state.vertices.length - state.previewCount, state.previewCount);
+  }
+
+  const copies = parseInt($('densifyCount').value);
+  const jitterRatio = parseFloat($('densifyJitter').value);
+  const newVerts = generateDensifyVertices(
+    state.previewSourceIndices, state.previewSelPos, state.previewNeighbors, copies, jitterRatio
+  );
+
+  state.previewCount = newVerts.length;
+  state.vertices.push(...newVerts);
+
+  // Rebuild geometry without clearing selection or recomputing density
+  const n = state.vertices.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+  const { x: xOff, y: yOff, z: zOff, f_dc_0: dc0Off, f_dc_1: dc1Off, f_dc_2: dc2Off } = state.offsets;
+  const vs = state.vertexSize;
+  const dv = state.dataView;
+
+  for (let i = 0; i < n; i++) {
+    const v = state.vertices[i];
+    let x, y, z, dc0, dc1, dc2;
+    if ('srcIndex' in v) {
+      const base = v.srcIndex * vs;
+      x = dv.getFloat32(base + xOff, true); y = dv.getFloat32(base + yOff, true); z = dv.getFloat32(base + zOff, true);
+      dc0 = dv.getFloat32(base + dc0Off, true); dc1 = dv.getFloat32(base + dc1Off, true); dc2 = dv.getFloat32(base + dc2Off, true);
+    } else {
+      const vdv = new DataView(v.data.buffer, v.data.byteOffset, v.data.byteLength);
+      x = vdv.getFloat32(xOff, true); y = vdv.getFloat32(yOff, true); z = vdv.getFloat32(zOff, true);
+      dc0 = vdv.getFloat32(dc0Off, true); dc1 = vdv.getFloat32(dc1Off, true); dc2 = vdv.getFloat32(dc2Off, true);
+    }
+    const j = i * 3;
+    positions[j] = x; positions[j+1] = y; positions[j+2] = z;
+    colors[j] = Math.max(0, Math.min(1, 0.5 + C0 * dc0));
+    colors[j+1] = Math.max(0, Math.min(1, 0.5 + C0 * dc1));
+    colors[j+2] = Math.max(0, Math.min(1, 0.5 + C0 * dc2));
+  }
+
+  state.positions = positions;
+  state.basePositions = new Float32Array(positions);
+  state.baseColors = new Float32Array(colors);
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  state.pointCloud.geometry.dispose();
+  state.pointCloud.geometry = geom;
+
+  // Highlight selected + preview points (preview in green)
+  const colArr = state.pointCloud.geometry.attributes.color.array;
+  const previewStart = n - state.previewCount;
+  for (let i = 0; i < n; i++) {
+    const j = i * 3;
+    if (state.selected.has(i)) {
+      colArr[j] = 0; colArr[j+1] = 1; colArr[j+2] = 1; // cyan
+    } else if (i >= previewStart) {
+      colArr[j] = 0.2; colArr[j+1] = 1; colArr[j+2] = 0.3; // green for preview
+    } else if (state.masked.has(i)) {
+      colArr[j] = colors[j] * 0.25; colArr[j+1] = colors[j+1] * 0.25; colArr[j+2] = colors[j+2] * 0.25;
+    }
+  }
+  state.pointCloud.geometry.attributes.color.needsUpdate = true;
+
+  $('infoTotal').textContent = n.toLocaleString();
+  setStatus(`Preview: ${state.previewSourceIndices.length.toLocaleString()} pts × ${parseInt($('densifyCount').value)} = ${state.previewCount.toLocaleString()} new (green)`);
+}
+
+// Apply preview (commit to undo stack)
+function applyDensifyPreview() {
+  if (!state.previewMode) return;
+  const addedVerts = state.vertices.slice(state.vertices.length - state.previewCount);
+  const prevSelection = new Set(state.selected);
+  // レイヤーに新頂点を追加
+  updateLayerIndicesAfterAdd(state.vertices.length - state.previewCount, state.previewCount);
+  state.undoStack.push({ type: 'densify', count: state.previewCount, vertices: addedVerts, prevSelection });
+  state.redoStack = [];
+  exitDensifyPreview(false);
+  rebuildGeometry();
+  setStatus(`Applied densify: ${addedVerts.length.toLocaleString()} new points`);
+}
+
+// Cancel preview (remove preview vertices)
+function cancelDensifyPreview() {
+  if (!state.previewMode) return;
+  if (state.previewCount > 0) {
+    state.vertices.splice(state.vertices.length - state.previewCount, state.previewCount);
+  }
+  exitDensifyPreview(false);
+  rebuildGeometry();
+  setStatus('Densify cancelled');
+}
+
+// Exit preview mode (restore UI)
+function exitDensifyPreview(alsoRebuild = true) {
+  state.previewMode = false;
+  state.previewSourceIndices = [];
+  state.previewSelPos = [];
+  state.previewNeighbors = [];
+  state.previewCount = 0;
+
+  $('btnDensify').style.display = '';
+  $('btnDensifyApply').style.display = 'none';
+  $('btnDensifyCancel').style.display = 'none';
+}
+
+$('btnDelete').addEventListener('click', deleteSelected);
+$('btnDensify').addEventListener('click', startDensifyPreview);
+$('btnDensifyApply').addEventListener('click', applyDensifyPreview);
+$('btnDensifyCancel').addEventListener('click', cancelDensifyPreview);
+
+$('btnInvert').addEventListener('click', () => {
+  if (!state.pointCloud) return;
+  const selectable = getSelectableVertexSet();
+  const newSel = new Set();
+  for (let i = 0; i < state.vertices.length; i++) {
+    if (!state.masked.has(i) && selectable.has(i) && !state.selected.has(i)) newSel.add(i);
+  }
+  state.selected = newSel; state.rawSelected = new Set(newSel);
+  updateSelectionDisplay();
+});
+
+$('btnSelectAll').addEventListener('click', () => {
+  if (!state.pointCloud) return;
+  state.selected.clear(); state.rawSelected.clear();
+  const selectable = getSelectableVertexSet();
+  for (let i = 0; i < state.vertices.length; i++) {
+    if (!state.masked.has(i) && selectable.has(i)) { state.selected.add(i); state.rawSelected.add(i); }
+  }
+  updateSelectionDisplay();
+});
+
+$('btnClearSel').addEventListener('click', () => {
+  state.selected.clear(); state.rawSelected.clear();
+  updateSelectionDisplay();
+});
+
+// ===== Select by Color =====
+function selectByColor(addToExisting) {
+  if (!state.pointCloud || !state.baseColors) return;
+  const hex = $('selColor').value;
+  const tr = parseFloat($('selColorThreshold').value);
+  const target = new THREE.Color(hex);
+  const base = state.baseColors;
+  const n = state.vertices.length;
+
+  if (!addToExisting) { state.selected.clear(); state.rawSelected.clear(); }
+
+  const selectable = getSelectableVertexSet();
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    if (state.masked.has(i) || !selectable.has(i)) continue;
+    const j = i * 3;
+    const dr = base[j] - target.r, dg = base[j + 1] - target.g, db = base[j + 2] - target.b;
+    const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (dist < tr) {
+      state.selected.add(i); state.rawSelected.add(i);
+      count++;
+    }
+  }
+  updateSelectionDisplay();
+  setStatus(`Selected ${count.toLocaleString()} points by color`);
+}
+
+$('btnSelectByColor').addEventListener('click', () => selectByColor(false));
+$('btnAddByColor').addEventListener('click', () => selectByColor(true));
+
+$('selColorThreshold').addEventListener('input', () => {
+  $('selColorThresholdVal').textContent = $('selColorThreshold').value;
+});
+
+// Color picker: click a point to pick its color
+let colorPickMode = false;
+$('btnPickColor').addEventListener('click', () => {
+  colorPickMode = !colorPickMode;
+  $('btnPickColor').classList.toggle('active', colorPickMode);
+  canvas.style.cursor = colorPickMode ? 'crosshair' : (state.currentTool === 'navigate' ? 'grab' : 'crosshair');
+  if (colorPickMode) setStatus('Click a point to pick its color');
+});
+
+canvas.addEventListener('click', (e) => {
+  if (!colorPickMode || !state.pointCloud) return;
+  colorPickMode = false;
+  $('btnPickColor').classList.remove('active');
+
+  // Raycast to find nearest point
+  const rect = canvas.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.params.Points.threshold = parseFloat($('pointSize').value) * 0.5;
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObject(state.pointCloud);
+
+  if (intersects.length > 0) {
+    const idx = intersects[0].index;
+    const base = state.baseColors;
+    const j = idx * 3;
+    const r = Math.round(base[j] * 255), g = Math.round(base[j + 1] * 255), b = Math.round(base[j + 2] * 255);
+    const hex = '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+    $('selColor').value = hex;
+    setStatus(`Picked color: ${hex}`);
+  } else {
+    setStatus('No point found at click position');
+  }
+  canvas.style.cursor = (state.currentTool === 'navigate') ? 'grab' : 'crosshair';
+});
+
+// ===== Mask =====
+function maskSelection() {
+  if (state.selected.size === 0) return;
+  for (const i of state.selected) state.masked.add(i);
+  state.selected.clear(); state.rawSelected.clear();
+  updateSelectionDisplay();
+  setStatus(`Masked ${state.masked.size.toLocaleString()} points`);
+}
+
+function unmaskAll() {
+  state.masked.clear();
+  updateSelectionDisplay();
+  setStatus('Unmasked all');
+}
+
+$('btnMask').addEventListener('click', maskSelection);
+$('btnUnmask').addEventListener('click', unmaskAll);
+
+// ===== Undo / Redo =====
+function undo() {
+  if (state.undoStack.length === 0) return;
+  const op = state.undoStack.pop();
+  // 現在の選択状態を保存（redo時に復元するため）
+  op.postSelection = new Set(state.selected);
+  state.redoStack.push(op);
+
+  if (op.type === 'delete') {
+    // Re-insert removed vertices at their original indices (ascending)
+    for (const entry of op.entries) {
+      state.vertices.splice(entry.index, 0, entry.vertex);
+    }
+    // レイヤーインデックスを再構築: 挿入された頂点以降をシフト
+    rebuildLayerIndicesForUndelete(op.entries, op.prevLayerMap);
+  } else if (op.type === 'densify') {
+    // Remove last N vertices & layer indices
+    const startIdx = state.vertices.length - op.count;
+    for (const layer of state.layers) {
+      for (let i = startIdx; i < state.vertices.length; i++) layer.vertexIndices.delete(i);
+    }
+    state.vertices.splice(startIdx, op.count);
+  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp') {
+    for (const entry of op.entries) {
+      state.vertices[entry.index] = entry.oldVertex;
+    }
+  }
+
+  rebuildGeometry();
+  // 操作前の選択状態を復元
+  if (op.prevSelection) {
+    state.selected = new Set(op.prevSelection);
+    state.rawSelected = new Set(op.prevSelection);
+    updateSelectionDisplay();
+  }
+  setStatus('Undo: ' + op.type);
+}
+
+function redo() {
+  if (state.redoStack.length === 0) return;
+  const op = state.redoStack.pop();
+  state.undoStack.push(op);
+
+  if (op.type === 'delete') {
+    // Re-remove vertices (descending order)
+    const deletedSet = new Set(op.entries.map(e => e.index));
+    const descEntries = [...op.entries].reverse();
+    for (const entry of descEntries) {
+      state.vertices.splice(entry.index, 1);
+    }
+    updateLayerIndicesAfterDelete(deletedSet);
+  } else if (op.type === 'densify') {
+    // Re-add vertices
+    const startIdx = state.vertices.length;
+    state.vertices.push(...op.vertices);
+    updateLayerIndicesAfterAdd(startIdx, op.count);
+  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp') {
+    for (const entry of op.entries) {
+      state.vertices[entry.index] = entry.newVertex;
+    }
+  }
+
+  rebuildGeometry();
+  // redo後の選択状態を復元
+  if (op.postSelection) {
+    state.selected = new Set(op.postSelection);
+    state.rawSelected = new Set(op.postSelection);
+    updateSelectionDisplay();
+  }
+  setStatus('Redo: ' + op.type);
+}
+
+$('btnUndo').addEventListener('click', undo);
+$('btnRedo').addEventListener('click', redo);
+
+// ===== PLY Export =====
+function exportPLY() {
+  if (!state.headerStr || state.vertices.length === 0) return;
+
+  // 可視レイヤーの頂点のみエクスポート
+  const hidden = getHiddenVertexSet();
+  const exportVertices = [];
+  for (let i = 0; i < state.vertices.length; i++) {
+    if (!hidden.has(i)) exportVertices.push(state.vertices[i]);
+  }
+
+  const newHeader = state.headerStr.replace(
+    /element vertex \d+/,
+    `element vertex ${exportVertices.length}`
+  );
+  const headerBytes = new TextEncoder().encode(newHeader);
+  const vs = state.vertexSize;
+  const totalSize = headerBytes.length + exportVertices.length * vs;
+  const output = new Uint8Array(totalSize);
+
+  output.set(headerBytes, 0);
+  let offset = headerBytes.length;
+
+  for (const v of exportVertices) {
+    if ('srcIndex' in v) {
+      const start = v.srcIndex * vs;
+      output.set(new Uint8Array(state.rawBuffer, start, vs), offset);
+    } else {
+      output.set(v.data, offset);
+    }
+    offset += vs;
+  }
+
+  const blob = new Blob([output], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = state.fileName ? state.fileName.replace('.ply', '_edited.ply') : 'edited.ply';
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus(`Exported ${exportVertices.length.toLocaleString()} splats (${state.vertices.length - exportVertices.length} hidden excluded)`);
+}
+
+$('btnExport').addEventListener('click', exportPLY);
+
+// ===== Project Save/Load =====
+function saveProject() {
+  if (!state.headerStr || state.vertices.length === 0) return;
+  setStatus('Saving project...');
+
+  // 現在の頂点データからPLYバイナリを生成（全レイヤー含む）
+  const newHeader = state.headerStr.replace(
+    /element vertex \d+/,
+    `element vertex ${state.vertices.length}`
+  );
+  const headerBytes = new TextEncoder().encode(newHeader);
+  const vs = state.vertexSize;
+  const plySize = headerBytes.length + state.vertices.length * vs;
+  const plyBuf = new Uint8Array(plySize);
+  plyBuf.set(headerBytes, 0);
+  let off = headerBytes.length;
+  for (const v of state.vertices) {
+    if ('srcIndex' in v) {
+      plyBuf.set(new Uint8Array(state.rawBuffer, v.srcIndex * vs, vs), off);
+    } else {
+      plyBuf.set(v.data, off);
+    }
+    off += vs;
+  }
+
+  // base64エンコード（チャンクで処理、大きいファイル対応）
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < plyBuf.length; i += chunkSize) {
+    binary += String.fromCharCode(...plyBuf.subarray(i, Math.min(i + chunkSize, plyBuf.length)));
+  }
+  const plyBase64 = btoa(binary);
+
+  const proj = {
+    version: 1,
+    fileName: state.fileName || 'untitled.ply',
+    ply: plyBase64,
+    layers: state.layers.map(l => ({
+      name: l.name,
+      visible: l.visible,
+      locked: l.locked,
+      vertexIndices: Array.from(l.vertexIndices),
+    })),
+    activeLayerIndex: state.layers.findIndex(l => l.id === state.activeLayerId),
+  };
+
+  const json = JSON.stringify(proj);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const baseName = (state.fileName || 'untitled').replace(/\.(ply|plyproj)$/i, '');
+  a.download = baseName + '.plyproj';
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus(`Project saved: ${baseName}.plyproj (${state.layers.length} layers, ${state.vertices.length.toLocaleString()} splats)`);
+}
+
+function loadProject(json) {
+  const proj = JSON.parse(json);
+  if (!proj.version || !proj.ply || !proj.layers) throw new Error('Invalid project file');
+
+  // base64デコード → ArrayBuffer
+  const binary = atob(proj.ply);
+  const buf = new ArrayBuffer(binary.length);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+
+  // 既存を破棄
+  if (state.pointCloud) {
+    scene.remove(state.pointCloud);
+    state.pointCloud.geometry.dispose();
+    state.pointCloud.material.dispose();
+    state.pointCloud = null;
+  }
+
+  state.fileName = proj.fileName || 'untitled.ply';
+  const count = parsePLY(buf);
+
+  // レイヤー復元
+  state.layers = proj.layers.map((l, i) => ({
+    id: i,
+    name: l.name,
+    visible: l.visible,
+    locked: !!l.locked,
+    vertexIndices: new Set(l.vertexIndices),
+  }));
+  state.nextLayerId = state.layers.length;
+  const activeIdx = proj.activeLayerIndex >= 0 ? proj.activeLayerIndex : 0;
+  state.activeLayerId = state.layers[activeIdx]?.id ?? 0;
+
+  rebuildGeometry();
+  autoFitCamera();
+  $('placeholder').style.display = 'none';
+  $('btnExport').disabled = false;
+  $('btnSaveProj').disabled = false;
+  updateSelectionDisplay();
+  setStatus(`Project loaded: ${state.fileName} — ${count.toLocaleString()} splats, ${state.layers.length} layers`);
+}
+
+$('btnSaveProj').addEventListener('click', saveProject);
+
+// ===== Layer Buttons =====
+$('btnLayerAdd').addEventListener('click', () => {
+  addLayer();
+  setStatus('New layer added');
+});
+
+$('btnLayerMovesel').addEventListener('click', () => {
+  if (state.selected.size === 0 || state.layers.length < 2) return;
+  // 選択頂点をアクティブレイヤーに移動
+  moveSelectionToLayer(state.activeLayerId);
+});
+
+$('btnLayerDel').addEventListener('click', () => {
+  deleteLayer(state.activeLayerId);
+  setStatus('Layer deleted');
+});
+
+$('btnLayerMerge').addEventListener('click', mergeLayerDown);
+
+// ===== UI Updates =====
+function setStatus(msg) {
+  $('statusbar').textContent = msg;
+}
+
+function updateInfo() {
+  $('infoTotal').textContent = state.vertices.length > 0 ? state.vertices.length.toLocaleString() : '-';
+  $('infoSelected').textContent = state.selected.size.toLocaleString();
+  $('infoMasked').textContent = state.masked.size.toLocaleString();
+  $('infoOriginal').textContent = state.originalCount > 0 ? state.originalCount.toLocaleString() : '-';
+}
+
+function updateButtons() {
+  const hasData = state.vertices.length > 0;
+  const hasSel = state.selected.size > 0;
+  $('btnDelete').disabled = !hasSel;
+  $('btnDensify').disabled = !hasSel;
+  $('btnInvert').disabled = !hasData;
+  $('btnSelectAll').disabled = !hasData;
+  $('btnClearSel').disabled = !hasSel;
+  $('btnMask').disabled = !hasSel;
+  $('btnUnmask').disabled = state.masked.size === 0;
+  $('btnUndo').disabled = state.undoStack.length === 0;
+  $('btnRedo').disabled = state.redoStack.length === 0;
+  $('btnExport').disabled = !hasData;
+  $('btnSaveProj').disabled = !hasData;
+  $('btnSelectByColor').disabled = !hasData;
+  $('btnAddByColor').disabled = !hasData;
+}
+
+// ===== Slider Displays =====
+$('bgColor').addEventListener('input', () => {
+  scene.background = new THREE.Color($('bgColor').value);
+});
+
+$('pointSize').addEventListener('input', () => {
+  const v = parseFloat($('pointSize').value);
+  $('pointSizeVal').textContent = v;
+  if (state.pointCloud) state.pointCloud.material.size = v;
+});
+
+$('brushSize').addEventListener('input', () => {
+  $('brushSizeVal').textContent = $('brushSize').value;
+});
+
+$('sparseMode').addEventListener('change', () => {
+  $('densityThreshold').disabled = !$('sparseMode').checked;
+});
+
+$('densityThreshold').addEventListener('input', () => {
+  $('densityThresholdVal').textContent = $('densityThreshold').value;
+  // Real-time filter: rebuild selected from rawSelected by density
+  if ($('sparseMode').checked && state.density && state.rawSelected.size > 0) {
+    const max = parseInt($('densityThreshold').value);
+    state.selected.clear();
+    for (const i of state.rawSelected) {
+      if (state.density[i] <= max && !state.masked.has(i)) state.selected.add(i);
+    }
+    updateSelectionDisplay();
+  }
+});
+
+$('densifyCount').addEventListener('input', () => {
+  $('densifyCountVal').textContent = $('densifyCount').value + 'x';
+  if (state.previewMode) regenerateDensifyPreview();
+});
+
+$('densifyJitter').addEventListener('input', () => {
+  $('densifyJitterVal').textContent = parseFloat($('densifyJitter').value).toFixed(2);
+  if (state.previewMode) regenerateDensifyPreview();
+});
+
+$('warpStrength').addEventListener('input', () => {
+  $('warpStrengthVal').textContent = parseFloat($('warpStrength').value).toFixed(1);
+});
+
+$('scaleFalloff').addEventListener('input', () => {
+  const v = parseFloat($('scaleFalloff').value);
+  $('scaleFalloffVal').textContent = v === 0 ? '0 (uniform)' : v.toFixed(1);
+  if (scalePreviewMode) regenerateScalePreview();
+});
+
+// ===== Keyboard Shortcuts =====
+window.addEventListener('keydown', (e) => {
+  // Don't handle when typing in inputs
+  if (e.target.tagName === 'INPUT') return;
+
+  const ctrl = e.ctrlKey || e.metaKey;
+
+  // Single-key shortcuts: ignore when any modifier is held
+  const noMod = !ctrl && !e.shiftKey && !e.altKey;
+
+  if (e.key === 'Escape') {
+    if (moveActive) { cancelMove(); e.preventDefault(); return; }
+    if (scalePreviewMode) { cancelScalePreview(); e.preventDefault(); return; }
+    if (state.previewMode) { cancelDensifyPreview(); e.preventDefault(); return; }
+    state.selected.clear(); state.rawSelected.clear(); updateSelectionDisplay(); e.preventDefault();
+  }
+  else if (e.key === 'Enter') {
+    if (scalePreviewMode) { applyScalePreview(); e.preventDefault(); return; }
+    if (state.previewMode) { applyDensifyPreview(); e.preventDefault(); return; }
+  }
+  else if (noMod && (e.key === 'v' || e.key === 'V')) { setTool('navigate'); e.preventDefault(); }
+  else if (noMod && (e.key === 'b' || e.key === 'B')) { setTool('brush'); e.preventDefault(); }
+  else if (noMod && (e.key === 'r' || e.key === 'R')) { setTool('rect'); e.preventDefault(); }
+  else if (noMod && (e.key === 'w' || e.key === 'W')) { setTool('warp'); e.preventDefault(); }
+  else if (noMod && (e.key === 'd' || e.key === 'D')) { setTool('densifyBrush'); e.preventDefault(); }
+  else if (noMod && (e.key === 'g' || e.key === 'G')) { setTool('move'); e.preventDefault(); }
+  else if (noMod && (e.key === 's' || e.key === 'S')) { setTool('scale'); e.preventDefault(); }
+  else if (noMod && (e.key === 't' || e.key === 'T')) { setTool('rotate'); e.preventDefault(); }
+  else if (noMod && (e.key === 'm' || e.key === 'M')) { maskSelection(); e.preventDefault(); }
+  else if (noMod && (e.key === 'u' || e.key === 'U')) { unmaskAll(); e.preventDefault(); }
+  else if (noMod && (e.key === 'p' || e.key === 'P')) { $('btnPickColor').click(); e.preventDefault(); }
+  else if (e.key === '[') {
+    const el = $('brushSize');
+    el.value = Math.max(parseInt(el.min), parseInt(el.value) - parseInt(el.step));
+    el.dispatchEvent(new Event('input'));
+    if (mousePos) { drawBrushOverlay(mousePos.x, mousePos.y); drawWarpOverlay(mousePos.x, mousePos.y); drawDensifyBrushOverlay(mousePos.x, mousePos.y); }
+    e.preventDefault();
+  }
+  else if (e.key === ']') {
+    const el = $('brushSize');
+    el.value = Math.min(parseInt(el.max), parseInt(el.value) + parseInt(el.step));
+    el.dispatchEvent(new Event('input'));
+    if (mousePos) { drawBrushOverlay(mousePos.x, mousePos.y); drawWarpOverlay(mousePos.x, mousePos.y); drawDensifyBrushOverlay(mousePos.x, mousePos.y); }
+    e.preventDefault();
+  }
+  else if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); e.preventDefault(); }
+  else if (ctrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) { redo(); e.preventDefault(); }
+  else if (ctrl && (e.key === 'z' || e.key === 'Z')) { undo(); e.preventDefault(); }
+  else if (ctrl && (e.key === 'a' || e.key === 'A')) {
+    if (state.pointCloud) {
+      e.preventDefault();
+      state.selected.clear(); state.rawSelected.clear();
+      for (let i = 0; i < state.vertices.length; i++) {
+        if (!state.masked.has(i)) { state.selected.add(i); state.rawSelected.add(i); }
+      }
+      updateSelectionDisplay();
+    }
+  }
+  else if (ctrl && (e.key === 'i' || e.key === 'I')) {
+    if (state.pointCloud) {
+      e.preventDefault();
+      const newSel = new Set();
+      for (let i = 0; i < state.vertices.length; i++) {
+        if (!state.masked.has(i) && !state.selected.has(i)) newSel.add(i);
+      }
+      state.selected = newSel; state.rawSelected = new Set(newSel);
+      updateSelectionDisplay();
+    }
+  }
+});
+</script>
+</body>
+</html>
