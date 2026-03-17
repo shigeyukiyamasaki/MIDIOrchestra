@@ -387,6 +387,9 @@ let composer = null;    // EffectComposer（ブルーム用）
 let bloomPass = null;   // UnrealBloomPass
 let pixelPass = null;   // ピクセレーションShaderPass
 let toonPass = null;    // トゥーンレンダリングShaderPass
+let _depthColorRT = null;        // 深度をカラーとして描画するRenderTarget
+let _depthOverrideMaterial = null; // 深度書き出し用マテリアル
+let _depthChromaMaterial = null;   // クロマキー対応深度マテリアル
 let pixelGridSize = 1;  // ピクセルグリッド幅（1=オフ）
 let pixelFpsLimit = 0;  // ピクセルアート色変化速度（0=即時、1-30=遅い）
 let _pixelPrevRT = null;       // フレームホールド用：前フレームRenderTarget
@@ -2891,7 +2894,7 @@ function setupThreeJS() {
       outlineStrength: { value: 0.0 },
       outlineThreshold: { value: 0.5 },
       outlineColor: { value: new THREE.Color(0x000000) },
-      outlineMode: { value: 3 },  // 0=color, 1=depth, 2=both, 3=colorOuter
+      outlineMode: { value: 4 },  // 0=color, 1=depth, 2=both, 3=colorOuter, 4=bothOuter
       cameraNear: { value: camera.near },
       cameraFar: { value: camera.far },
       toonShades: { value: 0.0 },
@@ -2941,20 +2944,18 @@ function setupThreeJS() {
       }
 
       float sobelEdgeDepth(vec2 center, vec2 step) {
-        float tl = linearizeDepth(texture2D(tDepth, center + vec2(-step.x, step.y)).r);
-        float tc = linearizeDepth(texture2D(tDepth, center + vec2(0.0, step.y)).r);
-        float tr = linearizeDepth(texture2D(tDepth, center + vec2(step.x, step.y)).r);
-        float ml = linearizeDepth(texture2D(tDepth, center + vec2(-step.x, 0.0)).r);
-        float mc = linearizeDepth(texture2D(tDepth, center).r);
-        float mr = linearizeDepth(texture2D(tDepth, center + vec2(step.x, 0.0)).r);
-        float bl = linearizeDepth(texture2D(tDepth, center + vec2(-step.x, -step.y)).r);
-        float bc = linearizeDepth(texture2D(tDepth, center + vec2(0.0, -step.y)).r);
-        float br = linearizeDepth(texture2D(tDepth, center + vec2(step.x, -step.y)).r);
+        // log空間でSobelを適用: 距離に依存しない均一なエッジ検出
+        float tl = log(max(linearizeDepth(texture2D(tDepth, center + vec2(-step.x, step.y)).r), 0.01));
+        float tc = log(max(linearizeDepth(texture2D(tDepth, center + vec2(0.0, step.y)).r), 0.01));
+        float tr = log(max(linearizeDepth(texture2D(tDepth, center + vec2(step.x, step.y)).r), 0.01));
+        float ml = log(max(linearizeDepth(texture2D(tDepth, center + vec2(-step.x, 0.0)).r), 0.01));
+        float mr = log(max(linearizeDepth(texture2D(tDepth, center + vec2(step.x, 0.0)).r), 0.01));
+        float bl = log(max(linearizeDepth(texture2D(tDepth, center + vec2(-step.x, -step.y)).r), 0.01));
+        float bc = log(max(linearizeDepth(texture2D(tDepth, center + vec2(0.0, -step.y)).r), 0.01));
+        float br = log(max(linearizeDepth(texture2D(tDepth, center + vec2(step.x, -step.y)).r), 0.01));
         float gx = -tl - 2.0*ml - bl + tr + 2.0*mr + br;
         float gy = -tl - 2.0*tc - tr + bl + 2.0*bc + br;
-        // 深度の差を中心深度で正規化（遠くのエッジが消えないように）
-        float depthEdge = sqrt(gx * gx + gy * gy);
-        return mc > 0.001 ? depthEdge / mc : 0.0;
+        return sqrt(gx * gx + gy * gy);
       }
 
       void main() {
@@ -2990,6 +2991,21 @@ function setupThreeJS() {
             float ed = sobelEdgeDepth(vUv, step);
             float depthMask = smoothstep(outlineThreshold * 0.1, outlineThreshold * 0.5, ed);
             edge = ec * depthMask;
+          } else if (outlineMode == 4) {
+            // 深度+色（外側のみ）: 深度エッジと色エッジの大きい方に深度マスクを掛ける
+            float ec = sobelEdgeColor(vUv, step);
+            float ed = sobelEdgeDepth(vUv, step);
+            float depthMask = smoothstep(outlineThreshold * 0.1, outlineThreshold * 0.5, ed);
+            edge = max(ec * depthMask, ed);
+          } else if (outlineMode == 5) {
+            // 深度プレビュー: 深度テクスチャの中身を可視化（デバッグ用）
+            float rawD = texture2D(tDepth, vUv).r;
+            float linD = linearizeDepth(rawD);
+            // 近い=暗い、遠い=明るい（logスケールで見やすく）
+            float vis = (log(linD) - log(cameraNear)) / (log(cameraFar) - log(cameraNear));
+            color = vec3(vis);
+            gl_FragColor = vec4(color, 1.0);
+            return;
           }
           float edgeMask = smoothstep(outlineThreshold * 0.5, outlineThreshold, edge);
           color = mix(color, outlineColor, edgeMask * outlineStrength);
@@ -3002,6 +3018,68 @@ function setupThreeJS() {
   toonPass = new THREE.ShaderPass(toonShader);
   toonPass.enabled = false;
   composer.addPass(toonPass);
+
+  // 深度カラーRT: DepthTextureの代わりにシーン深度をカラーテクスチャとして描画
+  _depthColorRT = new THREE.WebGLRenderTarget(rtW, rtH, {
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    format: THREE.RGBAFormat,
+    type: THREE.FloatType
+  });
+  // 頂点シェーダー: Mesh/Pointsの両方に対応（gl_PointSizeはMeshでは無視される）
+  _depthOverrideMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      pointSize: { value: 2.0 },
+      screenScale: { value: rtH * 0.5 }
+    },
+    vertexShader: `
+      uniform float pointSize;
+      uniform float screenScale;
+      void main() {
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mvPos;
+        gl_PointSize = pointSize * (screenScale / -mvPos.z);
+      }
+    `,
+    fragmentShader: `
+      void main() {
+        gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0);
+      }
+    `
+  });
+  // クロマキー対応深度マテリアル: テクスチャを参照してdiscardを再現
+  _depthChromaMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      map: { value: null },
+      chromaKeyColor: { value: new THREE.Color(0x00ff00) },
+      chromaKeyThreshold: { value: 0 },
+      pointSize: { value: 2.0 },
+      screenScale: { value: rtH * 0.5 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      uniform float pointSize;
+      uniform float screenScale;
+      void main() {
+        vUv = uv;
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mvPos;
+        gl_PointSize = pointSize * (screenScale / -mvPos.z);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D map;
+      uniform vec3 chromaKeyColor;
+      uniform float chromaKeyThreshold;
+      varying vec2 vUv;
+      void main() {
+        vec4 texColor = texture2D(map, vUv);
+        float dist = distance(texColor.rgb, chromaKeyColor);
+        if (dist < chromaKeyThreshold) discard;
+        gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0);
+      }
+    `
+  });
 
   // ピクセルアート色スムージング用RenderTarget + コピーパス
   const ppW = Math.floor(width * renderer.getPixelRatio());
@@ -3517,6 +3595,13 @@ function onWindowResize() {
   }
   if (toonPass) {
     toonPass.uniforms.resolution.value.set(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
+  }
+  if (_depthColorRT) {
+    const bScale = isMobileDevice ? 0.5 : 1;
+    _depthColorRT.setSize(
+      Math.floor(width * renderer.getPixelRatio() * bScale),
+      Math.floor(height * renderer.getPixelRatio() * bScale)
+    );
   }
   if (_pixelPrevRT) {
     const ppW = Math.floor(width * renderer.getPixelRatio()), ppH = Math.floor(height * renderer.getPixelRatio());
@@ -4720,26 +4805,31 @@ function setupEventListeners() {
     pixelFpsLimit = v;
     if (v === 0) _pixelHoldReady = false;
   });
-  // トゥーンレンダリング
+  // アウトライン / セルシェーディング
   const syncToonPassEnabled = () => {
     if (!toonPass) return;
-    const enabled = document.getElementById('toonEnabled')?.checked ?? false;
-    toonPass.enabled = enabled;
-    if (enabled) {
-      const str = parseFloat(document.getElementById('toonOutlineStrength')?.value || '0');
-      toonPass.uniforms.outlineStrength.value = str;
-      const shades = parseFloat(document.getElementById('toonShades')?.value || '10');
-      toonPass.uniforms.toonShades.value = shades;
-      const modeMap = { color: 0, depth: 1, both: 2, colorOuter: 3 };
-      const mode = document.getElementById('toonOutlineMode')?.value || 'color';
-      toonPass.uniforms.outlineMode.value = modeMap[mode] ?? 0;
-    }
+    const outlineOn = document.getElementById('toonEnabled')?.checked ?? false;
+    const celOn = document.getElementById('celShadingEnabled')?.checked ?? false;
+    toonPass.enabled = outlineOn || celOn;
+    // アウトライン
+    const str = outlineOn ? parseFloat(document.getElementById('toonOutlineStrength')?.value || '0') : 0;
+    toonPass.uniforms.outlineStrength.value = str;
+    const modeMap = { color: 0, depth: 1, both: 2, colorOuter: 3, bothOuter: 4, depthPreview: 5 };
+    const mode = document.getElementById('toonOutlineMode')?.value || 'bothOuter';
+    toonPass.uniforms.outlineMode.value = modeMap[mode] ?? 4;
+    // セルシェーディング
+    const shades = celOn ? parseFloat(document.getElementById('toonShades')?.value || '0') : 0;
+    toonPass.uniforms.toonShades.value = shades;
+    const darkness = celOn ? parseFloat(document.getElementById('toonDarkness')?.value || '0') : 0;
+    toonPass.uniforms.toonDarkness.value = darkness;
   };
   document.getElementById('toonEnabled')?.addEventListener('change', syncToonPassEnabled);
+  document.getElementById('celShadingEnabled')?.addEventListener('change', syncToonPassEnabled);
   document.getElementById('toonOutlineStrength')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('toonOutlineStrengthValue').textContent = v;
-    if (toonPass) toonPass.uniforms.outlineStrength.value = v;
+    const outlineOn = document.getElementById('toonEnabled')?.checked ?? false;
+    if (toonPass) toonPass.uniforms.outlineStrength.value = outlineOn ? v : 0;
   });
   document.getElementById('toonOutlineThreshold')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
@@ -4751,17 +4841,19 @@ function setupEventListeners() {
   });
   document.getElementById('toonShades')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
-    document.getElementById('toonShadesValue').textContent = v;
-    if (toonPass) toonPass.uniforms.toonShades.value = v;
+    document.getElementById('toonShadesValue').textContent = v === 0 ? 'OFF' : v;
+    const celOn = document.getElementById('celShadingEnabled')?.checked ?? false;
+    if (toonPass) toonPass.uniforms.toonShades.value = celOn ? v : 0;
   });
   document.getElementById('toonDarkness')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('toonDarknessValue').textContent = v;
-    if (toonPass) toonPass.uniforms.toonDarkness.value = v;
+    const celOn = document.getElementById('celShadingEnabled')?.checked ?? false;
+    if (toonPass) toonPass.uniforms.toonDarkness.value = celOn ? v : 0;
   });
   document.getElementById('toonOutlineMode')?.addEventListener('change', (e) => {
     if (!toonPass) return;
-    const modeMap = { color: 0, depth: 1, both: 2, colorOuter: 3 };
+    const modeMap = { color: 0, depth: 1, both: 2, colorOuter: 3, bothOuter: 4, depthPreview: 5 };
     toonPass.uniforms.outlineMode.value = modeMap[e.target.value] ?? 0;
   });
 
@@ -14530,10 +14622,67 @@ function animate() {
       `クラスタ: ${clusters}`;
   }
 
-  // トゥーンパスに深度テクスチャとカメラ情報をセット
+  // 深度カラーパス: シーン深度をカラーテクスチャに描画してトゥーンパスに渡す
+  // （DepthTextureはWebGL実装によりsampler2Dで読めないケースがあるため、カラーRT方式を使用）
+  const renderDepthColorPass = () => {
+    if (!_depthColorRT || !_depthOverrideMaterial) return;
+    // Points用のサイズをUIから取得
+    const ptSize = parseFloat(document.getElementById('glbPointSize')?.value || '2');
+    const h = renderer.domElement.height;
+    _depthOverrideMaterial.uniforms.pointSize.value = ptSize;
+    _depthOverrideMaterial.uniforms.screenScale.value = h * 0.5;
+    if (_depthChromaMaterial) {
+      _depthChromaMaterial.uniforms.pointSize.value = ptSize;
+      _depthChromaMaterial.uniforms.screenScale.value = h * 0.5;
+    }
+    // オブジェクトごとにマテリアルを深度版に差し替え（クロマキー・透明度を考慮）
+    const savedMaterials = [];
+    scene.traverse(obj => {
+      if (!obj.visible) return;
+      if (!obj.isMesh && !obj.isPoints && !obj.isLine) return;
+      const mat = obj.material;
+      if (!mat) return;
+      savedMaterials.push({ obj, material: mat });
+      // 透明度が低いオブジェクトは非表示（幕など）
+      if (mat.transparent && mat.opacity < 0.1) {
+        obj.visible = false;
+        return;
+      }
+      // クロマキーが有効なマテリアル → テクスチャ+discard付き深度マテリアル
+      const ckThresh = mat.uniforms?.chromaKeyThreshold?.value
+                    || mat.userData?.chromaKeyThreshold?.value || 0;
+      if (ckThresh > 0 && _depthChromaMaterial) {
+        const tex = mat.uniforms?.map?.value || mat.uniforms?.floorMap?.value || mat.map || null;
+        const ckColor = mat.uniforms?.chromaKeyColor?.value
+                     || mat.userData?.chromaKeyColor?.value;
+        _depthChromaMaterial.uniforms.map.value = tex;
+        _depthChromaMaterial.uniforms.chromaKeyColor.value = ckColor || new THREE.Color(0x00ff00);
+        _depthChromaMaterial.uniforms.chromaKeyThreshold.value = ckThresh;
+        obj.material = _depthChromaMaterial;
+      } else {
+        obj.material = _depthOverrideMaterial;
+      }
+    });
+    const savedBg = scene.background;
+    const savedClearColor = renderer.getClearColor(new THREE.Color());
+    const savedClearAlpha = renderer.getClearAlpha();
+    scene.background = null;
+    renderer.setClearColor(0xffffff, 1); // 1.0 = far plane depth
+    renderer.setRenderTarget(_depthColorRT);
+    renderer.clear();
+    renderer.render(scene, camera);
+    scene.background = savedBg;
+    renderer.setClearColor(savedClearColor, savedClearAlpha);
+    renderer.setRenderTarget(null);
+    // マテリアルと表示状態を復元
+    for (const { obj, material } of savedMaterials) {
+      obj.material = material;
+      obj.visible = true;
+    }
+  };
   const syncToonDepth = () => {
     if (!toonPass) return;
-    toonPass.uniforms.tDepth.value = composer.readBuffer.depthTexture;
+    toonPass.uniforms.tDepth.value = _depthColorRT ? _depthColorRT.texture : null;
     toonPass.uniforms.cameraNear.value = camera.near;
     toonPass.uniforms.cameraFar.value = camera.far;
   };
@@ -14541,7 +14690,7 @@ function animate() {
   // ブルーム描画 / ピクセレーション
   const useBloom = composer && bloomPass && bloomEnabled && bloomPass.strength > 0;
   const usePixel = pixelPass && pixelPass.enabled;
-  const useToon = toonPass && (document.getElementById('toonEnabled')?.checked ?? false);
+  const useToon = toonPass && ((document.getElementById('toonEnabled')?.checked ?? false) || (document.getElementById('celShadingEnabled')?.checked ?? false));
   // toonPassはcomposerチェーンに含まれるため、手動制御時は常にdisabledにしておく
   if (toonPass) toonPass.enabled = false;
 
@@ -14586,6 +14735,16 @@ function animate() {
         mesh.visible = false;
         if (mesh._haloMesh) mesh._haloMesh.visible = false;
       });
+    }
+  }
+
+  // トゥーン用深度カラーパス（1フレーム1回のみ、アウトラインに深度が必要な場合）
+  if (useToon && _depthColorRT && _depthOverrideMaterial) {
+    const outStr = toonPass ? toonPass.uniforms.outlineStrength.value : 0;
+    const outMode = toonPass ? toonPass.uniforms.outlineMode.value : 0;
+    // 深度が必要なモード: 1=depth, 2=both, 3=colorOuter, 4=bothOuter, 5=depthPreview
+    if (outStr > 0 && outMode >= 1) {
+      renderDepthColorPass();
     }
   }
 
@@ -14723,6 +14882,7 @@ function animate() {
     toonPass.render(renderer, null, composer.readBuffer);
   } else {
     // ピクセルアートOFF・トゥーンOFF: 通常描画
+    composer.renderToScreen = true;
     if (useBloom) {
       if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
         camera.layers.disable(1);
