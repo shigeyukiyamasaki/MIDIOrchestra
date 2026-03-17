@@ -117,6 +117,19 @@ body {
 }
 .layer-item .layer-order button:hover { color: #e0e0e0; }
 .layer-item .layer-order button:disabled { opacity: 0.2; cursor: default; }
+.layer-item .layer-sel-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: transparent;
+}
+.layer-item .layer-sel-dot.has-sel { background: #00e5ff; }
+.layer-vis-bar {
+  display: flex; gap: 4px; margin-bottom: 4px; align-items: center;
+}
+.layer-vis-bar button {
+  background: #0f1a30; border: 1px solid #2a3a5c; color: #aab; cursor: pointer;
+  border-radius: 3px; font-size: 0.68rem; padding: 2px 6px;
+}
+.layer-vis-bar button:hover { background: #1a2a4c; color: #e0e0e0; }
 .layer-item .layer-name {
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -212,19 +225,19 @@ body {
     <h3>Densify</h3>
     <div class="setting-row">
       <label>Count</label>
-      <input type="range" id="densifyCount" min="1" max="10" step="1" value="2">
-      <span class="val" id="densifyCountVal">2x</span>
+      <input type="range" id="densifyCount" min="1" max="10" step="1" value="1">
+      <span class="val" id="densifyCountVal">1x</span>
     </div>
     <div class="setting-row">
       <label>Jitter</label>
-      <input type="range" id="densifyJitter" min="0" max="0.5" step="0.01" value="0.05">
-      <span class="val" id="densifyJitterVal">0.05</span>
+      <input type="range" id="densifyJitter" min="0" max="0.5" step="0.01" value="0.2">
+      <span class="val" id="densifyJitterVal">0.20</span>
     </div>
     <h3>Warp</h3>
     <div class="setting-row">
       <label>Strength</label>
-      <input type="range" id="warpStrength" min="0.1" max="5" step="0.1" value="1">
-      <span class="val" id="warpStrengthVal">1.0</span>
+      <input type="range" id="warpStrength" min="0.1" max="5" step="0.1" value="0.5">
+      <span class="val" id="warpStrengthVal">0.5</span>
     </div>
     <h3>Scale</h3>
     <div class="setting-row">
@@ -249,6 +262,9 @@ body {
     </div>
     <h3>Layers</h3>
     <div id="layerPanel" style="margin-bottom:8px;">
+      <div class="layer-vis-bar">
+        <button id="btnLayerToggleAll">All Show</button>
+      </div>
       <div id="layerList"></div>
       <div style="display:flex; gap:4px; margin-top:6px;">
         <button class="btn" id="btnLayerAdd" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled>+ Add</button>
@@ -304,6 +320,9 @@ const state = {
 
   currentTool: 'navigate',
   fileName: '',
+
+  // Clipboard
+  clipboard: [],  // [{data: Uint8Array}] — copied vertex data
 
   // Densify preview
   previewMode: false,
@@ -503,7 +522,7 @@ function rebuildGeometry() {
 
 // ===== Density Computation (3D grid) =====
 function computeDensity() {
-  const pos = state.positions;
+  const pos = state.basePositions || state.positions;
   const n = state.vertices.length;
   if (n === 0) { state.density = null; return; }
 
@@ -602,7 +621,11 @@ function updateSelectionDisplay() {
       // 位置を復元
       positions[j] = basePos[j]; positions[j + 1] = basePos[j + 1]; positions[j + 2] = basePos[j + 2];
       if (sel.has(i)) {
-        colors[j] = 0; colors[j + 1] = 1; colors[j + 2] = 1;
+        // 元の色に薄い水色をブレンド（元の色が見える程度）
+        const blend = 0.45;
+        colors[j]     = base[j]     * (1 - blend) + 0 * blend;
+        colors[j + 1] = base[j + 1] * (1 - blend) + 1 * blend;
+        colors[j + 2] = base[j + 2] * (1 - blend) + 1 * blend;
       } else if (mask.has(i)) {
         colors[j] = base[j] * 0.25; colors[j + 1] = base[j + 1] * 0.25; colors[j + 2] = base[j + 2] * 0.25;
       } else {
@@ -655,6 +678,22 @@ function renderLayerList() {
   const list = $('layerList');
   if (!list) return;
   list.innerHTML = '';
+
+  // トグルボタンのテキスト同期
+  const allVis = state.layers.every(l => l.visible);
+  const toggleBtn = $('btnLayerToggleAll');
+  if (toggleBtn) toggleBtn.textContent = allVis ? 'All Hide' : 'All Show';
+
+  // 選択頂点がどのレイヤーに属するか判定
+  const layersWithSel = new Set();
+  if (state.selected.size > 0) {
+    for (const layer of state.layers) {
+      for (const idx of state.selected) {
+        if (layer.vertexIndices.has(idx)) { layersWithSel.add(layer.id); break; }
+      }
+    }
+  }
+
   for (const layer of state.layers) {
     const item = document.createElement('div');
     item.className = 'layer-item' + (layer.id === state.activeLayerId ? ' active' : '');
@@ -724,8 +763,12 @@ function renderLayerList() {
     orderBtns.appendChild(upBtn);
     orderBtns.appendChild(downBtn);
 
+    const selDot = document.createElement('div');
+    selDot.className = 'layer-sel-dot' + (layersWithSel.has(layer.id) ? ' has-sel' : '');
+
     item.appendChild(vis);
     item.appendChild(lock);
+    item.appendChild(selDot);
     item.appendChild(name);
     item.appendChild(count);
     item.appendChild(orderBtns);
@@ -1195,7 +1238,7 @@ function commitDensifyBrush() {
 
   const count = densifyNewVerts.length;
   const startIdx = state.vertices.length;
-  state.vertices.push(...densifyNewVerts);
+  for (let i = 0; i < densifyNewVerts.length; i++) state.vertices.push(densifyNewVerts[i]);
   updateLayerIndicesAfterAdd(startIdx, count);
   state.undoStack.push({ type: 'densify', count, vertices: densifyNewVerts, prevSelection: new Set(state.selected) });
   state.redoStack = [];
@@ -1299,7 +1342,8 @@ function startMoveDrag(e) {
   moveActive = true;
   moveInitMouseX = e.clientX;
   moveInitMouseY = e.clientY;
-  moveOrigPositions = new Float32Array(state.positions);
+  // basePositionsから取る（state.positionsは非表示レイヤーで1e10に書き換わっている可能性がある）
+  moveOrigPositions = new Float32Array(state.basePositions || state.positions);
   moveSelectedArr = Array.from(state.selected);
 
   if (arrow) {
@@ -1309,6 +1353,19 @@ function startMoveDrag(e) {
     moveAxisConstraint = null;
     moveScreenAxisDir = null;
   }
+}
+
+function getMoveCenter() {
+  // selBoxBoundsがあればそれを使い、なければ選択点の平均位置を計算
+  if (selBoxBounds) return new THREE.Vector3(selBoxBounds.center[0], selBoxBounds.center[1], selBoxBounds.center[2]);
+  const pos = moveOrigPositions || state.basePositions || state.positions;
+  let cx = 0, cy = 0, cz = 0;
+  for (const i of moveSelectedArr) {
+    const j = i * 3;
+    cx += pos[j]; cy += pos[j + 1]; cz += pos[j + 2];
+  }
+  const n = moveSelectedArr.length || 1;
+  return new THREE.Vector3(cx / n, cy / n, cz / n);
 }
 
 function updateMovePreview(e) {
@@ -1325,7 +1382,7 @@ function updateMovePreview(e) {
     let projected = mouseDelta.dot(moveScreenAxisDir);
 
     // Scale by distance to camera for consistent feel
-    const center = new THREE.Vector3(selBoxBounds.center[0], selBoxBounds.center[1], selBoxBounds.center[2]);
+    const center = getMoveCenter();
     state.pointCloud.localToWorld(center);
     const dist = camera.position.distanceTo(center);
     const amount = projected * dist * 0.5;
@@ -1344,7 +1401,7 @@ function updateMovePreview(e) {
     setStatus(`Move ${label}: ${amount.toFixed(3)}`);
   } else {
     // Free movement in camera plane
-    const center = new THREE.Vector3(selBoxBounds.center[0], selBoxBounds.center[1], selBoxBounds.center[2]);
+    const center = getMoveCenter();
     state.pointCloud.localToWorld(center);
     const dist = camera.position.distanceTo(center);
     const scale = dist * 0.5;
@@ -1389,26 +1446,15 @@ function commitMove() {
     const nx = posArr[j], ny = posArr[j + 1], nz = posArr[j + 2];
     if (ox === nx && oy === ny && oz === nz) continue;
 
-    const oldVertex = { ...state.vertices[i] };
-    // Update stored vertex data
-    if (state.vertices[i].data) {
-      const d = state.vertices[i].data;
-      const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
-      dv.setFloat32(state.offsets.x, nx, true);
-      dv.setFloat32(state.offsets.y, ny, true);
-      dv.setFloat32(state.offsets.z, nz, true);
-    } else {
-      // srcIndex vertex: convert to data vertex
-      const src = state.vertices[i].srcIndex;
-      const newData = new Uint8Array(state.vertexSize);
-      newData.set(new Uint8Array(state.rawBuffer, state.headerLength + src * state.vertexSize, state.vertexSize));
-      const dv = new DataView(newData.buffer);
-      dv.setFloat32(state.offsets.x, nx, true);
-      dv.setFloat32(state.offsets.y, ny, true);
-      dv.setFloat32(state.offsets.z, nz, true);
-      state.vertices[i] = { data: newData };
-    }
-    undoEntries.push({ index: i, oldVertex, newVertex: { ...state.vertices[i] } });
+    const oldVertex = state.vertices[i];
+    const newData = cloneVertexData(i);
+    const dv = new DataView(newData.buffer, newData.byteOffset, newData.byteLength);
+    dv.setFloat32(state.offsets.x, nx, true);
+    dv.setFloat32(state.offsets.y, ny, true);
+    dv.setFloat32(state.offsets.z, nz, true);
+    const newVertex = { data: newData };
+    undoEntries.push({ index: i, oldVertex, newVertex });
+    state.vertices[i] = newVertex;
   }
 
   if (undoEntries.length > 0) {
@@ -1532,7 +1578,7 @@ function getHandleAtMouse(e) {
 
 // Get screen-space direction of an axis (for projecting mouse movement)
 function getScreenAxisDir(axis) {
-  const center = new THREE.Vector3(selBoxBounds.center[0], selBoxBounds.center[1], selBoxBounds.center[2]);
+  const center = getMoveCenter();
   const axisEnd = center.clone();
   if (axis === 'x') axisEnd.x += 1;
   else if (axis === 'y') axisEnd.y += 1;
@@ -2109,11 +2155,20 @@ viewport.addEventListener('drop', (e) => {
   const lname = file ? file.name.toLowerCase() : '';
   if (file && (lname.endsWith('.ply') || lname.endsWith('.plyproj'))) loadFile(file);
 });
+// body全体でもD&Dを受け付ける（サイドバー等にドロップした場合のフォールバック）
+document.body.addEventListener('dragover', (e) => e.preventDefault());
+document.body.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  const lname = file ? file.name.toLowerCase() : '';
+  if (file && (lname.endsWith('.ply') || lname.endsWith('.plyproj'))) loadFile(file);
+});
 
 // ===== Camera Auto-fit =====
 function autoFitCamera() {
-  if (!state.positions || state.positions.length === 0) return;
-  const pos = state.positions;
+  // basePositionsを使う（state.positionsは非表示レイヤーで1e10に書き換わっている可能性がある）
+  const pos = state.basePositions || state.positions;
+  if (!pos || pos.length === 0) return;
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   for (let i = 0; i < pos.length; i += 3) {
@@ -2582,6 +2637,48 @@ function deleteSelected() {
   setStatus(`Deleted ${entries.length.toLocaleString()} points`);
 }
 
+// ===== Copy / Paste =====
+function copySelection() {
+  if (state.selected.size === 0) return;
+  state.clipboard = [];
+  for (const idx of state.selected) {
+    state.clipboard.push({ data: cloneVertexData(idx) });
+  }
+  setStatus(`Copied ${state.clipboard.length.toLocaleString()} points`);
+}
+
+function pasteClipboard() {
+  if (state.clipboard.length === 0) return;
+  const prevSelection = new Set(state.selected);
+  const startIdx = state.vertices.length;
+  const count = state.clipboard.length;
+
+  // クリップボードの頂点をクローンして追加
+  const pastedVerts = [];
+  for (let i = 0; i < count; i++) {
+    pastedVerts.push({ data: new Uint8Array(state.clipboard[i].data) });
+  }
+  for (let i = 0; i < pastedVerts.length; i++) state.vertices.push(pastedVerts[i]);
+
+  // アクティブレイヤーに追加
+  updateLayerIndicesAfterAdd(startIdx, count);
+
+  // undo登録
+  state.undoStack.push({ type: 'densify', count, vertices: pastedVerts, prevSelection });
+  state.redoStack = [];
+
+  rebuildGeometry();
+
+  // ペーストした頂点を選択状態にする
+  state.selected.clear(); state.rawSelected.clear();
+  for (let i = startIdx; i < startIdx + count; i++) {
+    state.selected.add(i);
+    state.rawSelected.add(i);
+  }
+  updateSelectionDisplay();
+  setStatus(`Pasted ${count.toLocaleString()} points`);
+}
+
 // Generate densify vertices from given parameters (returns array of {data})
 function generateDensifyVertices(selectedIndices, selPos, neighbors, copies, jitterRatio) {
   const cellSize = state.cellSize || 0.01;
@@ -2647,13 +2744,20 @@ function generateDensifyVertices(selectedIndices, selPos, neighbors, copies, jit
 function startDensifyPreview() {
   if (state.selected.size === 0 || state.previewMode) return;
 
+  const copies = parseInt($('densifyCount').value);
+  const totalNew = state.selected.size * copies;
+  if (totalNew > 500000) {
+    if (!confirm(`${state.selected.size.toLocaleString()} pts × ${copies} = ${totalNew.toLocaleString()} 新規頂点を生成します。処理に時間がかかる場合があります。続行しますか？`)) return;
+  }
+
   const selectedIndices = Array.from(state.selected);
-  const pos = state.positions;
+  const pos = state.basePositions || state.positions;
   const selPos = selectedIndices.map(idx => {
     const j = idx * 3;
     return [pos[j], pos[j+1], pos[j+2]];
   });
-  const K = Math.min(20, selPos.length - 1);
+  // 選択数が多い場合はKを下げて高速化
+  const K = Math.min(selPos.length > 50000 ? 5 : selPos.length > 10000 ? 10 : 20, selPos.length - 1);
   const neighbors = findKNearestNeighbors(selPos, K);
 
   state.previewMode = true;
@@ -2682,12 +2786,20 @@ function regenerateDensifyPreview() {
 
   const copies = parseInt($('densifyCount').value);
   const jitterRatio = parseFloat($('densifyJitter').value);
+  const totalNew = state.previewSourceIndices.length * copies;
+  if (totalNew > 500000) {
+    if (!confirm(`${totalNew.toLocaleString()} 頂点を生成します。続行しますか？`)) {
+      // プレビューなしで元に戻す
+      rebuildGeometry();
+      return;
+    }
+  }
   const newVerts = generateDensifyVertices(
     state.previewSourceIndices, state.previewSelPos, state.previewNeighbors, copies, jitterRatio
   );
 
   state.previewCount = newVerts.length;
-  state.vertices.push(...newVerts);
+  for (let i = 0; i < newVerts.length; i++) state.vertices.push(newVerts[i]);
 
   // Rebuild geometry without clearing selection or recomputing density
   const n = state.vertices.length;
@@ -2959,7 +3071,7 @@ function redo() {
   } else if (op.type === 'densify') {
     // Re-add vertices
     const startIdx = state.vertices.length;
-    state.vertices.push(...op.vertices);
+    for (let i = 0; i < op.vertices.length; i++) state.vertices.push(op.vertices[i]);
     updateLayerIndicesAfterAdd(startIdx, op.count);
   } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp') {
     for (const entry of op.entries) {
@@ -3128,6 +3240,13 @@ function loadProject(json) {
 $('btnSaveProj').addEventListener('click', saveProject);
 
 // ===== Layer Buttons =====
+$('btnLayerToggleAll').addEventListener('click', () => {
+  const allVisible = state.layers.every(l => l.visible);
+  for (const layer of state.layers) layer.visible = !allVisible;
+  $('btnLayerToggleAll').textContent = allVisible ? 'All Show' : 'All Hide';
+  updateSelectionDisplay();
+});
+
 $('btnLayerAdd').addEventListener('click', () => {
   addLayer();
   setStatus('New layer added');
@@ -3280,12 +3399,15 @@ window.addEventListener('keydown', (e) => {
     if (state.pointCloud) {
       e.preventDefault();
       state.selected.clear(); state.rawSelected.clear();
+      const selectable = getSelectableVertexSet();
       for (let i = 0; i < state.vertices.length; i++) {
-        if (!state.masked.has(i)) { state.selected.add(i); state.rawSelected.add(i); }
+        if (!state.masked.has(i) && selectable.has(i)) { state.selected.add(i); state.rawSelected.add(i); }
       }
       updateSelectionDisplay();
     }
   }
+  else if (ctrl && (e.key === 'c' || e.key === 'C')) { copySelection(); e.preventDefault(); }
+  else if (ctrl && (e.key === 'v' || e.key === 'V')) { pasteClipboard(); e.preventDefault(); }
   else if (ctrl && (e.key === 'i' || e.key === 'I')) {
     if (state.pointCloud) {
       e.preventDefault();

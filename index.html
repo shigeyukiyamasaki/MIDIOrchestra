@@ -1284,6 +1284,15 @@
       <div class="display-section">
         <h4 class="setting-category"><span>トゥーンレンダリング</span><input type="checkbox" id="toonEnabled"></h4>
         <div class="setting-item">
+          <label>アウトライン方式</label>
+          <select id="toonOutlineMode">
+            <option value="color">色ベース（内外）</option>
+            <option value="colorOuter" selected>色ベース（外側）</option>
+            <option value="depth">深度ベース（外側）</option>
+            <option value="both">色+深度（内外）</option>
+          </select>
+        </div>
+        <div class="setting-item">
           <label>アウトライン強度</label>
           <input type="range" id="toonOutlineStrength" min="0" max="1" step="0.05" value="0">
           <span id="toonOutlineStrengthValue">0</span>
@@ -1554,6 +1563,6 @@
 
   <script src="src/presetManager.js?v=20260313g"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260316n"></script>
+  <script type="module" src="src/main.js?v=20260317a"></script>
 </body>
 </html>

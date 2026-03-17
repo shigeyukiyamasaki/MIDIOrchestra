@@ -2711,12 +2711,17 @@ function setupThreeJS() {
   // EffectComposer（ブルーム用） - ステンシルバッファ付きレンダーターゲット
   // モバイル: ブルーム解像度を半分にしてGPUメモリ節約（ブルームはぼかし効果なので低解像度でも品質に影響しにくい）
   const bloomScale = isMobileDevice ? 0.5 : 1;
-  const composerRT = new THREE.WebGLRenderTarget(
-    width * renderer.getPixelRatio() * bloomScale,
-    height * renderer.getPixelRatio() * bloomScale,
+  const rtW = width * renderer.getPixelRatio() * bloomScale;
+  const rtH = height * renderer.getPixelRatio() * bloomScale;
+  const composerRT = new THREE.WebGLRenderTarget(rtW, rtH,
     { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, stencilBuffer: true }
   );
+  composerRT.depthTexture = new THREE.DepthTexture(rtW, rtH);
+  composerRT.depthTexture.type = THREE.UnsignedIntType;
   composer = new THREE.EffectComposer(renderer, composerRT);
+  // 2つ目のレンダーターゲットにも深度テクスチャを付ける（ping-pong対応）
+  composer.renderTarget2.depthTexture = new THREE.DepthTexture(rtW, rtH);
+  composer.renderTarget2.depthTexture.type = THREE.UnsignedIntType;
   const renderPass = new THREE.RenderPass(scene, camera);
   composer.addPass(renderPass);
   bloomPass = new THREE.UnrealBloomPass(
@@ -2881,10 +2886,14 @@ function setupThreeJS() {
   const toonShader = {
     uniforms: {
       tDiffuse: { value: null },
+      tDepth: { value: null },
       resolution: { value: new THREE.Vector2(width * renderer.getPixelRatio(), height * renderer.getPixelRatio()) },
       outlineStrength: { value: 0.0 },
       outlineThreshold: { value: 0.5 },
       outlineColor: { value: new THREE.Color(0x000000) },
+      outlineMode: { value: 3 },  // 0=color, 1=depth, 2=both, 3=colorOuter
+      cameraNear: { value: camera.near },
+      cameraFar: { value: camera.far },
       toonShades: { value: 0.0 },
       toonDarkness: { value: 0.0 }
     },
@@ -2897,10 +2906,14 @@ function setupThreeJS() {
     `,
     fragmentShader: `
       uniform sampler2D tDiffuse;
+      uniform sampler2D tDepth;
       uniform vec2 resolution;
       uniform float outlineStrength;
       uniform float outlineThreshold;
       uniform vec3 outlineColor;
+      uniform int outlineMode;
+      uniform float cameraNear;
+      uniform float cameraFar;
       uniform float toonShades;
       uniform float toonDarkness;
       varying vec2 vUv;
@@ -2909,7 +2922,11 @@ function setupThreeJS() {
         return dot(c, vec3(0.299, 0.587, 0.114));
       }
 
-      float sobelEdge(vec2 center, vec2 step) {
+      float linearizeDepth(float d) {
+        return cameraNear * cameraFar / (cameraFar - d * (cameraFar - cameraNear));
+      }
+
+      float sobelEdgeColor(vec2 center, vec2 step) {
         float tl = luma(texture2D(tDiffuse, center + vec2(-step.x, step.y)).rgb);
         float tc = luma(texture2D(tDiffuse, center + vec2(0.0, step.y)).rgb);
         float tr = luma(texture2D(tDiffuse, center + vec2(step.x, step.y)).rgb);
@@ -2921,6 +2938,23 @@ function setupThreeJS() {
         float gx = -tl - 2.0*ml - bl + tr + 2.0*mr + br;
         float gy = -tl - 2.0*tc - tr + bl + 2.0*bc + br;
         return sqrt(gx * gx + gy * gy);
+      }
+
+      float sobelEdgeDepth(vec2 center, vec2 step) {
+        float tl = linearizeDepth(texture2D(tDepth, center + vec2(-step.x, step.y)).r);
+        float tc = linearizeDepth(texture2D(tDepth, center + vec2(0.0, step.y)).r);
+        float tr = linearizeDepth(texture2D(tDepth, center + vec2(step.x, step.y)).r);
+        float ml = linearizeDepth(texture2D(tDepth, center + vec2(-step.x, 0.0)).r);
+        float mc = linearizeDepth(texture2D(tDepth, center).r);
+        float mr = linearizeDepth(texture2D(tDepth, center + vec2(step.x, 0.0)).r);
+        float bl = linearizeDepth(texture2D(tDepth, center + vec2(-step.x, -step.y)).r);
+        float bc = linearizeDepth(texture2D(tDepth, center + vec2(0.0, -step.y)).r);
+        float br = linearizeDepth(texture2D(tDepth, center + vec2(step.x, -step.y)).r);
+        float gx = -tl - 2.0*ml - bl + tr + 2.0*mr + br;
+        float gy = -tl - 2.0*tc - tr + bl + 2.0*bc + br;
+        // 深度の差を中心深度で正規化（遠くのエッジが消えないように）
+        float depthEdge = sqrt(gx * gx + gy * gy);
+        return mc > 0.001 ? depthEdge / mc : 0.0;
       }
 
       void main() {
@@ -2935,10 +2969,28 @@ function setupThreeJS() {
           color = clamp(color * ratio, 0.0, 1.0);
         }
 
-        // Outline (Sobel edge detection)
+        // Outline
         if (outlineStrength > 0.0) {
           vec2 step = 1.0 / resolution;
-          float edge = sobelEdge(vUv, step);
+          float edge = 0.0;
+          if (outlineMode == 0) {
+            // 色ベース（内外両方）
+            edge = sobelEdgeColor(vUv, step);
+          } else if (outlineMode == 1) {
+            // 深度ベース（外側のみ）
+            edge = sobelEdgeDepth(vUv, step);
+          } else if (outlineMode == 2) {
+            // 色+深度（内外）: 大きい方を採用
+            float ec = sobelEdgeColor(vUv, step);
+            float ed = sobelEdgeDepth(vUv, step);
+            edge = max(ec, ed);
+          } else if (outlineMode == 3) {
+            // 色ベース（外側のみ）: 色エッジに深度マスクを掛ける
+            float ec = sobelEdgeColor(vUv, step);
+            float ed = sobelEdgeDepth(vUv, step);
+            float depthMask = smoothstep(outlineThreshold * 0.1, outlineThreshold * 0.5, ed);
+            edge = ec * depthMask;
+          }
           float edgeMask = smoothstep(outlineThreshold * 0.5, outlineThreshold, edge);
           color = mix(color, outlineColor, edgeMask * outlineStrength);
         }
@@ -4678,6 +4730,9 @@ function setupEventListeners() {
       toonPass.uniforms.outlineStrength.value = str;
       const shades = parseFloat(document.getElementById('toonShades')?.value || '10');
       toonPass.uniforms.toonShades.value = shades;
+      const modeMap = { color: 0, depth: 1, both: 2, colorOuter: 3 };
+      const mode = document.getElementById('toonOutlineMode')?.value || 'color';
+      toonPass.uniforms.outlineMode.value = modeMap[mode] ?? 0;
     }
   };
   document.getElementById('toonEnabled')?.addEventListener('change', syncToonPassEnabled);
@@ -4703,6 +4758,11 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('toonDarknessValue').textContent = v;
     if (toonPass) toonPass.uniforms.toonDarkness.value = v;
+  });
+  document.getElementById('toonOutlineMode')?.addEventListener('change', (e) => {
+    if (!toonPass) return;
+    const modeMap = { color: 0, depth: 1, both: 2, colorOuter: 3 };
+    toonPass.uniforms.outlineMode.value = modeMap[e.target.value] ?? 0;
   });
 
   // スペクトラム スタイル変更 → 再構築
@@ -12125,57 +12185,24 @@ function parse3DGSPly(arrayBuffer) {
   const C0 = 0.28209479177387814; // SH基底関数の第0係数
   const hasOpacity = !!offsets.opacity;
 
-  // 1st pass: カウント（白背景・低不透明度を除外）
-  let kept = 0;
+  // 全頂点をそのまま抽出（フィルタなし）
+  const positions = new Float32Array(vertexCount * 3);
+  const colors = new Float32Array(vertexCount * 3);
   for (let i = 0; i < vertexCount; i++) {
     const base = i * vertexSize;
     const dc0 = dataView.getFloat32(base + offsets.f_dc_0.offset, true);
     const dc1 = dataView.getFloat32(base + offsets.f_dc_1.offset, true);
     const dc2 = dataView.getFloat32(base + offsets.f_dc_2.offset, true);
-    const r = 0.5 + C0 * dc0;
-    const g = 0.5 + C0 * dc1;
-    const b = 0.5 + C0 * dc2;
-    // 白背景・黒背景を除外
-    if (r > 0.93 && g > 0.93 && b > 0.93) continue;
-    if (r < 0.07 && g < 0.07 && b < 0.07) continue;
-    // 不透明度が低すぎるものを除外
-    if (hasOpacity) {
-      const opRaw = dataView.getFloat32(base + offsets.opacity.offset, true);
-      const op = 1.0 / (1.0 + Math.exp(-opRaw));
-      if (op < 0.1) continue;
-    }
-    kept++;
+    positions[i * 3]     = dataView.getFloat32(base + offsets.x.offset, true);
+    positions[i * 3 + 1] = dataView.getFloat32(base + offsets.y.offset, true);
+    positions[i * 3 + 2] = dataView.getFloat32(base + offsets.z.offset, true);
+    colors[i * 3]     = Math.max(0, Math.min(1, 0.5 + C0 * dc0));
+    colors[i * 3 + 1] = Math.max(0, Math.min(1, 0.5 + C0 * dc1));
+    colors[i * 3 + 2] = Math.max(0, Math.min(1, 0.5 + C0 * dc2));
   }
+  const kept = vertexCount;
 
-  // 2nd pass: データ抽出
-  const positions = new Float32Array(kept * 3);
-  const colors = new Float32Array(kept * 3);
-  let idx2 = 0;
-  for (let i = 0; i < vertexCount; i++) {
-    const base = i * vertexSize;
-    const dc0 = dataView.getFloat32(base + offsets.f_dc_0.offset, true);
-    const dc1 = dataView.getFloat32(base + offsets.f_dc_1.offset, true);
-    const dc2 = dataView.getFloat32(base + offsets.f_dc_2.offset, true);
-    const r = Math.max(0, Math.min(1, 0.5 + C0 * dc0));
-    const g = Math.max(0, Math.min(1, 0.5 + C0 * dc1));
-    const b = Math.max(0, Math.min(1, 0.5 + C0 * dc2));
-    if (r > 0.93 && g > 0.93 && b > 0.93) continue;
-    if (r < 0.07 && g < 0.07 && b < 0.07) continue;
-    if (hasOpacity) {
-      const opRaw = dataView.getFloat32(base + offsets.opacity.offset, true);
-      const op = 1.0 / (1.0 + Math.exp(-opRaw));
-      if (op < 0.1) continue;
-    }
-    positions[idx2 * 3]     = dataView.getFloat32(base + offsets.x.offset, true);
-    positions[idx2 * 3 + 1] = dataView.getFloat32(base + offsets.y.offset, true);
-    positions[idx2 * 3 + 2] = dataView.getFloat32(base + offsets.z.offset, true);
-    colors[idx2 * 3]     = r;
-    colors[idx2 * 3 + 1] = g;
-    colors[idx2 * 3 + 2] = b;
-    idx2++;
-  }
-
-  console.log('[PLY] 3DGS filtered:', vertexCount, '->', kept, 'points (removed', vertexCount - kept, 'background)');
+  console.log('[PLY] 3DGS loaded:', vertexCount, 'points');
 
   // 生データを返す（トリム・センタリングは build3DGSGeometry で行う）
   return { positions, colors, vertexCount: kept };
@@ -12231,10 +12258,10 @@ function build3DGSGeometry(positions, colors, count, trimPercent) {
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(finalCol, 3));
   geometry.computeBoundingBox();
 
-  // バウンディングボックスの中心にリセンター
+  // XZ方向のみセンタリング（Y軸はply-editorと原点を合わせるため保持）
   const center = new THREE.Vector3();
   geometry.boundingBox.getCenter(center);
-  geometry.translate(-center.x, -center.y, -center.z);
+  geometry.translate(-center.x, 0, -center.z);
   // 3DGS座標系→Three.js座標系: 天地反転を修正
   geometry.rotateX(Math.PI);
   geometry.computeBoundingBox();
@@ -14503,6 +14530,14 @@ function animate() {
       `クラスタ: ${clusters}`;
   }
 
+  // トゥーンパスに深度テクスチャとカメラ情報をセット
+  const syncToonDepth = () => {
+    if (!toonPass) return;
+    toonPass.uniforms.tDepth.value = composer.readBuffer.depthTexture;
+    toonPass.uniforms.cameraNear.value = camera.near;
+    toonPass.uniforms.cameraFar.value = camera.far;
+  };
+
   // ブルーム描画 / ピクセレーション
   const useBloom = composer && bloomPass && bloomEnabled && bloomPass.strength > 0;
   const usePixel = pixelPass && pixelPass.enabled;
@@ -14608,6 +14643,7 @@ function animate() {
       // デフォルト: トゥーン→ピクセル（輪郭もピクセル化される）
       toonPass.enabled = true;
       toonPass.renderToScreen = false;
+      syncToonDepth();
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.readBuffer, composer.writeBuffer);
@@ -14619,6 +14655,7 @@ function animate() {
       if (useToon) {
         toonPass.enabled = true;
         toonPass.renderToScreen = false;
+        syncToonDepth();
         toonPass.render(renderer, composer.readBuffer, composer.writeBuffer);
       }
       finalBuffer = useToon ? composer.readBuffer : composer.writeBuffer;
@@ -14682,6 +14719,7 @@ function animate() {
     // トゥーンパスを手動適用 → 画面に出力
     toonPass.enabled = true;
     toonPass.renderToScreen = true;
+    syncToonDepth();
     toonPass.render(renderer, null, composer.readBuffer);
   } else {
     // ピクセルアートOFF・トゥーンOFF: 通常描画
