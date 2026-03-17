@@ -2741,6 +2741,7 @@ function setupThreeJS() {
       tDiffuse: { value: null },
       tPrevFrame: { value: null },
       tPalette: { value: null },
+      tDepth: { value: null },
       resolution: { value: new THREE.Vector2(width * renderer.getPixelRatio(), height * renderer.getPixelRatio()) },
       pixelSize: { value: 1.0 },
       colorLevels: { value: 8.0 },
@@ -2749,6 +2750,9 @@ function setupThreeJS() {
       colorSmooth: { value: 0.0 },
       paletteSize: { value: 0.0 },
       hueBands: { value: 0.0 },
+      depthAware: { value: 0.0 },
+      cameraNear: { value: 0.1 },
+      cameraFar: { value: 10000.0 },
     },
     vertexShader: `
       varying vec2 vUv;
@@ -2761,6 +2765,7 @@ function setupThreeJS() {
       uniform sampler2D tDiffuse;
       uniform sampler2D tPrevFrame;
       uniform sampler2D tPalette;
+      uniform sampler2D tDepth;
       uniform vec2 resolution;
       uniform float pixelSize;
       uniform float colorLevels;
@@ -2769,7 +2774,14 @@ function setupThreeJS() {
       uniform float colorSmooth;
       uniform float paletteSize;
       uniform float hueBands;
+      uniform float depthAware;
+      uniform float cameraNear;
+      uniform float cameraFar;
       varying vec2 vUv;
+
+      float linearizeDepth(float d) {
+        return cameraNear * cameraFar / (cameraFar - d * (cameraFar - cameraNear));
+      }
 
       // Bayer 8x8 ordered dithering matrix (normalized to 0-1)
       float bayer8(vec2 p) {
@@ -2830,14 +2842,42 @@ function setupThreeJS() {
           effPixel = pixelSize * scale;
           vec2 dxy = effPixel / resolution;
           vec2 coord = dxy * floor(vUv / dxy) + dxy * 0.5;
-          // ビッグピクセル内4点サンプリング（時間的ちらつき抑制）
           vec2 q = dxy * 0.25;
-          color = (
-            texture2D(tDiffuse, coord + vec2(-q.x, -q.y)).rgb +
-            texture2D(tDiffuse, coord + vec2( q.x, -q.y)).rgb +
-            texture2D(tDiffuse, coord + vec2(-q.x,  q.y)).rgb +
-            texture2D(tDiffuse, coord + vec2( q.x,  q.y)).rgb
-          ) * 0.25;
+
+          if (depthAware > 0.5) {
+            // 深度分離ピクセル化: グリッドセル中心の深度を基準に同セグメントのサンプルのみ平均
+            float myDepth = linearizeDepth(texture2D(tDepth, coord).r);
+            float logMy = log(max(myDepth, 0.01));
+            float threshold = 0.15; // log空間での閾値（約15%の距離差で分離）
+
+            vec3 sum = vec3(0.0);
+            float cnt = 0.0;
+
+            vec2 s0 = coord + vec2(-q.x, -q.y);
+            vec2 s1 = coord + vec2( q.x, -q.y);
+            vec2 s2 = coord + vec2(-q.x,  q.y);
+            vec2 s3 = coord + vec2( q.x,  q.y);
+
+            float ld0 = log(max(linearizeDepth(texture2D(tDepth, s0).r), 0.01));
+            float ld1 = log(max(linearizeDepth(texture2D(tDepth, s1).r), 0.01));
+            float ld2 = log(max(linearizeDepth(texture2D(tDepth, s2).r), 0.01));
+            float ld3 = log(max(linearizeDepth(texture2D(tDepth, s3).r), 0.01));
+
+            if (abs(ld0 - logMy) < threshold) { sum += texture2D(tDiffuse, s0).rgb; cnt += 1.0; }
+            if (abs(ld1 - logMy) < threshold) { sum += texture2D(tDiffuse, s1).rgb; cnt += 1.0; }
+            if (abs(ld2 - logMy) < threshold) { sum += texture2D(tDiffuse, s2).rgb; cnt += 1.0; }
+            if (abs(ld3 - logMy) < threshold) { sum += texture2D(tDiffuse, s3).rgb; cnt += 1.0; }
+
+            color = cnt > 0.0 ? sum / cnt : texture2D(tDiffuse, vUv).rgb;
+          } else {
+            // 通常ピクセル化: ビッグピクセル内4点サンプリング（時間的ちらつき抑制）
+            color = (
+              texture2D(tDiffuse, coord + vec2(-q.x, -q.y)).rgb +
+              texture2D(tDiffuse, coord + vec2( q.x, -q.y)).rgb +
+              texture2D(tDiffuse, coord + vec2(-q.x,  q.y)).rgb +
+              texture2D(tDiffuse, coord + vec2( q.x,  q.y)).rgb
+            ) * 0.25;
+          }
         } else {
           effPixel = 1.0;
           color = texture2D(tDiffuse, vUv).rgb;
@@ -14738,14 +14778,24 @@ function animate() {
     }
   }
 
-  // トゥーン用深度カラーパス（1フレーム1回のみ、アウトラインに深度が必要な場合）
+  // 深度カラーパス: トゥーンアウトライン or ピクセルアート深度分離で必要
+  const pixelDepthAware = usePixel && (document.getElementById('pixelDepthAware')?.checked ?? false);
+  let needDepthPass = false;
   if (useToon && _depthColorRT && _depthOverrideMaterial) {
     const outStr = toonPass ? toonPass.uniforms.outlineStrength.value : 0;
     const outMode = toonPass ? toonPass.uniforms.outlineMode.value : 0;
     // 深度が必要なモード: 1=depth, 2=both, 3=colorOuter, 4=bothOuter, 5=depthPreview
-    if (outStr > 0 && outMode >= 1) {
-      renderDepthColorPass();
-    }
+    if (outStr > 0 && outMode >= 1) needDepthPass = true;
+  }
+  if (pixelDepthAware && _depthColorRT && _depthOverrideMaterial) needDepthPass = true;
+  if (needDepthPass) renderDepthColorPass();
+
+  // ピクセルシェーダーに深度テクスチャを渡す
+  if (pixelPass) {
+    pixelPass.uniforms.tDepth.value = (pixelDepthAware && _depthColorRT) ? _depthColorRT.texture : null;
+    pixelPass.uniforms.depthAware.value = pixelDepthAware ? 1.0 : 0.0;
+    pixelPass.uniforms.cameraNear.value = camera.near;
+    pixelPass.uniforms.cameraFar.value = camera.far;
   }
 
   if (pixelHoldSkip) {

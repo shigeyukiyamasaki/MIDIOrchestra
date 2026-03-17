@@ -860,6 +860,7 @@
     <input type="range" id="pixelSaturation" min="0" max="3" step="0.05" value="1"><span id="pixelSaturationValue">1</span>
     <input type="range" id="pixelFps" min="0" max="60" step="1" value="0"><span id="pixelFpsValue">なし</span>
     <input type="checkbox" id="pixelExcludeToon">
+    <input type="checkbox" id="pixelDepthAware">
     <!-- トゥーンレンダリング -->
     <input type="checkbox" id="toonEnabled">
     <select id="toonOutlineMode"><option value="color">色ベース（内外）</option><option value="colorOuter">色ベース（外側）</option><option value="depth">深度ベース（外側）</option><option value="both">色+深度（内外）</option><option value="bothOuter">色+深度（外側）</option><option value="depthPreview">深度プレビュー</option></select>
@@ -1022,6 +1023,6 @@
     }
   </script>
   <script src="src/presetManager.js?v=20260307a"></script>
-  <script type="module" src="src/main.js?v=20260317f"></script>
+  <script type="module" src="src/main.js?v=20260317g"></script>
 </body>
 </html>
