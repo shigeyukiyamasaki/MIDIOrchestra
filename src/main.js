@@ -2868,7 +2868,11 @@ function setupThreeJS() {
             if (abs(ld2 - logMy) < threshold) { sum += texture2D(tDiffuse, s2).rgb; cnt += 1.0; }
             if (abs(ld3 - logMy) < threshold) { sum += texture2D(tDiffuse, s3).rgb; cnt += 1.0; }
 
-            color = cnt > 0.0 ? sum / cnt : texture2D(tDiffuse, vUv).rgb;
+            // cnt==0はセンター深度がアーティファクト → 深度フィルタ無視で通常4点平均
+            color = cnt > 0.0 ? sum / cnt : (
+              texture2D(tDiffuse, s0).rgb + texture2D(tDiffuse, s1).rgb +
+              texture2D(tDiffuse, s2).rgb + texture2D(tDiffuse, s3).rgb
+            ) * 0.25;
           } else {
             // 通常ピクセル化: ビッグピクセル内4点サンプリング（時間的ちらつき抑制）
             color = (
