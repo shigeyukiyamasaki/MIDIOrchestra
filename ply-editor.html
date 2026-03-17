@@ -107,7 +107,7 @@ body {
   line-height: 18px; font-size: 0.7rem; border-radius: 3px;
   background: #0f1a30; border: 1px solid #2a3a5c; flex-shrink: 0;
 }
-.layer-item .layer-lock.locked { opacity: 1; color: #ff9944; }
+.layer-item .layer-lock.locked { opacity: 1; color: #ff4444; font-weight: bold; }
 .layer-item .layer-order {
   display: flex; flex-direction: column; gap: 0; flex-shrink: 0; margin-left: auto;
 }
@@ -709,7 +709,7 @@ function renderLayerList() {
 
     const lock = document.createElement('div');
     lock.className = 'layer-lock' + (layer.locked ? ' locked' : '');
-    lock.textContent = layer.locked ? '🔒' : '🔓';
+    lock.textContent = layer.locked ? '✕' : '';
     lock.addEventListener('click', (e) => {
       e.stopPropagation();
       layer.locked = !layer.locked;
@@ -1973,18 +1973,47 @@ function startRotateDrag(e) {
 
   activeRing = ring;
   rotateActive = true;
-  rotateOrigPositions = new Float32Array(state.positions);
+  rotateOrigPositions = new Float32Array(state.basePositions || state.positions);
   rotateSelectedArr = Array.from(state.selected);
-  rotateCenter = [...selBoxBounds.center];
+
+  if (e.altKey && selBoxBounds) {
+    // Option: 反対側を中心にする
+    // クリック位置のレイキャスト交点を取得
+    const rect = viewport.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    scaleRaycaster.setFromCamera(mouse, camera);
+    const intersects = scaleRaycaster.intersectObject(ring.mesh);
+    if (intersects.length > 0) {
+      // ワールド交点をローカル座標に変換
+      const hitWorld = intersects[0].point;
+      const hitLocal = hitWorld.clone();
+      state.pointCloud.worldToLocal(hitLocal);
+      // 中心からクリック方向を反転（回転軸成分は保持）
+      const c = selBoxBounds.center;
+      const pivot = [c[0], c[1], c[2]];
+      const ai = ring.axisIdx;
+      for (let d = 0; d < 3; d++) {
+        if (d !== ai) pivot[d] = c[d] + (c[d] - hitLocal.getComponent(d));
+      }
+      rotateCenter = pivot;
+    } else {
+      rotateCenter = [...selBoxBounds.center];
+    }
+  } else {
+    rotateCenter = selBoxBounds ? [...selBoxBounds.center] : [0, 0, 0];
+  }
 
   // Project center to screen for angle computation
   const centerWorld = new THREE.Vector3(rotateCenter[0], rotateCenter[1], rotateCenter[2]);
   state.pointCloud.localToWorld(centerWorld);
   const centerNDC = centerWorld.clone().project(camera);
-  const rect = viewport.getBoundingClientRect();
+  const rect2 = viewport.getBoundingClientRect();
   rotateScreenCenter = {
-    x: (centerNDC.x + 1) / 2 * rect.width + rect.left,
-    y: (-centerNDC.y + 1) / 2 * rect.height + rect.top,
+    x: (centerNDC.x + 1) / 2 * rect2.width + rect2.left,
+    y: (-centerNDC.y + 1) / 2 * rect2.height + rect2.top,
   };
 
   rotateInitAngle = Math.atan2(e.clientY - rotateScreenCenter.y, e.clientX - rotateScreenCenter.x);
@@ -2036,7 +2065,8 @@ function updateRotatePreview(e) {
   }
 
   const degrees = (angle * 180 / Math.PI).toFixed(1);
-  setStatus(`Rotate ${activeRing.axis.toUpperCase()}: ${degrees}°`);
+  const pivotLabel = (rotateCenter !== selBoxBounds?.center) ? ' (pivot: opposite)' : '';
+  setStatus(`Rotate ${activeRing.axis.toUpperCase()}: ${degrees}°${pivotLabel}`);
 }
 
 function commitRotate() {

@@ -2870,7 +2870,7 @@ function setupThreeJS() {
           color = nearest;
         } else {
           // Per-channel quantization (legacy)
-          color = floor(color * colorLevels + dither) / colorLevels;
+          color = floor(color * colorLevels + 0.5 + dither) / colorLevels;
           color = clamp(color, 0.0, 1.0);
         }
 
