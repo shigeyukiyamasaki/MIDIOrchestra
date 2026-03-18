@@ -388,6 +388,7 @@ let bloomPass = null;   // UnrealBloomPass
 let pixelPass = null;   // ピクセレーションShaderPass
 let toonPass = null;    // トゥーンレンダリングShaderPass
 let flatColorPass = null; // 平塗りバイラテラルフィルタShaderPass
+let kuwaharaPass = null;  // KuwaharaフィルタShaderPass
 let _depthColorRT = null;        // 深度をカラーとして描画するRenderTarget
 let _depthOverrideMaterial = null; // 深度書き出し用マテリアル
 let _depthChromaMaterial = null;   // クロマキー対応深度マテリアル
@@ -3036,10 +3037,8 @@ function getFireSparkTexture() {
 }
 
 function _spawnFireSpark(worldPos) {
-  const tex = getFireSparkTexture();
   const col = new THREE.Color(plyFireSparkColor);
   const mat = new THREE.SpriteMaterial({
-    map: tex,
     transparent: true,
     opacity: plyFireSparkDensity,
     color: col,
@@ -3047,7 +3046,8 @@ function _spawnFireSpark(worldPos) {
     blending: THREE.AdditiveBlending,
   });
   const sprite = new THREE.Sprite(mat);
-  const s = plyFireSparkSize;
+  const basePointSize = parseFloat(document.getElementById('glbPointSize')?.value || '2');
+  const s = plyFireSparkSize * basePointSize;
   sprite.scale.set(s, s, 1);
   sprite.position.copy(worldPos);
   const spread = plyFireSparkSpread;
@@ -3060,6 +3060,7 @@ function _spawnFireSpark(worldPos) {
     initOpacity: plyFireSparkDensity,
     initScale: s,
   };
+  sprite.layers.set(2); // ブルーム除外レイヤー
   scene.add(sprite);
   return sprite;
 }
@@ -3117,7 +3118,16 @@ function updateFireSparkParticles() {
     p.material.opacity = ud.initOpacity * fade;
     // サイズは縮小していく
     const shrink = 1.0 - t * 0.5;
-    p.scale.set(ud.initScale * shrink, ud.initScale * shrink, 1);
+    let finalScale = ud.initScale * shrink;
+    // 遠近OFF時: 距離に比例してスケールし、パースペクティブを打ち消す（定画面サイズ）
+    const attenuation = document.getElementById('glbPointAttenuation')?.checked !== false;
+    if (!attenuation && camera) {
+      const dist = p.position.distanceTo(camera.position);
+      const vFov = camera.fov * Math.PI / 180;
+      const refHeight = 2 * Math.tan(vFov / 2); // z=1でのワールド高さ
+      finalScale = ud.initScale * shrink * dist * refHeight / 1000;
+    }
+    p.scale.set(finalScale, finalScale, 1);
   }
 }
 
@@ -3349,6 +3359,7 @@ function setupThreeJS() {
   camera.position.set(-150, 150, 200);
   camera.lookAt(0, 0, 0);
   camera.layers.enable(1); // ノートレイヤーも描画対象に
+  camera.layers.enable(2); // 火の粉レイヤー（ブルーム除外用）
   window.appCamera = camera;
 
   // レンダラー（モバイル: antialias無効 + pixelRatio上限2でGPUメモリ節約）
@@ -3777,6 +3788,110 @@ function setupThreeJS() {
   };
   flatColorPass = new THREE.ShaderPass(flatColorShader);
   flatColorPass.enabled = false;
+
+  // Kuwaharaフィルタ（油絵風ポストプロセス）
+  // Generalized Kuwahara: 8セクター、ガウス空間重み、コサイン角度重み
+  const kuwaharaShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      resolution: { value: new THREE.Vector2(rtW, rtH) },
+      radius: { value: 4.0 },
+      strength: { value: 1.0 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform sampler2D tDiffuse;
+      uniform vec2 resolution;
+      uniform float radius;
+      uniform float strength;
+      varying vec2 vUv;
+
+      #define PI 3.14159265358979
+      #define SECTORS 8
+      #define MAX_R 12
+
+      void main() {
+        vec4 orig = texture2D(tDiffuse, vUv);
+        if (radius < 1.0 || strength < 0.001) {
+          gl_FragColor = orig;
+          return;
+        }
+
+        vec2 texel = 1.0 / resolution;
+        int iR = int(min(radius, float(MAX_R)));
+        float r2 = radius * radius;
+        float sigma = max(radius * 0.4, 1.0);
+        float invSig2 = 1.0 / (2.0 * sigma * sigma);
+        float sectorAngle = 2.0 * PI / float(SECTORS);
+
+        // 8セクター: 各セクターの平均と二乗平均を蓄積
+        vec3 cSum0=vec3(0),cSum1=vec3(0),cSum2=vec3(0),cSum3=vec3(0);
+        vec3 cSum4=vec3(0),cSum5=vec3(0),cSum6=vec3(0),cSum7=vec3(0);
+        vec3 qSum0=vec3(0),qSum1=vec3(0),qSum2=vec3(0),qSum3=vec3(0);
+        vec3 qSum4=vec3(0),qSum5=vec3(0),qSum6=vec3(0),qSum7=vec3(0);
+        float w0=0.0,w1=0.0,w2=0.0,w3=0.0,w4=0.0,w5=0.0,w6=0.0,w7=0.0;
+
+        for (int dy = -MAX_R; dy <= MAX_R; dy++) {
+          for (int dx = -MAX_R; dx <= MAX_R; dx++) {
+            float d2 = float(dx * dx + dy * dy);
+            if (d2 > r2) continue;
+
+            float spatialW = exp(-d2 * invSig2);
+            vec3 c = texture2D(tDiffuse, vUv + vec2(float(dx), float(dy)) * texel).rgb;
+            vec3 csq = c * c;
+
+            // セクター判定（0〜7）
+            float angle = atan(float(dy), float(dx)) + PI;
+            int sector = int(floor(angle / sectorAngle));
+            if (sector > 7) sector = 7;
+
+            // 各セクターに蓄積（動的配列インデックス回避）
+            if (sector == 0)      { cSum0 += c*spatialW; qSum0 += csq*spatialW; w0 += spatialW; }
+            else if (sector == 1) { cSum1 += c*spatialW; qSum1 += csq*spatialW; w1 += spatialW; }
+            else if (sector == 2) { cSum2 += c*spatialW; qSum2 += csq*spatialW; w2 += spatialW; }
+            else if (sector == 3) { cSum3 += c*spatialW; qSum3 += csq*spatialW; w3 += spatialW; }
+            else if (sector == 4) { cSum4 += c*spatialW; qSum4 += csq*spatialW; w4 += spatialW; }
+            else if (sector == 5) { cSum5 += c*spatialW; qSum5 += csq*spatialW; w5 += spatialW; }
+            else if (sector == 6) { cSum6 += c*spatialW; qSum6 += csq*spatialW; w6 += spatialW; }
+            else                  { cSum7 += c*spatialW; qSum7 += csq*spatialW; w7 += spatialW; }
+          }
+        }
+
+        // 分散が最小のセクターの平均色を採用
+        float minVar = 1e10;
+        vec3 result = orig.rgb;
+
+        // マクロ的に各セクターをチェック
+        #define CHECK_SECTOR(cs, qs, ws) { \\
+          if (ws > 0.001) { \\
+            vec3 m = cs / ws; \\
+            vec3 v = qs / ws - m * m; \\
+            float lv = dot(v, vec3(0.299, 0.587, 0.114)); \\
+            if (lv < minVar) { minVar = lv; result = m; } \\
+          } \\
+        }
+        CHECK_SECTOR(cSum0, qSum0, w0)
+        CHECK_SECTOR(cSum1, qSum1, w1)
+        CHECK_SECTOR(cSum2, qSum2, w2)
+        CHECK_SECTOR(cSum3, qSum3, w3)
+        CHECK_SECTOR(cSum4, qSum4, w4)
+        CHECK_SECTOR(cSum5, qSum5, w5)
+        CHECK_SECTOR(cSum6, qSum6, w6)
+        CHECK_SECTOR(cSum7, qSum7, w7)
+
+        gl_FragColor = vec4(mix(orig.rgb, result, strength), orig.a);
+      }
+    `
+  };
+  kuwaharaPass = new THREE.ShaderPass(kuwaharaShader);
+  kuwaharaPass.enabled = false;
 
   // 深度カラーRT: DepthTextureの代わりにシーン深度をカラーテクスチャとして描画
   _depthColorRT = new THREE.WebGLRenderTarget(rtW, rtH, {
@@ -4357,6 +4472,9 @@ function onWindowResize() {
   }
   if (flatColorPass) {
     flatColorPass.uniforms.resolution.value.set(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
+  }
+  if (kuwaharaPass) {
+    kuwaharaPass.uniforms.resolution.value.set(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
   }
   if (_depthColorRT) {
     const bScale = isMobileDevice ? 0.5 : 1;
@@ -5617,6 +5735,14 @@ function setupEventListeners() {
     if (!toonPass) return;
     const modeMap = { color: 0, depth: 1, both: 2, colorOuter: 3, bothOuter: 4, depthPreview: 5 };
     toonPass.uniforms.outlineMode.value = modeMap[e.target.value] ?? 0;
+  });
+
+  // Kuwaharaフィルタ スライダー表示
+  document.getElementById('kuwaharaRadius')?.addEventListener('input', (e) => {
+    document.getElementById('kuwaharaRadiusValue').textContent = e.target.value;
+  });
+  document.getElementById('kuwaharaStrength')?.addEventListener('input', (e) => {
+    document.getElementById('kuwaharaStrengthValue').textContent = e.target.value;
   });
 
   // スペクトラム スタイル変更 → 再構築
@@ -15861,6 +15987,28 @@ function animate() {
     // 偶数回なので結果はreadBufferに戻っている
   };
 
+  // Kuwaharaフィルタ: readBuffer上の画像をフィルタリング
+  const kuwaharaEnabled = document.getElementById('kuwaharaEnabled')?.checked ?? false;
+  const kuwaharaRadius = kuwaharaEnabled ? parseFloat(document.getElementById('kuwaharaRadius')?.value || '4') : 0;
+  const kuwaharaStrength = parseFloat(document.getElementById('kuwaharaStrength')?.value || '1');
+  const useKuwahara = kuwaharaPass && kuwaharaEnabled && kuwaharaRadius >= 1;
+  const applyKuwahara = () => {
+    if (!useKuwahara) return;
+    kuwaharaPass.uniforms.radius.value = kuwaharaRadius;
+    kuwaharaPass.uniforms.strength.value = kuwaharaStrength;
+    kuwaharaPass.uniforms.resolution.value.set(
+      renderer.domElement.width, renderer.domElement.height
+    );
+    // readBuffer → writeBuffer → readBufferに戻す（2パス: 奇数回ならコピーパスで戻す）
+    kuwaharaPass.renderToScreen = false;
+    kuwaharaPass.render(renderer, composer.writeBuffer, composer.readBuffer);
+    // writeBufferの結果をreadBufferに戻す（コピー）
+    if (_pixelCopyPass) {
+      _pixelCopyPass.renderToScreen = false;
+      _pixelCopyPass.render(renderer, composer.readBuffer, composer.writeBuffer);
+    }
+  };
+
   // ブルーム描画 / ピクセレーション
   if (bloomPass) bloomPass.enabled = bloomEnabled && bloomPass.strength > 0;
   const useBloom = composer && bloomPass && bloomEnabled && bloomPass.strength > 0;
@@ -15933,6 +16081,64 @@ function animate() {
     pixelPass.uniforms.cameraFar.value = camera.far;
   }
 
+  // ブルーム除外付きcomposer描画ヘルパー
+  // ノートブルーム除外 + 火の粉ブルーム除外を統合
+  // toScreen=true: 画面に直接描画（else分岐用）、false: readBufferに描画
+  function _composerRenderWithExclusions(toScreen) {
+    const hasSparks = plyFireSparkEnabled && plyFireSparkParticles.length > 0;
+    const hasNotes = (state.noteObjects && state.noteObjects.length > 0) ||
+                     (state.iconSprites && state.iconSprites.length > 0) ||
+                     (state.popIcons && state.popIcons.length > 0);
+    const excludeNotes = !noteBloomEnabled && hasNotes;
+
+    if (!excludeNotes && !hasSparks) {
+      composer.render();
+      return;
+    }
+
+    // ブルーム対象外レイヤーを無効化してcomposer描画
+    if (excludeNotes) camera.layers.disable(1);
+    if (hasSparks) camera.layers.disable(2);
+    composer.render();
+    if (excludeNotes) camera.layers.enable(1);
+    if (hasSparks) camera.layers.enable(2);
+
+    // 除外オブジェクトをブルームなしで描画
+    const target = toScreen ? null : composer.readBuffer;
+    renderer.setRenderTarget(target);
+    const savedBg = scene.background;
+    scene.background = null;
+    renderer.autoClear = false;
+
+    // ノート（clearDepthで前面に描画）
+    if (excludeNotes) {
+      camera.layers.set(1);
+      renderer.clearDepth();
+      renderer.render(scene, camera);
+    }
+
+    // 火の粉（シーン深度を復元してから描画 → 手前のオブジェクトに遮蔽される）
+    if (hasSparks) {
+      // 深度プレパス: シーン(layer0+1)の深度だけ書き込み、色は書かない
+      const gl = renderer.getContext();
+      renderer.clearDepth();
+      camera.layers.set(0);
+      camera.layers.enable(1);
+      gl.colorMask(false, false, false, false);
+      renderer.render(scene, camera);
+      gl.colorMask(true, true, true, true);
+      // 火の粉を深度テスト付きで描画
+      camera.layers.set(2);
+      renderer.render(scene, camera);
+    }
+
+    renderer.autoClear = true;
+    scene.background = savedBg;
+    camera.layers.set(0);
+    camera.layers.enable(1);
+    camera.layers.enable(2);
+  }
+
   if (pixelHoldSkip) {
     // ホールド中: 前回キャプチャした画面をそのまま表示
     _pixelCopyPass.renderToScreen = true;
@@ -15944,25 +16150,7 @@ function animate() {
     composer.renderToScreen = false;
 
     if (useBloom) {
-      if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
-        camera.layers.disable(1);
-        composer.render();
-        camera.layers.enable(1);
-        // レイヤー1をreadBufferに描画
-        renderer.setRenderTarget(composer.readBuffer);
-        const savedBg = scene.background;
-        scene.background = null;
-        camera.layers.set(1);
-        renderer.autoClear = false;
-        renderer.clearDepth();
-        renderer.render(scene, camera);
-        renderer.autoClear = true;
-        scene.background = savedBg;
-        camera.layers.set(0);
-        camera.layers.enable(1);
-      } else {
-        composer.render();
-      }
+      _composerRenderWithExclusions();
     } else {
       composer.render();
     }
@@ -15976,8 +16164,9 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
-    // 平塗りフィルタ（ピクセル化・トゥーンの前に適用）
+    // 平塗り・Kuwaharaフィルタ（ピクセル化・トゥーンの前に適用）
     applyFlatColor();
+    applyKuwahara();
 
     // ピクセルパスを手動適用
     pixelPass.enabled = true;
@@ -16032,24 +16221,7 @@ function animate() {
     composer.renderToScreen = false;
 
     if (useBloom) {
-      if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
-        camera.layers.disable(1);
-        composer.render();
-        camera.layers.enable(1);
-        renderer.setRenderTarget(composer.readBuffer);
-        const savedBg = scene.background;
-        scene.background = null;
-        camera.layers.set(1);
-        renderer.autoClear = false;
-        renderer.clearDepth();
-        renderer.render(scene, camera);
-        renderer.autoClear = true;
-        scene.background = savedBg;
-        camera.layers.set(0);
-        camera.layers.enable(1);
-      } else {
-        composer.render();
-      }
+      _composerRenderWithExclusions();
     } else {
       composer.render();
     }
@@ -16063,8 +16235,9 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
-    // 平塗りフィルタ（トゥーンの前に適用）
+    // 平塗り・Kuwaharaフィルタ（トゥーンの前に適用）
     applyFlatColor();
+    applyKuwahara();
 
     // トゥーンパスを手動適用 → 画面に出力
     toonPass.enabled = true;
@@ -16075,24 +16248,7 @@ function animate() {
     // 平塗りのみON（ピクセルアートOFF・トゥーンOFF）: バッファに描画→フィルタ→画面出力
     composer.renderToScreen = false;
     if (useBloom) {
-      if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
-        camera.layers.disable(1);
-        composer.render();
-        camera.layers.enable(1);
-        renderer.setRenderTarget(composer.readBuffer);
-        const savedBg = scene.background;
-        scene.background = null;
-        camera.layers.set(1);
-        renderer.autoClear = false;
-        renderer.clearDepth();
-        renderer.render(scene, camera);
-        renderer.autoClear = true;
-        scene.background = savedBg;
-        camera.layers.set(0);
-        camera.layers.enable(1);
-      } else {
-        composer.render();
-      }
+      _composerRenderWithExclusions();
     } else {
       // ブルームなし: シーンをreadBufferに描画
       renderer.setRenderTarget(composer.readBuffer);
@@ -16110,33 +16266,39 @@ function animate() {
       renderer.setRenderTarget(null);
     }
 
-    // 平塗りフィルタ適用
+    // 平塗り・Kuwaharaフィルタ適用
     applyFlatColor();
+    applyKuwahara();
 
     // readBufferから画面に出力
     _pixelCopyPass.renderToScreen = true;
     _pixelCopyPass.render(renderer, null, composer.readBuffer);
+  } else if (useKuwahara) {
+    // Kuwaharaのみ: バッファに描画 → Kuwahara適用 → 画面出力
+    composer.renderToScreen = false;
+    if (useBloom) {
+      _composerRenderWithExclusions();
+    } else {
+      composer.render();
+    }
+
+    if (_flareVisible) {
+      renderer.setRenderTarget(composer.readBuffer);
+      renderer.autoClear = false;
+      renderer.render(flareScene, flareCamera);
+      renderer.autoClear = true;
+      renderer.setRenderTarget(null);
+    }
+
+    applyKuwahara();
+
+    _pixelCopyPass.renderToScreen = true;
+    _pixelCopyPass.render(renderer, null, composer.readBuffer);
   } else {
-    // ピクセルアートOFF・トゥーンOFF・平塗りOFF: 通常描画
+    // ピクセルアートOFF・トゥーンOFF・平塗りOFF・KuwaharaOFF: 通常描画
     composer.renderToScreen = true;
     if (useBloom) {
-      if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
-        camera.layers.disable(1);
-        composer.render();
-        camera.layers.enable(1);
-        const savedBg = scene.background;
-        scene.background = null;
-        camera.layers.set(1);
-        renderer.autoClear = false;
-        renderer.clearDepth();
-        renderer.render(scene, camera);
-        renderer.autoClear = true;
-        scene.background = savedBg;
-        camera.layers.set(0);
-        camera.layers.enable(1);
-      } else {
-        composer.render();
-      }
+      _composerRenderWithExclusions(true);
     } else {
       renderer.render(scene, camera);
     }

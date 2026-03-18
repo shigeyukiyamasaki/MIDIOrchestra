@@ -194,7 +194,7 @@ body {
   <div class="viewport" id="viewport">
     <canvas id="canvas3d"></canvas>
     <canvas id="overlayCanvas"></canvas>
-    <div class="drop-overlay" id="dropOverlay"><p>Drop PLY file here</p></div>
+    <div class="drop-overlay" id="dropOverlay"><p id="dropOverlayText">Drop PLY file here</p></div>
     <div class="placeholder" id="placeholder">
       <p>Drop a 3DGS PLY file here</p>
       <p>or click "Load PLY"</p>
@@ -259,6 +259,10 @@ body {
     <div class="setting-row">
       <button class="btn" id="btnSelectByColor" disabled style="flex:1">Select by Color</button>
       <button class="btn" id="btnAddByColor" disabled style="flex:1">Add to Sel</button>
+    </div>
+    <div class="setting-row">
+      <button class="btn" id="btnSelectSimilar" disabled style="flex:1" title="選択ポイントと同系色を全体から選択">Select Similar</button>
+      <button class="btn" id="btnAddSimilar" disabled style="flex:1" title="選択ポイントと同系色を選択に追加">Add Similar</button>
     </div>
     <h3>Layers</h3>
     <div id="layerPanel" style="margin-bottom:8px;">
@@ -376,7 +380,8 @@ function animate() {
 animate();
 
 // ===== PLY Parser =====
-function parsePLY(arrayBuffer) {
+// PLYバイナリ解析（純粋関数、stateを変更しない）
+function parsePLYRaw(arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
   let headerEnd = 0;
   const endStr = 'end_header';
@@ -428,30 +433,141 @@ function parsePLY(arrayBuffer) {
     if (offsets[r] === undefined) throw new Error('Missing property: ' + r);
   }
 
-  state.rawBuffer = arrayBuffer.slice(headerEnd);
-  state.headerStr = headerStr;
-  state.properties = properties;
-  state.vertexSize = vertexSize;
-  state.offsets = offsets;
-  state.dataView = new DataView(state.rawBuffer);
-  state.originalCount = vertexCount;
+  return {
+    headerStr, properties, vertexSize, offsets, vertexCount,
+    rawBuffer: arrayBuffer.slice(headerEnd),
+  };
+}
+
+function parsePLY(arrayBuffer) {
+  const p = parsePLYRaw(arrayBuffer);
+  state.rawBuffer = p.rawBuffer;
+  state.headerStr = p.headerStr;
+  state.properties = p.properties;
+  state.vertexSize = p.vertexSize;
+  state.offsets = p.offsets;
+  state.dataView = new DataView(p.rawBuffer);
+  state.originalCount = p.vertexCount;
 
   state.vertices = [];
-  for (let i = 0; i < vertexCount; i++) state.vertices.push({ srcIndex: i });
+  for (let i = 0; i < p.vertexCount; i++) state.vertices.push({ srcIndex: i });
 
   state.selected.clear(); state.rawSelected.clear();
   state.masked.clear();
   state.undoStack = [];
   state.redoStack = [];
 
-  // レイヤー初期化: 全頂点をデフォルトレイヤーに
   const allIndices = new Set();
-  for (let i = 0; i < vertexCount; i++) allIndices.add(i);
+  for (let i = 0; i < p.vertexCount; i++) allIndices.add(i);
   state.layers = [{ id: 0, name: 'Layer 0', visible: true, locked: false, vertexIndices: allIndices }];
   state.activeLayerId = 0;
   state.nextLayerId = 1;
 
-  return vertexCount;
+  return p.vertexCount;
+}
+
+// PLYファイルを既存データにマージ（追加読み込み）
+function mergePLY(arrayBuffer, fileName) {
+  const incoming = parsePLYRaw(arrayBuffer);
+
+  // スキーマ互換性チェック
+  if (incoming.properties.length !== state.properties.length) {
+    throw new Error('Cannot merge: different number of properties (' +
+      incoming.properties.length + ' vs ' + state.properties.length + ')');
+  }
+  for (let i = 0; i < incoming.properties.length; i++) {
+    if (incoming.properties[i].name !== state.properties[i].name ||
+        incoming.properties[i].type !== state.properties[i].type) {
+      throw new Error('Cannot merge: property mismatch at "' + incoming.properties[i].name + '"');
+    }
+  }
+
+  const startIdx = state.vertices.length;
+  const count = incoming.vertexCount;
+  const vs = incoming.vertexSize;
+  const srcBuf = new Uint8Array(incoming.rawBuffer);
+
+  // 全頂点をスタンドアロンコピーとして追加
+  for (let i = 0; i < count; i++) {
+    const data = new Uint8Array(vs);
+    data.set(srcBuf.subarray(i * vs, (i + 1) * vs));
+    state.vertices.push({ data });
+  }
+
+  // マージデータ用の新レイヤーを作成
+  const layerName = fileName.replace(/\.ply$/i, '');
+  addLayer(layerName);
+  updateLayerIndicesAfterAdd(startIdx, count);
+
+  state.selected.clear(); state.rawSelected.clear();
+  state.undoStack = [];
+  state.redoStack = [];
+
+  rebuildGeometry();
+  return count;
+}
+
+function mergeProject(json) {
+  const proj = JSON.parse(json);
+  if (!proj.version || !proj.ply || !proj.layers) throw new Error('Invalid project file');
+
+  // base64デコード → ArrayBuffer
+  const binary = atob(proj.ply);
+  const buf = new ArrayBuffer(binary.length);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+
+  const incoming = parsePLYRaw(buf);
+
+  // スキーマ互換性チェック
+  if (incoming.properties.length !== state.properties.length) {
+    throw new Error('Cannot merge: different number of properties (' +
+      incoming.properties.length + ' vs ' + state.properties.length + ')');
+  }
+  for (let i = 0; i < incoming.properties.length; i++) {
+    if (incoming.properties[i].name !== state.properties[i].name ||
+        incoming.properties[i].type !== state.properties[i].type) {
+      throw new Error('Cannot merge: property mismatch at "' + incoming.properties[i].name + '"');
+    }
+  }
+
+  const startIdx = state.vertices.length;
+  const count = incoming.vertexCount;
+  const vs = incoming.vertexSize;
+  const srcBuf = new Uint8Array(incoming.rawBuffer);
+
+  // 全頂点をスタンドアロンコピーとして追加
+  for (let i = 0; i < count; i++) {
+    const data = new Uint8Array(vs);
+    data.set(srcBuf.subarray(i * vs, (i + 1) * vs));
+    state.vertices.push({ data });
+  }
+
+  // プロジェクトのレイヤー構造をインポート（インデックスをオフセット）
+  let importedLayers = 0;
+  for (const l of proj.layers) {
+    const id = state.nextLayerId++;
+    const remapped = new Set();
+    for (const idx of l.vertexIndices) {
+      remapped.add(idx + startIdx);
+    }
+    state.layers.unshift({
+      id,
+      name: l.name,
+      visible: l.visible,
+      locked: !!l.locked,
+      vertexIndices: remapped,
+    });
+    importedLayers++;
+  }
+  if (importedLayers > 0) state.activeLayerId = state.layers[0].id;
+
+  state.selected.clear(); state.rawSelected.clear();
+  state.undoStack = [];
+  state.redoStack = [];
+
+  rebuildGeometry();
+  return { count, layers: importedLayers };
 }
 
 // ===== Geometry Management =====
@@ -2121,7 +2237,7 @@ function commitRotate() {
 }
 
 // ===== File Loading =====
-function loadFile(file) {
+function loadFile(file, mergeMode) {
   if (!file) return;
   setStatus('Loading: ' + file.name + '...');
   state.fileName = file.name;
@@ -2130,6 +2246,13 @@ function loadFile(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
+        const hasExisting = state.vertices.length > 0;
+        if (hasExisting && mergeMode) {
+          const result = mergeProject(e.target.result);
+          $('placeholder').style.display = 'none';
+          setStatus(`Merged project ${file.name} — ${result.count.toLocaleString()} splats, ${result.layers} layers added (total: ${state.vertices.length.toLocaleString()})`);
+          return;
+        }
         loadProject(e.target.result);
       } catch (err) {
         setStatus('Error: ' + err.message);
@@ -2141,6 +2264,14 @@ function loadFile(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
+        const hasExisting = state.vertices.length > 0;
+        if (hasExisting && mergeMode) {
+          const count = mergePLY(e.target.result, file.name);
+          $('placeholder').style.display = 'none';
+          setStatus(`Merged ${file.name} — ${count.toLocaleString()} splats added (total: ${state.vertices.length.toLocaleString()})`);
+          return;
+        }
+
         if (state.pointCloud) {
           scene.remove(state.pointCloud);
           state.pointCloud.geometry.dispose();
@@ -2169,21 +2300,38 @@ $('fileInput').addEventListener('change', () => loadFile($('fileInput').files[0]
 
 // Drag & drop (counter prevents flicker from child element events)
 let dragCounter = 0;
+function _updateDropOverlayText(shiftHeld) {
+  const hasData = state.vertices.length > 0;
+  if (hasData && shiftHeld) {
+    $('dropOverlayText').textContent = 'Drop to MERGE (Shift held)';
+  } else if (hasData) {
+    $('dropOverlayText').textContent = 'Drop to replace / Shift+Drop to merge';
+  } else {
+    $('dropOverlayText').textContent = 'Drop PLY file here';
+  }
+}
 viewport.addEventListener('dragenter', (e) => {
   e.preventDefault();
-  if (++dragCounter === 1) $('dropOverlay').classList.add('visible');
+  if (++dragCounter === 1) {
+    _updateDropOverlayText(e.shiftKey);
+    $('dropOverlay').classList.add('visible');
+  }
 });
-viewport.addEventListener('dragover', (e) => e.preventDefault());
+viewport.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  _updateDropOverlayText(e.shiftKey);
+});
 viewport.addEventListener('dragleave', () => {
   if (--dragCounter === 0) $('dropOverlay').classList.remove('visible');
 });
 viewport.addEventListener('drop', (e) => {
   e.preventDefault();
+  e.stopPropagation();
   dragCounter = 0;
   $('dropOverlay').classList.remove('visible');
   const file = e.dataTransfer.files[0];
   const lname = file ? file.name.toLowerCase() : '';
-  if (file && (lname.endsWith('.ply') || lname.endsWith('.plyproj'))) loadFile(file);
+  if (file && (lname.endsWith('.ply') || lname.endsWith('.plyproj'))) loadFile(file, e.shiftKey);
 });
 // body全体でもD&Dを受け付ける（サイドバー等にドロップした場合のフォールバック）
 document.body.addEventListener('dragover', (e) => e.preventDefault());
@@ -2191,7 +2339,7 @@ document.body.addEventListener('drop', (e) => {
   e.preventDefault();
   const file = e.dataTransfer.files[0];
   const lname = file ? file.name.toLowerCase() : '';
-  if (file && (lname.endsWith('.ply') || lname.endsWith('.plyproj'))) loadFile(file);
+  if (file && (lname.endsWith('.ply') || lname.endsWith('.plyproj'))) loadFile(file, e.shiftKey);
 });
 
 // ===== Camera Auto-fit =====
@@ -2375,6 +2523,7 @@ viewport.addEventListener('pointerdown', (e) => {
   cacheScreenPositions();
 
   if (state.currentTool === 'brush') {
+    _clearSimilarSource();
     brushSelectAt(coords.x, coords.y, e.altKey);
     updateSelectionDisplay();
   } else if (state.currentTool === 'rect') {
@@ -2460,6 +2609,7 @@ window.addEventListener('pointerup', (e) => {
   isDragging = false;
 
   if (state.currentTool === 'rect' && rectStart && rectEnd && state.pointCloud) {
+    _clearSimilarSource();
     rectSelectRegion();
     updateSelectionDisplay();
     rectStart = null;
@@ -2932,6 +3082,7 @@ $('btnDensifyCancel').addEventListener('click', cancelDensifyPreview);
 
 $('btnInvert').addEventListener('click', () => {
   if (!state.pointCloud) return;
+  _clearSimilarSource();
   const selectable = getSelectableVertexSet();
   const newSel = new Set();
   for (let i = 0; i < state.vertices.length; i++) {
@@ -2943,6 +3094,7 @@ $('btnInvert').addEventListener('click', () => {
 
 $('btnSelectAll').addEventListener('click', () => {
   if (!state.pointCloud) return;
+  _clearSimilarSource();
   state.selected.clear(); state.rawSelected.clear();
   const selectable = getSelectableVertexSet();
   for (let i = 0; i < state.vertices.length; i++) {
@@ -2952,6 +3104,7 @@ $('btnSelectAll').addEventListener('click', () => {
 });
 
 $('btnClearSel').addEventListener('click', () => {
+  _clearSimilarSource();
   state.selected.clear(); state.rawSelected.clear();
   updateSelectionDisplay();
 });
@@ -2959,6 +3112,7 @@ $('btnClearSel').addEventListener('click', () => {
 // ===== Select by Color =====
 function selectByColor(addToExisting) {
   if (!state.pointCloud || !state.baseColors) return;
+  _clearSimilarSource();
   const hex = $('selColor').value;
   const tr = parseFloat($('selColorThreshold').value);
   const target = new THREE.Color(hex);
@@ -2985,6 +3139,61 @@ function selectByColor(addToExisting) {
 
 $('btnSelectByColor').addEventListener('click', () => selectByColor(false));
 $('btnAddByColor').addEventListener('click', () => selectByColor(true));
+
+// Select Similar: 選択中ポイントの色を基準に同系色を全体から選択
+// ソース色を保持し、閾値変更→再実行で正しく絞り込めるようにする
+let _similarSourceColors = null; // Float32Array of source RGB values
+
+function _clearSimilarSource() { _similarSourceColors = null; }
+
+function selectSimilar(addToExisting) {
+  if (!state.pointCloud || !state.baseColors || state.selected.size === 0) return;
+  const base = state.baseColors;
+  const tr = parseFloat($('selColorThreshold').value);
+  const n = state.vertices.length;
+
+  // ソース色がなければ現在の選択から収集して保存
+  if (!_similarSourceColors) {
+    const selArr = Array.from(state.selected);
+    const maxSamples = 500;
+    const samples = selArr.length > maxSamples
+      ? selArr.sort(() => Math.random() - 0.5).slice(0, maxSamples)
+      : selArr;
+    _similarSourceColors = new Float32Array(samples.length * 3);
+    for (let s = 0; s < samples.length; s++) {
+      const j = samples[s] * 3;
+      _similarSourceColors[s * 3]     = base[j];
+      _similarSourceColors[s * 3 + 1] = base[j + 1];
+      _similarSourceColors[s * 3 + 2] = base[j + 2];
+    }
+  }
+
+  const selColors = _similarSourceColors;
+  const srcCount = selColors.length / 3;
+  const selectable = getSelectableVertexSet();
+  if (!addToExisting) { state.selected.clear(); state.rawSelected.clear(); }
+
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    if (state.masked.has(i) || !selectable.has(i)) continue;
+    const j = i * 3;
+    const r = base[j], g = base[j + 1], b = base[j + 2];
+    let match = false;
+    for (let k = 0; k < selColors.length; k += 3) {
+      const dr = r - selColors[k], dg = g - selColors[k + 1], db = b - selColors[k + 2];
+      if (dr * dr + dg * dg + db * db < tr * tr) { match = true; break; }
+    }
+    if (match) {
+      state.selected.add(i); state.rawSelected.add(i);
+      count++;
+    }
+  }
+  updateSelectionDisplay();
+  setStatus(`Selected ${count.toLocaleString()} similar-colored points (from ${srcCount.toLocaleString()} source points)`);
+}
+
+$('btnSelectSimilar').addEventListener('click', () => selectSimilar(false));
+$('btnAddSimilar').addEventListener('click', () => selectSimilar(true));
 
 $('selColorThreshold').addEventListener('input', () => {
   $('selColorThresholdVal').textContent = $('selColorThreshold').value;
@@ -3323,6 +3532,8 @@ function updateButtons() {
   $('btnSaveProj').disabled = !hasData;
   $('btnSelectByColor').disabled = !hasData;
   $('btnAddByColor').disabled = !hasData;
+  $('btnSelectSimilar').disabled = !hasSel;
+  $('btnAddSimilar').disabled = !hasSel;
 }
 
 // ===== Slider Displays =====

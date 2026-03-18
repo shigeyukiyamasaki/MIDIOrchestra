@@ -757,45 +757,26 @@
           <input type="range" id="plyFireThreshold" min="0.05" max="1" step="0.05" value="0.3">
           <span id="plyFireThresholdValue">0.3</span>
         </div>
-        <div class="setting-item fire-mode-sphere">
-          <label>中心X</label>
-          <input type="number" id="plyFireSphereX" step="0.01" value="0" style="width:70px">
-        </div>
-        <div class="setting-item fire-mode-sphere">
-          <label>中心Y</label>
-          <input type="number" id="plyFireSphereY" step="0.01" value="0" style="width:70px">
-        </div>
-        <div class="setting-item fire-mode-sphere">
-          <label>中心Z</label>
-          <input type="number" id="plyFireSphereZ" step="0.01" value="0" style="width:70px">
+        <div class="fire-mode-sphere">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;width:100%">
+            <div><label style="font-size:11px">中心X</label><input type="number" id="plyFireSphereX" step="0.01" value="0" style="width:100%"></div>
+            <div><label style="font-size:11px">中心Y</label><input type="number" id="plyFireSphereY" step="0.01" value="0" style="width:100%"></div>
+            <div><label style="font-size:11px">中心Z</label><input type="number" id="plyFireSphereZ" step="0.01" value="0" style="width:100%"></div>
+          </div>
         </div>
         <div class="setting-item fire-mode-sphere">
           <label>半径</label>
           <input type="number" id="plyFireSphereRadius" step="0.01" min="0.01" value="1" style="width:70px">
         </div>
-        <div class="setting-item fire-mode-box">
-          <label>X min</label>
-          <input type="number" id="plyFireBoxMinX" step="0.01" value="-1" style="width:70px">
-        </div>
-        <div class="setting-item fire-mode-box">
-          <label>X max</label>
-          <input type="number" id="plyFireBoxMaxX" step="0.01" value="1" style="width:70px">
-        </div>
-        <div class="setting-item fire-mode-box">
-          <label>Y min</label>
-          <input type="number" id="plyFireBoxMinY" step="0.01" value="-1" style="width:70px">
-        </div>
-        <div class="setting-item fire-mode-box">
-          <label>Y max</label>
-          <input type="number" id="plyFireBoxMaxY" step="0.01" value="1" style="width:70px">
-        </div>
-        <div class="setting-item fire-mode-box">
-          <label>Z min</label>
-          <input type="number" id="plyFireBoxMinZ" step="0.01" value="-1" style="width:70px">
-        </div>
-        <div class="setting-item fire-mode-box">
-          <label>Z max</label>
-          <input type="number" id="plyFireBoxMaxZ" step="0.01" value="1" style="width:70px">
+        <div class="fire-mode-box">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;width:100%">
+            <div><label style="font-size:11px">X min</label><input type="number" id="plyFireBoxMinX" step="0.01" value="-1" style="width:100%"></div>
+            <div><label style="font-size:11px">Y min</label><input type="number" id="plyFireBoxMinY" step="0.01" value="-1" style="width:100%"></div>
+            <div><label style="font-size:11px">Z min</label><input type="number" id="plyFireBoxMinZ" step="0.01" value="-1" style="width:100%"></div>
+            <div><label style="font-size:11px">X max</label><input type="number" id="plyFireBoxMaxX" step="0.01" value="1" style="width:100%"></div>
+            <div><label style="font-size:11px">Y max</label><input type="number" id="plyFireBoxMaxY" step="0.01" value="1" style="width:100%"></div>
+            <div><label style="font-size:11px">Z max</label><input type="number" id="plyFireBoxMaxZ" step="0.01" value="1" style="width:100%"></div>
+          </div>
         </div>
         <div class="setting-item">
           <label>強度</label>
@@ -859,17 +840,17 @@
         </div>
         <div class="setting-item">
           <label>サイズ</label>
-          <input type="range" id="plyFireSparkSize" min="0.05" max="5" step="0.05" value="0.3">
+          <input type="range" id="plyFireSparkSize" min="0.05" max="15" step="0.05" value="0.3">
           <span id="plyFireSparkSizeValue">0.3</span>
         </div>
         <div class="setting-item">
           <label>拡散</label>
-          <input type="range" id="plyFireSparkSpread" min="0" max="20" step="0.5" value="1">
+          <input type="range" id="plyFireSparkSpread" min="0" max="50" step="0.5" value="1">
           <span id="plyFireSparkSpreadValue">1</span>
         </div>
         <div class="setting-item">
           <label>揺れ</label>
-          <input type="range" id="plyFireSparkSwirl" min="0" max="20" step="0.5" value="1">
+          <input type="range" id="plyFireSparkSwirl" min="0" max="50" step="0.5" value="1">
           <span id="plyFireSparkSwirlValue">1</span>
         </div>
         <div class="setting-item">
@@ -1481,6 +1462,19 @@
           <span id="toonDarknessValue">0.5</span>
         </div>
       </div>
+      <div class="display-section">
+        <h4 class="setting-category"><span>Kuwahara（油絵風）</span><input type="checkbox" id="kuwaharaEnabled"></h4>
+        <div class="setting-item">
+          <label>半径</label>
+          <input type="range" id="kuwaharaRadius" min="1" max="12" step="1" value="4">
+          <span id="kuwaharaRadiusValue">4</span>
+        </div>
+        <div class="setting-item">
+          <label>強度</label>
+          <input type="range" id="kuwaharaStrength" min="0" max="1" step="0.05" value="1">
+          <span id="kuwaharaStrengthValue">1</span>
+        </div>
+      </div>
     </div>
 
     <!-- ノートタブ -->
@@ -1733,6 +1727,6 @@
 
   <script src="src/presetManager.js?v=20260313g"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260319f"></script>
+  <script type="module" src="src/main.js?v=20260319g"></script>
 </body>
 </html>
