@@ -434,7 +434,6 @@ const PIXEL_PALETTES = {
     return colors; // 6×6×6 = 216色
   })()
 };
-let smokeOverlayScene = null; // 煙用オーバーレイシーン（アウトライン除外）
 let flareScene = null;  // レンズフレア用オーバーレイシーン
 let flareCamera = null; // レンズフレア用正射影カメラ
 let flareMeshes = [];   // フレア要素のメッシュ配列
@@ -566,7 +565,6 @@ let plyFireSmokeColor = '#888888';
 let plyFireSmokeSpread = 0.5;
 let plyFireSmokeOpacity = 0.4;
 let plyFireSmokeDensity = 0.4;
-const plyFireSmokeParticles = [];
 const PLY_FIRE_SMOKE_MAX = 200;
 let plyFireSmokeTexture = null;
 let plyFireSparkEnabled = false;
@@ -2804,72 +2802,101 @@ function clearPlyFireEffect() {
   clearFireSparkParticles();
 }
 
-// ====== PLY炎スモークパーティクル（縦長ウィスプ） ======
-let _smokeTexOpacity = -1; // テクスチャ生成時の不透明度を記憶
-function getFireSmokeTexture() {
-  // 不透明度が変わったらテクスチャを再生成
+// ====== PLY炎スモーク（PointCloud方式） ======
+let _smokePointCloud = null;   // THREE.Points オブジェクト
+let _smokeGeometry = null;     // BufferGeometry
+let _smokeMaterial = null;     // PointsMaterial
+let _smokeParticleData = [];   // 各パーティクルの状態 [{x,y,z,vx,vy,vz,age,lifetime,initSize}]
+let _smokeTexOpacity = -1;
+
+function _getSmokePointTexture() {
   if (plyFireSmokeTexture && _smokeTexOpacity === plyFireSmokeOpacity) return plyFireSmokeTexture;
   if (plyFireSmokeTexture) plyFireSmokeTexture.dispose();
   _smokeTexOpacity = plyFireSmokeOpacity;
-  const w = 32, h = 96;
+  const s = 64;
   const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = s;
+  canvas.height = s;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, s, s);
   ctx.globalCompositeOperation = 'destination-in';
-  const grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, h / 2);
-  // 不透明度が高い → 中心の不透明部分が広い（背景を覆う）
-  // 不透明度が低い → すぐ透明にフェード（背景が透ける、乗算的）
+  const grad = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
   const op = plyFireSmokeOpacity;
-  const solidEnd = op * 0.4; // 不透明な中心部の割合
-  const peakAlpha = 0.3 + op * 0.7; // 中心のアルファ値も不透明度で制御
+  const solidEnd = op * 0.4;
+  const peakAlpha = 0.3 + op * 0.7;
   grad.addColorStop(0, `rgba(255,255,255,${peakAlpha})`);
   if (solidEnd > 0.01) grad.addColorStop(solidEnd, `rgba(255,255,255,${peakAlpha})`);
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, s, s);
   plyFireSmokeTexture = new THREE.CanvasTexture(canvas);
   plyFireSmokeTexture.premultiplyAlpha = false;
   return plyFireSmokeTexture;
 }
 
-function _spawnFireSmoke(worldPos) {
-  const tex = getFireSmokeTexture();
-  const col = new THREE.Color(plyFireSmokeColor);
-  const mat = new THREE.SpriteMaterial({
-    map: tex,
+function _ensureSmokePointCloud() {
+  if (_smokePointCloud) return;
+  const max = PLY_FIRE_SMOKE_MAX;
+  _smokeGeometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(max * 3);
+  const colors = new Float32Array(max * 3);
+  const sizes = new Float32Array(max);
+  const alphas = new Float32Array(max);
+  _smokeGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  _smokeGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  _smokeGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  _smokeGeometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+  _smokeGeometry.setDrawRange(0, 0);
+
+  _smokeMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      pointTexture: { value: _getSmokePointTexture() },
+    },
+    vertexShader: `
+      attribute float size;
+      attribute float alpha;
+      attribute vec3 color;
+      varying float vAlpha;
+      varying vec3 vColor;
+      void main() {
+        vAlpha = alpha;
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D pointTexture;
+      varying float vAlpha;
+      varying vec3 vColor;
+      void main() {
+        vec4 tex = texture2D(pointTexture, gl_PointCoord);
+        if (tex.a < 0.01) discard;
+        gl_FragColor = vec4(vColor, tex.a * vAlpha);
+      }
+    `,
     transparent: true,
-    opacity: plyFireSmokeDensity, // 濃度 = 煙の存在自体の強さ
-    color: col,
     depthWrite: false,
-    depthTest: false,
+    depthTest: true,
   });
-  const sprite = new THREE.Sprite(mat);
-  const s = plyFireSmokeSize;
-  sprite.scale.set(s * 0.4, s * 1.2, 1);
-  sprite.position.copy(worldPos);
-  sprite.userData = {
-    age: 0,
-    lifetime: 2.0 + Math.random() * 2.0,
-    vx: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0,
-    vy: plyFireSmokeRiseSpeed,
-    vz: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0,
-    initOpacity: plyFireSmokeDensity, // 濃度ベース
-    initScaleX: s * 0.4,
-    initScaleY: s * 1.2,
-  };
-  smokeOverlayScene.add(sprite);
-  return sprite;
+
+  _smokePointCloud = new THREE.Points(_smokeGeometry, _smokeMaterial);
+  _smokePointCloud.frustumCulled = false;
+  scene.add(_smokePointCloud);
 }
 
 function updateFireSmokeParticles() {
-  if (!plyFireSmokeEnabled || !plyFireIndices || plyFireIndices.length === 0) return;
+  if (!plyFireSmokeEnabled || !plyFireIndices || plyFireIndices.length === 0) {
+    if (_smokePointCloud) _smokeGeometry.setDrawRange(0, 0);
+    return;
+  }
+  _ensureSmokePointCloud();
   const dt = 0.016;
   const maxCount = isMobileDevice ? 80 : PLY_FIRE_SMOKE_MAX;
 
-  // 炎上部からスポーン
+  // スポーン
   if (glbModel) {
     const orig = plyFireOrigPos;
     let minH = Infinity, maxH = -Infinity;
@@ -2887,7 +2914,7 @@ function updateFireSmokeParticles() {
     });
 
     if (currentPositions) {
-      const spawnCount = Math.min(3, maxCount - plyFireSmokeParticles.length);
+      const spawnCount = Math.min(3, maxCount - _smokeParticleData.length);
       for (let s = 0; s < spawnCount; s++) {
         let attempts = 0;
         while (attempts < 10) {
@@ -2901,7 +2928,16 @@ function updateFireSmokeParticles() {
               currentPositions[i * 3 + 2]
             );
             glbModel.localToWorld(wp);
-            plyFireSmokeParticles.push(_spawnFireSmoke(wp));
+            _smokeParticleData.push({
+              x: wp.x, y: wp.y, z: wp.z,
+              vx: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0,
+              vy: plyFireSmokeRiseSpeed,
+              vz: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0,
+              age: 0,
+              lifetime: 2.0 + Math.random() * 2.0,
+              initSize: plyFireSmokeSize,
+              seed: Math.random() * 100,
+            });
             break;
           }
           attempts++;
@@ -2911,38 +2947,66 @@ function updateFireSmokeParticles() {
   }
 
   // 更新
-  for (let i = plyFireSmokeParticles.length - 1; i >= 0; i--) {
-    const p = plyFireSmokeParticles[i];
-    const ud = p.userData;
-    ud.age += dt;
-    if (ud.age >= ud.lifetime) {
-      smokeOverlayScene.remove(p);
-      p.material.dispose();
-      plyFireSmokeParticles.splice(i, 1);
+  const spread = plyFireSmokeSpread;
+  for (let i = _smokeParticleData.length - 1; i >= 0; i--) {
+    const d = _smokeParticleData[i];
+    d.age += dt;
+    if (d.age >= d.lifetime) {
+      _smokeParticleData.splice(i, 1);
       continue;
     }
-    const t = ud.age / ud.lifetime;
-    const spread = plyFireSmokeSpread;
-    // スワール：時間に応じた揺れを位置に直接反映
-    const swirlX = Math.sin(ud.age * 2.0 + i * 0.7) * spread * dt;
-    const swirlZ = Math.cos(ud.age * 1.5 + i * 1.1) * spread * dt;
-    p.position.x += ud.vx * dt + swirlX;
-    p.position.y += ud.vy * dt;
-    p.position.z += ud.vz * dt + swirlZ;
-    ud.vy *= 0.998;
-    const fade = t < 0.2 ? t / 0.2 : 1.0 - (t - 0.2) / 0.8;
-    p.material.opacity = ud.initOpacity * fade;
-    const grow = 1.0 + t * 2.5;
-    p.scale.set(ud.initScaleX * grow, ud.initScaleY * grow, 1);
+    const swirlX = Math.sin(d.age * 2.0 + d.seed * 7.3) * spread * dt;
+    const swirlZ = Math.cos(d.age * 1.5 + d.seed * 11.1) * spread * dt;
+    d.x += d.vx * dt + swirlX;
+    d.y += d.vy * dt;
+    d.z += d.vz * dt + swirlZ;
+    d.vy *= 0.998;
   }
+
+  // BufferGeometry に反映
+  const posArr = _smokeGeometry.attributes.position.array;
+  const colArr = _smokeGeometry.attributes.color.array;
+  const sizeArr = _smokeGeometry.attributes.size.array;
+  const alphaArr = _smokeGeometry.attributes.alpha.array;
+  const col = new THREE.Color(plyFireSmokeColor);
+  const density = plyFireSmokeDensity;
+  const count = _smokeParticleData.length;
+
+  for (let i = 0; i < count; i++) {
+    const d = _smokeParticleData[i];
+    const t = d.age / d.lifetime;
+    posArr[i * 3] = d.x;
+    posArr[i * 3 + 1] = d.y;
+    posArr[i * 3 + 2] = d.z;
+    colArr[i * 3] = col.r;
+    colArr[i * 3 + 1] = col.g;
+    colArr[i * 3 + 2] = col.b;
+    const grow = 1.0 + t * 2.5;
+    sizeArr[i] = d.initSize * grow;
+    const fade = t < 0.2 ? t / 0.2 : 1.0 - (t - 0.2) / 0.8;
+    alphaArr[i] = density * fade;
+  }
+
+  _smokeGeometry.attributes.position.needsUpdate = true;
+  _smokeGeometry.attributes.color.needsUpdate = true;
+  _smokeGeometry.attributes.size.needsUpdate = true;
+  _smokeGeometry.attributes.alpha.needsUpdate = true;
+  _smokeGeometry.setDrawRange(0, count);
+
+  // テクスチャ更新
+  _smokeMaterial.uniforms.pointTexture.value = _getSmokePointTexture();
 }
 
 function clearFireSmokeParticles() {
-  for (const p of plyFireSmokeParticles) {
-    smokeOverlayScene.remove(p);
-    p.material.dispose();
+  _smokeParticleData.length = 0;
+  if (_smokePointCloud) {
+    scene.remove(_smokePointCloud);
+    _smokeGeometry.dispose();
+    _smokeMaterial.dispose();
+    _smokePointCloud = null;
+    _smokeGeometry = null;
+    _smokeMaterial = null;
   }
-  plyFireSmokeParticles.length = 0;
   if (plyFireSmokeTexture) {
     plyFireSmokeTexture.dispose();
     plyFireSmokeTexture = null;
@@ -3854,17 +3918,6 @@ function setupThreeJS() {
   sunLight.shadow.camera.bottom = -500;
   sunLight.shadow.camera.near = 0.1;
   sunLight.shadow.camera.far = 2000;
-
-  // 煙オーバーレイシーン（アウトライン除外用）
-  smokeOverlayScene = new THREE.Scene();
-  // 煙をターゲットバッファに描画するヘルパー（アウトライン除外 + ピクセル化対象）
-  window._renderSmokeOverlay = function(target) {
-    if (!plyFireSmokeEnabled || plyFireSmokeParticles.length === 0) return;
-    renderer.setRenderTarget(target);
-    renderer.autoClear = false;
-    renderer.render(smokeOverlayScene, camera);
-    renderer.autoClear = true;
-  };
 
   // レンズフレア（カスタムスクリーン空間実装）
   // dist: 0=光源, 0.5=画面中心, 1.0=反対側（ミラー）
@@ -15939,15 +15992,11 @@ function animate() {
       toonPass.renderToScreen = false;
       syncToonDepth();
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
-      // 煙をwriteBufferに描画（トゥーン後=アウトライン除外、ピクセル前=ピクセル化対象）
-      window._renderSmokeOverlay(composer.writeBuffer);
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.readBuffer, composer.writeBuffer);
       finalBuffer = composer.readBuffer;
     } else {
       // ピクセル→トゥーン（除外モード: 輪郭は細いまま）or トゥーンなし
-      // 煙をreadBufferに描画（ピクセル化対象）
-      window._renderSmokeOverlay(composer.readBuffer);
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.writeBuffer, composer.readBuffer);
       if (useToon) {
@@ -16022,8 +16071,6 @@ function animate() {
     toonPass.renderToScreen = true;
     syncToonDepth();
     toonPass.render(renderer, null, composer.readBuffer);
-    // 煙を画面に描画（トゥーン後=アウトライン除外）
-    window._renderSmokeOverlay(null);
   } else if (useFlatColor) {
     // 平塗りのみON（ピクセルアートOFF・トゥーンOFF）: バッファに描画→フィルタ→画面出力
     composer.renderToScreen = false;
@@ -16066,8 +16113,6 @@ function animate() {
     // 平塗りフィルタ適用
     applyFlatColor();
 
-    // 煙をreadBufferに描画
-    window._renderSmokeOverlay(composer.readBuffer);
     // readBufferから画面に出力
     _pixelCopyPass.renderToScreen = true;
     _pixelCopyPass.render(renderer, null, composer.readBuffer);
@@ -16102,8 +16147,6 @@ function animate() {
       renderer.render(flareScene, flareCamera);
       renderer.autoClear = true;
     }
-    // 煙を画面に描画
-    window._renderSmokeOverlay(null);
   }
 
   // 色数モニター（ピクセルアートON時のみ）
