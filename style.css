@@ -2194,6 +2194,110 @@ details.setting-section[open] > summary.setting-category > span::before {
   padding: 30px 0;
 }
 
+/* メディアライブラリヘッダー */
+.media-library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.media-library-header h3 {
+  margin: 0;
+}
+.media-library-actions {
+  display: flex;
+  gap: 8px;
+}
+.media-action-btn {
+  padding: 4px 12px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.05);
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+.media-action-btn:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: #888;
+}
+.media-action-btn.active {
+  background: rgba(79, 195, 247, 0.2);
+  border-color: #4fc3f7;
+  color: #4fc3f7;
+}
+.media-action-danger {
+  border-color: #c62828;
+  color: #ef5350;
+}
+.media-action-danger:hover {
+  background: rgba(198, 40, 40, 0.3);
+}
+
+/* 選択モード チェックマーク */
+.media-grid-item .media-select-check,
+.media-list-item .media-select-check {
+  display: none;
+}
+.media-grid.select-mode .media-grid-item .media-select-check {
+  display: flex;
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border: 2px solid #888;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.5);
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  font-size: 12px;
+  z-index: 2;
+  pointer-events: none;
+}
+.media-grid.select-mode .media-grid-item.selected .media-select-check {
+  border-color: #4fc3f7;
+  background: #4fc3f7;
+  color: #000;
+}
+.media-grid.select-mode .media-grid-item.selected {
+  border-color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.15);
+}
+.media-grid.select-mode .media-grid-item .media-download-btn,
+.media-grid.select-mode .media-grid-item .media-delete-btn {
+  display: none;
+}
+
+/* リスト選択モード */
+.media-grid.select-mode .media-list-item .media-select-check {
+  display: flex;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #888;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.3);
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  font-size: 10px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.media-grid.select-mode .media-list-item.selected .media-select-check {
+  border-color: #4fc3f7;
+  background: #4fc3f7;
+  color: #000;
+}
+.media-grid.select-mode .media-list-item.selected {
+  background: rgba(79, 195, 247, 0.15);
+}
+.media-grid.select-mode .media-list-item .media-list-delete {
+  display: none;
+}
+
 /* ============================================
    360度書き出しモーダル
    ============================================ */

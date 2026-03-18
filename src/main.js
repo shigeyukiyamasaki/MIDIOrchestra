@@ -387,6 +387,7 @@ let composer = null;    // EffectComposer（ブルーム用）
 let bloomPass = null;   // UnrealBloomPass
 let pixelPass = null;   // ピクセレーションShaderPass
 let toonPass = null;    // トゥーンレンダリングShaderPass
+let flatColorPass = null; // 平塗りバイラテラルフィルタShaderPass
 let _depthColorRT = null;        // 深度をカラーとして描画するRenderTarget
 let _depthOverrideMaterial = null; // 深度書き出し用マテリアル
 let _depthChromaMaterial = null;   // クロマキー対応深度マテリアル
@@ -433,6 +434,7 @@ const PIXEL_PALETTES = {
     return colors; // 6×6×6 = 216色
   })()
 };
+let smokeOverlayScene = null; // 煙用オーバーレイシーン（アウトライン除外）
 let flareScene = null;  // レンズフレア用オーバーレイシーン
 let flareCamera = null; // レンズフレア用正射影カメラ
 let flareMeshes = [];   // フレア要素のメッシュ配列
@@ -537,6 +539,50 @@ let plySmokeCycle = 8;
 let plySmokeIndices = null;
 let plySmokeOrigPos = null;
 let plySmokeTime = 0;
+
+let plyFireEnabled = false;
+let plyFireMode = 'color';  // 'color' or 'sphere'
+let plyFireColor = '#cc4400';
+let plyFireThreshold = 0.3;
+let plyFireSphereX = 0;
+let plyFireSphereY = 0;
+let plyFireSphereZ = 0;
+let plyFireSphereRadius = 1.0;
+let plyFireBoxMinX = -1;
+let plyFireBoxMaxX = 1;
+let plyFireBoxMinY = -1;
+let plyFireBoxMaxY = 1;
+let plyFireBoxMinZ = -1;
+let plyFireBoxMaxZ = 1;
+let plyFireIntensity = 1.0;
+let plyFireSpeed = 1.0;
+let plyFireFlicker = 0.5;
+let plyFireGlow = 2.0;       // 発光の明るさ倍率
+let plyFireGlowColor = '#ff4400'; // 発光色
+let plyFireSmokeEnabled = false;
+let plyFireSmokeRiseSpeed = 2.0;
+let plyFireSmokeSize = 1.0;
+let plyFireSmokeColor = '#888888';
+let plyFireSmokeSpread = 0.5;
+let plyFireSmokeOpacity = 0.4;
+let plyFireSmokeDensity = 0.4;
+const plyFireSmokeParticles = [];
+const PLY_FIRE_SMOKE_MAX = 200;
+let plyFireSmokeTexture = null;
+let plyFireSparkEnabled = false;
+let plyFireSparkRiseSpeed = 3.0;
+let plyFireSparkSize = 0.3;
+let plyFireSparkColor = '#ffaa33';
+let plyFireSparkSpread = 1.0;
+let plyFireSparkDensity = 0.8;
+let plyFireSparkSwirl = 1.0;
+const plyFireSparkParticles = [];
+const PLY_FIRE_SPARK_MAX = 150;
+let plyFireSparkTexture = null;
+let plyFireIndices = null;
+let plyFireOrigPos = null;
+let plyFireOrigCol = null;   // 元の頂点カラー
+let plyFireTime = 0;
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
@@ -2001,6 +2047,39 @@ function syncWaterSettingsFromDOM() {
   plySmokeSwirl = gv('plySmokeSwirl', 0.5);
   plySmokeSpread = gv('plySmokeSpread', 0.5);
   plySmokeCycle = gv('plySmokeCycle', 8);
+  plyFireEnabled = gc('plyFireEnabled');
+  plyFireMode = gs('plyFireMode', 'color');
+  plyFireColor = gs('plyFireColor', '#cc4400');
+  plyFireThreshold = gv('plyFireThreshold', 0.3);
+  plyFireSphereX = gv('plyFireSphereX', 0);
+  plyFireSphereY = gv('plyFireSphereY', 0);
+  plyFireSphereZ = gv('plyFireSphereZ', 0);
+  plyFireSphereRadius = gv('plyFireSphereRadius', 1.0);
+  plyFireBoxMinX = gv('plyFireBoxMinX', -1);
+  plyFireBoxMaxX = gv('plyFireBoxMaxX', 1);
+  plyFireBoxMinY = gv('plyFireBoxMinY', -1);
+  plyFireBoxMaxY = gv('plyFireBoxMaxY', 1);
+  plyFireBoxMinZ = gv('plyFireBoxMinZ', -1);
+  plyFireBoxMaxZ = gv('plyFireBoxMaxZ', 1);
+  plyFireIntensity = gv('plyFireIntensity', 1.0);
+  plyFireSpeed = gv('plyFireSpeed', 1.0);
+  plyFireFlicker = gv('plyFireFlicker', 0.5);
+  plyFireGlow = gv('plyFireGlow', 2.0);
+  plyFireGlowColor = gs('plyFireGlowColor', '#ff4400');
+  plyFireSmokeEnabled = gc('plyFireSmokeEnabled', false);
+  plyFireSmokeRiseSpeed = gv('plyFireSmokeRiseSpeed', 2.0);
+  plyFireSmokeSize = gv('plyFireSmokeSize', 1.0);
+  plyFireSmokeColor = gs('plyFireSmokeColor', '#888888');
+  plyFireSmokeSpread = gv('plyFireSmokeSpread', 0.5);
+  plyFireSmokeOpacity = gv('plyFireSmokeOpacity', 0.4);
+  plyFireSmokeDensity = gv('plyFireSmokeDensity', 0.4);
+  plyFireSparkEnabled = gc('plyFireSparkEnabled', false);
+  plyFireSparkRiseSpeed = gv('plyFireSparkRiseSpeed', 3.0);
+  plyFireSparkSize = gv('plyFireSparkSize', 0.3);
+  plyFireSparkColor = gs('plyFireSparkColor', '#ffaa33');
+  plyFireSparkSpread = gv('plyFireSparkSpread', 1.0);
+  plyFireSparkDensity = gv('plyFireSparkDensity', 0.8);
+  plyFireSparkSwirl = gv('plyFireSparkSwirl', 1.0);
 }
 
 function buildWaterParticles() {
@@ -2483,6 +2562,511 @@ function clearPlySmokeEffect() {
   });
   plySmokeIndices = null;
   plySmokeOrigPos = null;
+}
+
+// ====== PLY炎エフェクト ======
+function setupPlyFireEffect() {
+  plyFireIndices = null;
+  plyFireOrigPos = null;
+  plyFireOrigCol = null;
+  if (!plyFireEnabled || !glbModel || !glbModel.userData.is3DGS) return;
+
+  const indices = [];
+  const origPositions = [];
+  const origColors = [];
+
+  if (plyFireMode === 'sphere') {
+    // 球体範囲で頂点を選択
+    const cx = plyFireSphereX, cy = plyFireSphereY, cz = plyFireSphereZ;
+    const r2 = plyFireSphereRadius * plyFireSphereRadius;
+
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.geometry) return;
+      const posAttr = child.geometry.attributes.position;
+      if (!posAttr) return;
+      const pos = posAttr.array;
+      const count = posAttr.count;
+
+      for (let i = 0; i < count; i++) {
+        const dx = pos[i * 3] - cx, dy = pos[i * 3 + 1] - cy, dz = pos[i * 3 + 2] - cz;
+        if (dx * dx + dy * dy + dz * dz < r2) {
+          indices.push(i);
+          origPositions.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+        }
+      }
+    });
+  } else if (plyFireMode === 'box') {
+    // バウンディングボックスで頂点を選択
+    const mnX = plyFireBoxMinX, mxX = plyFireBoxMaxX;
+    const mnY = plyFireBoxMinY, mxY = plyFireBoxMaxY;
+    const mnZ = plyFireBoxMinZ, mxZ = plyFireBoxMaxZ;
+
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.geometry) return;
+      const posAttr = child.geometry.attributes.position;
+      if (!posAttr) return;
+      const pos = posAttr.array;
+      const count = posAttr.count;
+
+      for (let i = 0; i < count; i++) {
+        const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+        if (x >= mnX && x <= mxX && y >= mnY && y <= mxY && z >= mnZ && z <= mxZ) {
+          indices.push(i);
+          origPositions.push(x, y, z);
+        }
+      }
+    });
+  } else {
+    // 色マッチングで頂点を選択
+    const target = new THREE.Color(plyFireColor);
+    const threshold = plyFireThreshold;
+
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.geometry) return;
+      const colAttr = child.geometry.attributes.color;
+      const posAttr = child.geometry.attributes.position;
+      if (!colAttr || !posAttr) return;
+      const col = colAttr.array;
+      const pos = posAttr.array;
+      const count = posAttr.count;
+
+      for (let i = 0; i < count; i++) {
+        const r = col[i * 3], g = col[i * 3 + 1], b = col[i * 3 + 2];
+        const dr = r - target.r, dg = g - target.g, db = b - target.b;
+        const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+        if (dist < threshold) {
+          indices.push(i);
+          origPositions.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+        }
+      }
+    });
+  }
+
+  if (indices.length > 0) {
+    plyFireIndices = new Uint32Array(indices);
+    plyFireOrigPos = new Float32Array(origPositions);
+
+    // 元カラーを収集
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.geometry) return;
+      const colAttr = child.geometry.attributes.color;
+      if (!colAttr) return;
+      const col = colAttr.array;
+      for (let j = 0; j < indices.length; j++) {
+        const i = indices[j];
+        origColors.push(col[i * 3], col[i * 3 + 1], col[i * 3 + 2]);
+      }
+    });
+    plyFireOrigCol = new Float32Array(origColors);
+
+    console.log(`[PlyFire] ${indices.length} vertices matched (mode: ${plyFireMode})`);
+  } else {
+    console.log(`[PlyFire] No vertices matched (mode: ${plyFireMode})`);
+  }
+}
+
+function updatePlyFireEffect() {
+  if (!plyFireIndices || !glbModel || !glbModel.userData.is3DGS) return;
+
+  plyFireTime += 0.016 * plyFireSpeed;
+  const t = plyFireTime;
+  const intensity = plyFireIntensity;
+  const flicker = plyFireFlicker;
+
+  // 上昇方向の決定（煙と同様、ワールドY上方向をローカル座標に変換）
+  const localUp = new THREE.Vector3();
+  const localRight = new THREE.Vector3();
+  const localForward = new THREE.Vector3();
+  const worldUp = new THREE.Vector3(0, 1, 0);
+  const invMatrix = new THREE.Matrix4().copy(glbModel.matrixWorld).invert();
+  localUp.copy(worldUp).transformDirection(invMatrix).normalize();
+  if (Math.abs(localUp.x) < 0.9) {
+    localRight.crossVectors(localUp, new THREE.Vector3(1, 0, 0)).normalize();
+  } else {
+    localRight.crossVectors(localUp, new THREE.Vector3(0, 0, 1)).normalize();
+  }
+  localForward.crossVectors(localRight, localUp).normalize();
+
+  // 選択頂点のバウンディングボックスを計算（スケール自動適応用）
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+  const orig = plyFireOrigPos;
+  for (let j = 0; j < plyFireIndices.length; j++) {
+    const ox = orig[j * 3], oy = orig[j * 3 + 1], oz = orig[j * 3 + 2];
+    if (ox < minX) minX = ox; if (ox > maxX) maxX = ox;
+    if (oy < minY) minY = oy; if (oy > maxY) maxY = oy;
+    if (oz < minZ) minZ = oz; if (oz > maxZ) maxZ = oz;
+  }
+  const yRange = maxY - minY || 1;
+  // 変位のスケール基準: バウンディングボックス対角線の長さ
+  const bbDiag = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2 + (maxZ - minZ) ** 2) || 1;
+  const scale = bbDiag * 0.15; // 対角線の15%を基準変位量
+
+  // 発光色をパース（ループ外で1回だけ）
+  const _gc = new THREE.Color(plyFireGlowColor);
+  const gcR = _gc.r, gcG = _gc.g, gcB = _gc.b;
+
+  glbModel.traverse((child) => {
+    if (!child.isPoints || !child.geometry) return;
+    const posAttr = child.geometry.attributes.position;
+    if (!posAttr) return;
+    const pos = posAttr.array;
+    const colAttr = child.geometry.attributes.color;
+    const col = colAttr ? colAttr.array : null;
+    const indices = plyFireIndices;
+    let colorDirty = false;
+
+    for (let j = 0; j < indices.length; j++) {
+      const i = indices[j];
+      const ox = orig[j * 3], oy = orig[j * 3 + 1], oz = orig[j * 3 + 2];
+
+      // 高さの正規化（0=底、1=頂上）
+      const h = (oy - minY) / yRange;
+
+      // 水平位置による微小オフセット（同じ高さでも位置で少しずれる）
+      const posOfs = ox * 3.1 + oz * 5.7;
+
+      // === 下から上に伝播するトラベリングウェーブ ===
+      // 高さをフェーズに使い、timeを引くことで波が下→上に移動する
+      // 複数オクターブで自然な炎の揺らめき
+      const wave1 = Math.sin(h * 6.0 - t * 3.0 + posOfs * 0.3) * 0.5;       // 大きなうねり
+      const wave2 = Math.sin(h * 12.0 - t * 5.0 + posOfs * 0.7) * 0.25;     // 中くらいの揺れ
+      const wave3 = Math.sin(h * 20.0 - t * 8.0 + posOfs * 1.1) * 0.12;     // 細かいフリッカー
+
+      // 横方向の変位（上ほど大きく揺れる）
+      const envelope = h * h; // 二次曲線: 根元はほぼ動かず、先端が大きく揺れる
+      const sideH = (wave1 + wave2 + wave3) * envelope * intensity * scale * flicker;
+
+      // 前後方向にも別周波数で揺れ（立体感）
+      const waveF1 = Math.cos(h * 7.0 - t * 3.5 + posOfs * 0.5) * 0.4;
+      const waveF2 = Math.cos(h * 15.0 - t * 6.0 + posOfs * 0.9) * 0.2;
+      const sideF = (waveF1 + waveF2) * envelope * intensity * scale * flicker * 0.6;
+
+      // 上方向: 先端が伸び縮みする（炎の舌が伸びる感じ）
+      const riseWave = Math.sin(h * 4.0 - t * 2.5 + posOfs * 0.4) * 0.3 + 0.15;
+      const riseAmount = riseWave * envelope * intensity * scale;
+
+      // ローカル座標での変位を合成
+      const dx = localUp.x * riseAmount + localRight.x * sideH + localForward.x * sideF;
+      const dy = localUp.y * riseAmount + localRight.y * sideH + localForward.y * sideF;
+      const dz = localUp.z * riseAmount + localRight.z * sideH + localForward.z * sideF;
+
+      pos[i * 3]     = ox + dx;
+      pos[i * 3 + 1] = oy + dy;
+      pos[i * 3 + 2] = oz + dz;
+
+      // 発光フリッカー（元の明るさに応じて発光色を加算: 白い部分は白のまま、暗い部分に発光色が乗る）
+      if (col && plyFireOrigCol) {
+        const oc_r = plyFireOrigCol[j * 3], oc_g = plyFireOrigCol[j * 3 + 1], oc_b = plyFireOrigCol[j * 3 + 2];
+        const lum = oc_r * 0.299 + oc_g * 0.587 + oc_b * 0.114;
+        const weight = 1.0 - Math.min(lum, 1.0);
+        const glowWave = Math.sin(h * 5.0 - t * 3.0 + posOfs * 0.4) * 0.3 + 0.7;
+        const glowAmt = glowWave * plyFireGlow * weight;
+        col[i * 3]     = Math.min(oc_r + gcR * glowAmt, 3.0);
+        col[i * 3 + 1] = Math.min(oc_g + gcG * glowAmt, 3.0);
+        col[i * 3 + 2] = Math.min(oc_b + gcB * glowAmt, 3.0);
+        colorDirty = true;
+      }
+    }
+    posAttr.needsUpdate = true;
+    if (colorDirty && colAttr) colAttr.needsUpdate = true;
+  });
+}
+
+function clearPlyFireEffect() {
+  if (!plyFireIndices || !glbModel) return;
+  glbModel.traverse((child) => {
+    if (!child.isPoints || !child.geometry) return;
+    const posAttr = child.geometry.attributes.position;
+    if (!posAttr) return;
+    const pos = posAttr.array;
+    const colAttr = child.geometry.attributes.color;
+    const col = colAttr ? colAttr.array : null;
+    for (let j = 0; j < plyFireIndices.length; j++) {
+      const i = plyFireIndices[j];
+      pos[i * 3]     = plyFireOrigPos[j * 3];
+      pos[i * 3 + 1] = plyFireOrigPos[j * 3 + 1];
+      pos[i * 3 + 2] = plyFireOrigPos[j * 3 + 2];
+      if (col && plyFireOrigCol) {
+        col[i * 3]     = plyFireOrigCol[j * 3];
+        col[i * 3 + 1] = plyFireOrigCol[j * 3 + 1];
+        col[i * 3 + 2] = plyFireOrigCol[j * 3 + 2];
+      }
+    }
+    posAttr.needsUpdate = true;
+    if (col && colAttr) colAttr.needsUpdate = true;
+  });
+  plyFireIndices = null;
+  plyFireOrigPos = null;
+  plyFireOrigCol = null;
+  clearFireSmokeParticles();
+  clearFireSparkParticles();
+}
+
+// ====== PLY炎スモークパーティクル（縦長ウィスプ） ======
+let _smokeTexOpacity = -1; // テクスチャ生成時の不透明度を記憶
+function getFireSmokeTexture() {
+  // 不透明度が変わったらテクスチャを再生成
+  if (plyFireSmokeTexture && _smokeTexOpacity === plyFireSmokeOpacity) return plyFireSmokeTexture;
+  if (plyFireSmokeTexture) plyFireSmokeTexture.dispose();
+  _smokeTexOpacity = plyFireSmokeOpacity;
+  const w = 32, h = 96;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'destination-in';
+  const grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, h / 2);
+  // 不透明度が高い → 中心の不透明部分が広い（背景を覆う）
+  // 不透明度が低い → すぐ透明にフェード（背景が透ける、乗算的）
+  const op = plyFireSmokeOpacity;
+  const solidEnd = op * 0.4; // 不透明な中心部の割合
+  const peakAlpha = 0.3 + op * 0.7; // 中心のアルファ値も不透明度で制御
+  grad.addColorStop(0, `rgba(255,255,255,${peakAlpha})`);
+  if (solidEnd > 0.01) grad.addColorStop(solidEnd, `rgba(255,255,255,${peakAlpha})`);
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+  plyFireSmokeTexture = new THREE.CanvasTexture(canvas);
+  plyFireSmokeTexture.premultiplyAlpha = false;
+  return plyFireSmokeTexture;
+}
+
+function _spawnFireSmoke(worldPos) {
+  const tex = getFireSmokeTexture();
+  const col = new THREE.Color(plyFireSmokeColor);
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    opacity: plyFireSmokeDensity, // 濃度 = 煙の存在自体の強さ
+    color: col,
+    depthWrite: false,
+    depthTest: false,
+  });
+  const sprite = new THREE.Sprite(mat);
+  const s = plyFireSmokeSize;
+  sprite.scale.set(s * 0.4, s * 1.2, 1);
+  sprite.position.copy(worldPos);
+  sprite.userData = {
+    age: 0,
+    lifetime: 2.0 + Math.random() * 2.0,
+    vx: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0,
+    vy: plyFireSmokeRiseSpeed,
+    vz: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0,
+    initOpacity: plyFireSmokeDensity, // 濃度ベース
+    initScaleX: s * 0.4,
+    initScaleY: s * 1.2,
+  };
+  smokeOverlayScene.add(sprite);
+  return sprite;
+}
+
+function updateFireSmokeParticles() {
+  if (!plyFireSmokeEnabled || !plyFireIndices || plyFireIndices.length === 0) return;
+  const dt = 0.016;
+  const maxCount = isMobileDevice ? 80 : PLY_FIRE_SMOKE_MAX;
+
+  // 炎上部からスポーン
+  if (glbModel) {
+    const orig = plyFireOrigPos;
+    let minH = Infinity, maxH = -Infinity;
+    for (let j = 0; j < plyFireIndices.length; j++) {
+      const oy = orig[j * 3 + 1];
+      if (oy < minH) minH = oy;
+      if (oy > maxH) maxH = oy;
+    }
+    const hRange = maxH - minH || 1;
+
+    let currentPositions = null;
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.geometry || currentPositions) return;
+      currentPositions = child.geometry.attributes.position.array;
+    });
+
+    if (currentPositions) {
+      const spawnCount = Math.min(3, maxCount - plyFireSmokeParticles.length);
+      for (let s = 0; s < spawnCount; s++) {
+        let attempts = 0;
+        while (attempts < 10) {
+          const rj = Math.floor(Math.random() * plyFireIndices.length);
+          const h = (orig[rj * 3 + 1] - minH) / hRange;
+          if (h >= 0.6) {
+            const i = plyFireIndices[rj];
+            const wp = new THREE.Vector3(
+              currentPositions[i * 3],
+              currentPositions[i * 3 + 1],
+              currentPositions[i * 3 + 2]
+            );
+            glbModel.localToWorld(wp);
+            plyFireSmokeParticles.push(_spawnFireSmoke(wp));
+            break;
+          }
+          attempts++;
+        }
+      }
+    }
+  }
+
+  // 更新
+  for (let i = plyFireSmokeParticles.length - 1; i >= 0; i--) {
+    const p = plyFireSmokeParticles[i];
+    const ud = p.userData;
+    ud.age += dt;
+    if (ud.age >= ud.lifetime) {
+      smokeOverlayScene.remove(p);
+      p.material.dispose();
+      plyFireSmokeParticles.splice(i, 1);
+      continue;
+    }
+    const t = ud.age / ud.lifetime;
+    const spread = plyFireSmokeSpread;
+    // スワール：時間に応じた揺れを位置に直接反映
+    const swirlX = Math.sin(ud.age * 2.0 + i * 0.7) * spread * dt;
+    const swirlZ = Math.cos(ud.age * 1.5 + i * 1.1) * spread * dt;
+    p.position.x += ud.vx * dt + swirlX;
+    p.position.y += ud.vy * dt;
+    p.position.z += ud.vz * dt + swirlZ;
+    ud.vy *= 0.998;
+    const fade = t < 0.2 ? t / 0.2 : 1.0 - (t - 0.2) / 0.8;
+    p.material.opacity = ud.initOpacity * fade;
+    const grow = 1.0 + t * 2.5;
+    p.scale.set(ud.initScaleX * grow, ud.initScaleY * grow, 1);
+  }
+}
+
+function clearFireSmokeParticles() {
+  for (const p of plyFireSmokeParticles) {
+    smokeOverlayScene.remove(p);
+    p.material.dispose();
+  }
+  plyFireSmokeParticles.length = 0;
+  if (plyFireSmokeTexture) {
+    plyFireSmokeTexture.dispose();
+    plyFireSmokeTexture = null;
+  }
+}
+
+// ========== 火の粉パーティクル ==========
+function getFireSparkTexture() {
+  if (plyFireSparkTexture) return plyFireSparkTexture;
+  const s = 16;
+  const canvas = document.createElement('canvas');
+  canvas.width = s;
+  canvas.height = s;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, s, s);
+  ctx.globalCompositeOperation = 'destination-in';
+  const grad = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.4, 'rgba(255,255,255,1)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, s, s);
+  plyFireSparkTexture = new THREE.CanvasTexture(canvas);
+  plyFireSparkTexture.premultiplyAlpha = false;
+  return plyFireSparkTexture;
+}
+
+function _spawnFireSpark(worldPos) {
+  const tex = getFireSparkTexture();
+  const col = new THREE.Color(plyFireSparkColor);
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    opacity: plyFireSparkDensity,
+    color: col,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const sprite = new THREE.Sprite(mat);
+  const s = plyFireSparkSize;
+  sprite.scale.set(s, s, 1);
+  sprite.position.copy(worldPos);
+  const spread = plyFireSparkSpread;
+  sprite.userData = {
+    age: 0,
+    lifetime: 1.0 + Math.random() * 2.0,
+    vx: (Math.random() - 0.5) * spread * 2.0,
+    vy: plyFireSparkRiseSpeed * (0.7 + Math.random() * 0.6),
+    vz: (Math.random() - 0.5) * spread * 2.0,
+    initOpacity: plyFireSparkDensity,
+    initScale: s,
+  };
+  scene.add(sprite);
+  return sprite;
+}
+
+function updateFireSparkParticles() {
+  if (!plyFireSparkEnabled || !plyFireIndices || plyFireIndices.length === 0) return;
+  const dt = 0.016;
+  const maxCount = isMobileDevice ? 60 : PLY_FIRE_SPARK_MAX;
+
+  // 炎全体からスポーン
+  if (glbModel) {
+    let currentPositions = null;
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.geometry || currentPositions) return;
+      currentPositions = child.geometry.attributes.position.array;
+    });
+
+    if (currentPositions) {
+      const spawnCount = Math.min(2, maxCount - plyFireSparkParticles.length);
+      for (let s = 0; s < spawnCount; s++) {
+        const rj = Math.floor(Math.random() * plyFireIndices.length);
+        const i = plyFireIndices[rj];
+        const wp = new THREE.Vector3(
+          currentPositions[i * 3],
+          currentPositions[i * 3 + 1],
+          currentPositions[i * 3 + 2]
+        );
+        glbModel.localToWorld(wp);
+        plyFireSparkParticles.push(_spawnFireSpark(wp));
+      }
+    }
+  }
+
+  // 更新
+  for (let i = plyFireSparkParticles.length - 1; i >= 0; i--) {
+    const p = plyFireSparkParticles[i];
+    const ud = p.userData;
+    ud.age += dt;
+    if (ud.age >= ud.lifetime) {
+      scene.remove(p);
+      p.material.dispose();
+      plyFireSparkParticles.splice(i, 1);
+      continue;
+    }
+    const t = ud.age / ud.lifetime;
+    const swirl = plyFireSparkSwirl;
+    const swirlX = Math.sin(ud.age * 3.0 + i * 1.3) * swirl * dt;
+    const swirlZ = Math.cos(ud.age * 2.5 + i * 0.9) * swirl * dt;
+    p.position.x += ud.vx * dt + swirlX;
+    p.position.y += ud.vy * dt;
+    p.position.z += ud.vz * dt + swirlZ;
+    ud.vy *= 0.995;
+    // フェードアウト（後半で消える）
+    const fade = t < 0.1 ? t / 0.1 : 1.0 - (t - 0.1) / 0.9;
+    p.material.opacity = ud.initOpacity * fade;
+    // サイズは縮小していく
+    const shrink = 1.0 - t * 0.5;
+    p.scale.set(ud.initScale * shrink, ud.initScale * shrink, 1);
+  }
+}
+
+function clearFireSparkParticles() {
+  for (const p of plyFireSparkParticles) {
+    scene.remove(p);
+    p.material.dispose();
+  }
+  plyFireSparkParticles.length = 0;
+  if (plyFireSparkTexture) {
+    plyFireSparkTexture.dispose();
+    plyFireSparkTexture = null;
+  }
 }
 
 // クロマキー対応デプスマテリアル（影用：クロマキーで除去した部分の影を出さない）
@@ -3063,6 +3647,73 @@ function setupThreeJS() {
   toonPass.enabled = false;
   composer.addPass(toonPass);
 
+  // 平塗りパス（バイラテラルフィルタ: エッジ保持しつつ色ムラを平滑化）
+  const flatColorShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      resolution: { value: new THREE.Vector2(rtW, rtH) },
+      strength: { value: 0.0 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform vec2 resolution;
+      uniform float strength;
+      varying vec2 vUv;
+
+      void main() {
+        vec4 orig = texture2D(tDiffuse, vUv);
+        if (strength < 0.01) {
+          gl_FragColor = orig;
+          return;
+        }
+
+        vec2 texel = 1.0 / resolution;
+        vec3 center = orig.rgb;
+
+        // ステップサイズ: 強度に応じて広い範囲をカバー
+        float stepSize = mix(1.0, 2.5, strength);
+        // 色距離の許容度: 大きいほど異なる色も混ぜる
+        float sigmaC = mix(0.06, 0.25, strength);
+        float invSigmaC2 = 1.0 / (2.0 * sigmaC * sigmaC);
+
+        vec3 sum = center;
+        float wSum = 1.0;
+
+        // 7x7グリッドサンプリング（49点）
+        for (int x = -3; x <= 3; x++) {
+          for (int y = -3; y <= 3; y++) {
+            if (x == 0 && y == 0) continue;
+            vec2 off = vec2(float(x), float(y)) * stepSize * texel;
+            vec3 s = texture2D(tDiffuse, vUv + off).rgb;
+
+            // 空間重み: グリッド距離のガウシアン
+            float d2 = float(x * x + y * y);
+            float sw = exp(-d2 / 8.0);
+
+            // 色重み: 色距離のガウシアン（似た色ほど強くブレンド）
+            vec3 dc = s - center;
+            float cw = exp(-dot(dc, dc) * invSigmaC2);
+
+            float w = sw * cw;
+            sum += s * w;
+            wSum += w;
+          }
+        }
+
+        gl_FragColor = vec4(sum / wSum, orig.a);
+      }
+    `
+  };
+  flatColorPass = new THREE.ShaderPass(flatColorShader);
+  flatColorPass.enabled = false;
+
   // 深度カラーRT: DepthTextureの代わりにシーン深度をカラーテクスチャとして描画
   _depthColorRT = new THREE.WebGLRenderTarget(rtW, rtH, {
     minFilter: THREE.NearestFilter,
@@ -3203,6 +3854,17 @@ function setupThreeJS() {
   sunLight.shadow.camera.bottom = -500;
   sunLight.shadow.camera.near = 0.1;
   sunLight.shadow.camera.far = 2000;
+
+  // 煙オーバーレイシーン（アウトライン除外用）
+  smokeOverlayScene = new THREE.Scene();
+  // 煙をターゲットバッファに描画するヘルパー（アウトライン除外 + ピクセル化対象）
+  window._renderSmokeOverlay = function(target) {
+    if (!plyFireSmokeEnabled || plyFireSmokeParticles.length === 0) return;
+    renderer.setRenderTarget(target);
+    renderer.autoClear = false;
+    renderer.render(smokeOverlayScene, camera);
+    renderer.autoClear = true;
+  };
 
   // レンズフレア（カスタムスクリーン空間実装）
   // dist: 0=光源, 0.5=画面中心, 1.0=反対側（ミラー）
@@ -3639,6 +4301,9 @@ function onWindowResize() {
   }
   if (toonPass) {
     toonPass.uniforms.resolution.value.set(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
+  }
+  if (flatColorPass) {
+    flatColorPass.uniforms.resolution.value.set(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
   }
   if (_depthColorRT) {
     const bScale = isMobileDevice ? 0.5 : 1;
@@ -5032,6 +5697,7 @@ function setupEventListeners() {
   // エフェクトON/OFF（日差しパネル — viewerモードではDOM不在のためnullチェック）
   document.getElementById('bloomEnabled')?.addEventListener('change', (e) => {
     bloomEnabled = e.target.checked;
+    if (bloomPass) bloomPass.enabled = bloomEnabled;
   });
   document.getElementById('flareEnabled')?.addEventListener('change', (e) => {
     flareEnabled = e.target.checked;
@@ -5687,6 +6353,289 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('plySmokeCycleValue').textContent = v;
     plySmokeCycle = v;
+  });
+
+  // PLY炎エフェクト — 2点ピックで範囲指定
+  let _plyFirePickActive = false;
+  let _plyFirePickStep = 0; // 0=待機, 1=1点目取得済み（2点目待ち）
+  let _plyFirePick1 = null;
+  const pickBtn = document.getElementById('plyFirePickBtn');
+  const pickCoordSpan = document.getElementById('plyFirePickCoord');
+
+  if (pickBtn) {
+    pickBtn.addEventListener('click', () => {
+      _plyFirePickActive = !_plyFirePickActive;
+      _plyFirePickStep = 0;
+      _plyFirePick1 = null;
+      if (_plyFirePickActive) {
+        pickBtn.style.background = '#ff6600';
+        pickBtn.textContent = 'ピック中…';
+        if (pickCoordSpan) { pickCoordSpan.textContent = '1点目をクリック'; pickCoordSpan.style.color = '#ff0'; }
+        if (renderer) renderer.domElement.style.cursor = 'crosshair';
+      } else {
+        pickBtn.style.background = '';
+        pickBtn.textContent = '範囲をピック';
+        if (pickCoordSpan) { pickCoordSpan.textContent = '2点クリックで範囲指定'; pickCoordSpan.style.color = '#aaa'; }
+        if (renderer) renderer.domElement.style.cursor = '';
+      }
+    });
+  }
+
+  // canvasクリックでPLY最近傍頂点座標を取得
+  function pickNearestPlyVertex(e) {
+    if (!renderer || !camera || !glbModel || !glbModel.userData.is3DGS) return null;
+    const canvas = renderer.domElement;
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width * 2 - 1;
+    const my = -(e.clientY - rect.top) / rect.height * 2 + 1;
+
+    let bestDist = Infinity;
+    let bestPos = null;
+    const projVec = new THREE.Vector3();
+
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.geometry) return;
+      const posAttr = child.geometry.attributes.position;
+      if (!posAttr) return;
+      const pos = posAttr.array;
+      const drawRange = child.geometry.drawRange;
+      const end = Math.min(posAttr.count, drawRange.start + drawRange.count);
+      const matWorld = child.matrixWorld;
+
+      for (let i = drawRange.start; i < end; i++) {
+        projVec.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+        projVec.applyMatrix4(matWorld);
+        projVec.project(camera);
+        // projVec.z: NDC深度 -1(手前)〜1(奥)
+        if (projVec.z < -1 || projVec.z > 1) continue; // 視錐台外スキップ
+        const dx = projVec.x - mx;
+        const dy = projVec.y - my;
+        const screenD2 = dx * dx + dy * dy;
+        // スクリーン距離 + 奥行きペナルティ（手前の点を優先）
+        const score = screenD2 + 0.05 * projVec.z;
+        if (score < bestDist) {
+          bestDist = score;
+          bestPos = { x: pos[i * 3], y: pos[i * 3 + 1], z: pos[i * 3 + 2] };
+        }
+      }
+    });
+    return bestPos;
+  }
+
+  function onCanvasClickForPick(e) {
+    if (!_plyFirePickActive) return;
+
+    const pos = pickNearestPlyVertex(e);
+    if (!pos) return;
+
+    if (_plyFirePickStep === 0) {
+      // 1点目
+      _plyFirePick1 = pos;
+      _plyFirePickStep = 1;
+      if (pickCoordSpan) {
+        pickCoordSpan.textContent = `1点目: (${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)}) → 2点目をクリック`;
+        pickCoordSpan.style.color = '#ff0';
+      }
+    } else {
+      // 2点目 → min/maxを自動計算してフォームに反映
+      const p1 = _plyFirePick1, p2 = pos;
+      const mnX = Math.min(p1.x, p2.x), mxX = Math.max(p1.x, p2.x);
+      const mnY = Math.min(p1.y, p2.y), mxY = Math.max(p1.y, p2.y);
+      const mnZ = Math.min(p1.z, p2.z), mxZ = Math.max(p1.z, p2.z);
+
+      // バウンディングボックスのフォームに設定
+      const boxIds = ['plyFireBoxMinX','plyFireBoxMaxX','plyFireBoxMinY','plyFireBoxMaxY','plyFireBoxMinZ','plyFireBoxMaxZ'];
+      const boxVals = [mnX, mxX, mnY, mxY, mnZ, mxZ];
+      boxIds.forEach((id, idx) => {
+        const el = document.getElementById(id);
+        if (el) { el.value = boxVals[idx].toFixed(2); el.dispatchEvent(new Event('input')); }
+      });
+
+      // 球体の中心＋半径にも設定
+      const cx = (mnX + mxX) / 2, cy = (mnY + mxY) / 2, cz = (mnZ + mxZ) / 2;
+      const radius = Math.sqrt((mxX - mnX) ** 2 + (mxY - mnY) ** 2 + (mxZ - mnZ) ** 2) / 2;
+      [['plyFireSphereX', cx], ['plyFireSphereY', cy], ['plyFireSphereZ', cz], ['plyFireSphereRadius', radius]].forEach(([id, v]) => {
+        const el = document.getElementById(id);
+        if (el) { el.value = v.toFixed(2); el.dispatchEvent(new Event('input')); }
+      });
+
+      // 選択方法をboxに自動切替
+      const modeEl = document.getElementById('plyFireMode');
+      if (modeEl) { modeEl.value = 'box'; modeEl.dispatchEvent(new Event('change')); }
+
+      if (pickCoordSpan) {
+        pickCoordSpan.textContent = `範囲設定完了`;
+        pickCoordSpan.style.color = '#0f0';
+      }
+
+      // ピックモード終了
+      _plyFirePickActive = false;
+      _plyFirePickStep = 0;
+      _plyFirePick1 = null;
+      if (pickBtn) { pickBtn.style.background = ''; pickBtn.textContent = '範囲をピック'; }
+      if (renderer) renderer.domElement.style.cursor = '';
+    }
+  }
+
+  // renderer生成後にイベント登録
+  setTimeout(() => {
+    if (renderer) {
+      renderer.domElement.addEventListener('click', onCanvasClickForPick);
+    }
+  }, 1000);
+
+  document.getElementById('plyFireEnabled')?.addEventListener('change', (e) => {
+    plyFireEnabled = e.target.checked;
+    if (plyFireEnabled) {
+      setupPlyFireEffect();
+    } else {
+      clearPlyFireEffect();
+      clearFireSmokeParticles();
+      clearFireSparkParticles();
+    }
+  });
+  function updateFireModeVisibility() {
+    const mode = document.getElementById('plyFireMode')?.value || 'color';
+    document.querySelectorAll('.fire-mode-color').forEach(el => el.style.display = mode === 'color' ? '' : 'none');
+    document.querySelectorAll('.fire-mode-sphere').forEach(el => el.style.display = mode === 'sphere' ? '' : 'none');
+    document.querySelectorAll('.fire-mode-box').forEach(el => el.style.display = mode === 'box' ? '' : 'none');
+    document.querySelectorAll('.fire-mode-pick').forEach(el => el.style.display = (mode === 'sphere' || mode === 'box') ? '' : 'none');
+  }
+  updateFireModeVisibility();
+
+  document.getElementById('plyFireMode')?.addEventListener('change', (e) => {
+    plyFireMode = e.target.value;
+    updateFireModeVisibility();
+    if (plyFireEnabled) { clearPlyFireEffect(); setupPlyFireEffect(); }
+  });
+  document.getElementById('plyFireColor')?.addEventListener('input', (e) => {
+    plyFireColor = e.target.value;
+    if (plyFireEnabled && plyFireMode === 'color') { clearPlyFireEffect(); setupPlyFireEffect(); }
+  });
+  document.getElementById('plyFireThreshold')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireThresholdValue').textContent = v;
+    plyFireThreshold = v;
+    if (plyFireEnabled && plyFireMode === 'color') { clearPlyFireEffect(); setupPlyFireEffect(); }
+  });
+  document.getElementById('plyFireSphereX')?.addEventListener('input', (e) => {
+    plyFireSphereX = parseFloat(e.target.value) || 0;
+    if (plyFireEnabled && plyFireMode === 'sphere') { clearPlyFireEffect(); setupPlyFireEffect(); }
+  });
+  document.getElementById('plyFireSphereY')?.addEventListener('input', (e) => {
+    plyFireSphereY = parseFloat(e.target.value) || 0;
+    if (plyFireEnabled && plyFireMode === 'sphere') { clearPlyFireEffect(); setupPlyFireEffect(); }
+  });
+  document.getElementById('plyFireSphereZ')?.addEventListener('input', (e) => {
+    plyFireSphereZ = parseFloat(e.target.value) || 0;
+    if (plyFireEnabled && plyFireMode === 'sphere') { clearPlyFireEffect(); setupPlyFireEffect(); }
+  });
+  document.getElementById('plyFireSphereRadius')?.addEventListener('input', (e) => {
+    plyFireSphereRadius = parseFloat(e.target.value) || 0.01;
+    if (plyFireEnabled && plyFireMode === 'sphere') { clearPlyFireEffect(); setupPlyFireEffect(); }
+  });
+  ['plyFireBoxMinX','plyFireBoxMaxX','plyFireBoxMinY','plyFireBoxMaxY','plyFireBoxMinZ','plyFireBoxMaxZ'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value) || 0;
+      if (id === 'plyFireBoxMinX') plyFireBoxMinX = v;
+      else if (id === 'plyFireBoxMaxX') plyFireBoxMaxX = v;
+      else if (id === 'plyFireBoxMinY') plyFireBoxMinY = v;
+      else if (id === 'plyFireBoxMaxY') plyFireBoxMaxY = v;
+      else if (id === 'plyFireBoxMinZ') plyFireBoxMinZ = v;
+      else if (id === 'plyFireBoxMaxZ') plyFireBoxMaxZ = v;
+      if (plyFireEnabled && plyFireMode === 'box') { clearPlyFireEffect(); setupPlyFireEffect(); }
+    });
+  });
+  document.getElementById('plyFireIntensity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireIntensityValue').textContent = v;
+    plyFireIntensity = v;
+  });
+  document.getElementById('plyFireSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSpeedValue').textContent = v;
+    plyFireSpeed = v;
+  });
+  document.getElementById('plyFireFlicker')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireFlickerValue').textContent = v;
+    plyFireFlicker = v;
+  });
+  document.getElementById('plyFireGlow')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireGlowValue').textContent = v;
+    plyFireGlow = v;
+  });
+  document.getElementById('plyFireGlowColor')?.addEventListener('input', (e) => {
+    plyFireGlowColor = e.target.value;
+  });
+  document.getElementById('plyFireSmokeEnabled')?.addEventListener('change', (e) => {
+    plyFireSmokeEnabled = e.target.checked;
+    if (!plyFireSmokeEnabled) clearFireSmokeParticles();
+  });
+  document.getElementById('plyFireSmokeRiseSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSmokeRiseSpeedValue').textContent = v;
+    plyFireSmokeRiseSpeed = v;
+  });
+  document.getElementById('plyFireSmokeSize')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSmokeSizeValue').textContent = v;
+    plyFireSmokeSize = v;
+  });
+  document.getElementById('plyFireSmokeColor')?.addEventListener('input', (e) => {
+    plyFireSmokeColor = e.target.value;
+  });
+  document.getElementById('plyFireSmokeSpread')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSmokeSpreadValue').textContent = v;
+    plyFireSmokeSpread = v;
+  });
+  document.getElementById('plyFireSmokeOpacity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSmokeOpacityValue').textContent = v;
+    plyFireSmokeOpacity = v;
+    // テクスチャに不透明度が反映されるのでキャッシュ破棄
+    if (plyFireSmokeTexture) { plyFireSmokeTexture.dispose(); plyFireSmokeTexture = null; }
+  });
+  document.getElementById('plyFireSmokeDensity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSmokeDensityValue').textContent = v;
+    plyFireSmokeDensity = v;
+  });
+
+  // 火の粉イベントリスナー
+  document.getElementById('plyFireSparkEnabled')?.addEventListener('change', (e) => {
+    plyFireSparkEnabled = e.target.checked;
+    if (!plyFireSparkEnabled) clearFireSparkParticles();
+  });
+  document.getElementById('plyFireSparkRiseSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSparkRiseSpeedValue').textContent = v;
+    plyFireSparkRiseSpeed = v;
+  });
+  document.getElementById('plyFireSparkSize')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSparkSizeValue').textContent = v;
+    plyFireSparkSize = v;
+  });
+  document.getElementById('plyFireSparkSpread')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSparkSpreadValue').textContent = v;
+    plyFireSparkSpread = v;
+  });
+  document.getElementById('plyFireSparkSwirl')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSparkSwirlValue').textContent = v;
+    plyFireSparkSwirl = v;
+  });
+  document.getElementById('plyFireSparkDensity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSparkDensityValue').textContent = v;
+    plyFireSparkDensity = v;
+  });
+  document.getElementById('plyFireSparkColor')?.addEventListener('input', (e) => {
+    plyFireSparkColor = e.target.value;
   });
 
   // ============================================
@@ -7349,6 +8298,13 @@ function setupEventListeners() {
     applyGlbColorAdjustments();
   });
 
+  // 平塗り（バイラテラルフィルタ）
+  document.getElementById('glbPosterize')?.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    document.getElementById('glbPosterizeValue').textContent = val;
+    glbColorUniforms.glbPosterize.value = val;
+  });
+
   // クロマキー
   document.getElementById('glbChromaColor')?.addEventListener('input', (e) => {
     glbColorUniforms.chromaKeyColor.value.set(e.target.value);
@@ -7544,7 +8500,12 @@ function setupEventListeners() {
   const mediaLibraryModal = document.getElementById('mediaLibraryModal');
   const mediaLibraryGrid = document.getElementById('mediaLibraryGrid');
   const mediaLibraryCancel = document.getElementById('mediaLibraryCancel');
+  const mediaLibrarySelectModeBtn = document.getElementById('mediaLibrarySelectMode');
+  const mediaLibraryDeleteSelectedBtn = document.getElementById('mediaLibraryDeleteSelected');
+  const mediaLibraryDeleteCount = document.getElementById('mediaLibraryDeleteCount');
   let mediaLibraryTargetSlot = null;
+  let mediaLibrarySelectMode = false;
+  const mediaLibrarySelected = new Set(); // record.id のセット
   const mediaLibraryObjectURLs = [];
 
   const slotLoadMap = {
@@ -7603,6 +8564,7 @@ function setupEventListeners() {
         const allMedia = results.flat().sort((a, b) => b.createdAt - a.createdAt);
 
         cleanupMediaLibraryURLs();
+        exitMediaSelectMode();
         mediaLibraryGrid.innerHTML = '';
         const isListMode = mediaLibraryTargetSlot === 'midi' || mediaLibraryTargetSlot === 'audio' || mediaLibraryTargetSlot === 'glb';
         mediaLibraryGrid.classList.toggle('media-list', isListMode);
@@ -7616,6 +8578,13 @@ function setupEventListeners() {
           allMedia.forEach(record => {
             const item = document.createElement('div');
             item.className = isListMode ? 'media-list-item' : 'media-grid-item';
+            item.dataset.mediaId = record.id;
+
+            // 選択チェックマーク
+            const check = document.createElement('span');
+            check.className = 'media-select-check';
+            check.innerHTML = '<i class="fa-solid fa-check"></i>';
+            item.appendChild(check);
 
             if (isListMode) {
               const icon = document.createElement('span');
@@ -7715,6 +8684,19 @@ function setupEventListeners() {
             }
 
             item.addEventListener('click', async () => {
+              // 選択モードの場合はトグル選択
+              if (mediaLibrarySelectMode) {
+                if (mediaLibrarySelected.has(record.id)) {
+                  mediaLibrarySelected.delete(record.id);
+                  item.classList.remove('selected');
+                } else {
+                  mediaLibrarySelected.add(record.id);
+                  item.classList.add('selected');
+                }
+                updateMediaDeleteCount();
+                return;
+              }
+
               const loadFn = slotLoadMap[mediaLibraryTargetSlot];
               if (!loadFn) return;
 
@@ -7752,6 +8734,7 @@ function setupEventListeners() {
     mediaLibraryCancel.addEventListener('click', () => {
       mediaLibraryModal.style.display = 'none';
       cleanupMediaLibraryURLs();
+      exitMediaSelectMode();
     });
 
     // モーダル外クリックで閉じる
@@ -7759,6 +8742,53 @@ function setupEventListeners() {
       if (e.target === mediaLibraryModal) {
         mediaLibraryModal.style.display = 'none';
         cleanupMediaLibraryURLs();
+        exitMediaSelectMode();
+      }
+    });
+
+    function exitMediaSelectMode() {
+      mediaLibrarySelectMode = false;
+      mediaLibrarySelected.clear();
+      if (mediaLibraryGrid) mediaLibraryGrid.classList.remove('select-mode');
+      if (mediaLibrarySelectModeBtn) mediaLibrarySelectModeBtn.classList.remove('active');
+      if (mediaLibraryDeleteSelectedBtn) mediaLibraryDeleteSelectedBtn.style.display = 'none';
+      mediaLibraryGrid?.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+    }
+
+    function updateMediaDeleteCount() {
+      if (mediaLibraryDeleteCount) mediaLibraryDeleteCount.textContent = mediaLibrarySelected.size;
+      if (mediaLibraryDeleteSelectedBtn) mediaLibraryDeleteSelectedBtn.style.display = mediaLibrarySelected.size > 0 ? '' : 'none';
+    }
+
+    // 選択モード切り替え
+    mediaLibrarySelectModeBtn?.addEventListener('click', () => {
+      mediaLibrarySelectMode = !mediaLibrarySelectMode;
+      mediaLibrarySelectModeBtn.classList.toggle('active', mediaLibrarySelectMode);
+      mediaLibraryGrid.classList.toggle('select-mode', mediaLibrarySelectMode);
+      if (!mediaLibrarySelectMode) {
+        mediaLibrarySelected.clear();
+        mediaLibraryGrid.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+        if (mediaLibraryDeleteSelectedBtn) mediaLibraryDeleteSelectedBtn.style.display = 'none';
+      }
+    });
+
+    // 一括削除
+    mediaLibraryDeleteSelectedBtn?.addEventListener('click', async () => {
+      if (mediaLibrarySelected.size === 0) return;
+      if (!confirm(`${mediaLibrarySelected.size}件のメディアを削除しますか？`)) return;
+      for (const id of mediaLibrarySelected) {
+        await window.presetManager.deleteMediaFromLibrary(id);
+      }
+      // 削除したアイテムをDOMから除去
+      mediaLibraryGrid.querySelectorAll('.selected').forEach(el => el.remove());
+      mediaLibrarySelected.clear();
+      updateMediaDeleteCount();
+      // 空チェック
+      if (mediaLibraryGrid.children.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'media-grid-empty';
+        empty.textContent = 'メディアがありません';
+        mediaLibraryGrid.appendChild(empty);
       }
     });
   }
@@ -12705,6 +13735,7 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
         if (plyWaterEnabled) setupPlyWaterEffect();
         if (plyTreeEnabled) setupPlyTreeEffect();
         if (plySmokeEnabled) setupPlySmokeEffect();
+        if (plyFireEnabled) setupPlyFireEffect();
         return;
       }
     }
@@ -12731,16 +13762,20 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
       trimmedCol[i * 3 + 1] = cache.colors[src * 3 + 1];
       trimmedCol[i * 3 + 2] = cache.colors[src * 3 + 2];
     }
-    let cx = 0, cy = 0, cz = 0;
+    // build3DGSGeometryと同じセンタリング: XZのみバウンディングボックス中心、Yは保持
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (let i = 0; i < keepCount; i++) {
-      cx += trimmedPos[i * 3]; cy += trimmedPos[i * 3 + 1]; cz += trimmedPos[i * 3 + 2];
+      const x = trimmedPos[i * 3], z = trimmedPos[i * 3 + 2];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
     }
-    cx /= keepCount; cy /= keepCount; cz /= keepCount;
+    const bbCenterX = (minX + maxX) / 2;
+    const bbCenterZ = (minZ + maxZ) / 2;
     const basePos = new Float32Array(keepCount * 3);
     for (let i = 0; i < keepCount; i++) {
-      basePos[i * 3]     = trimmedPos[i * 3] - cx;
-      basePos[i * 3 + 1] = -(trimmedPos[i * 3 + 1] - cy);
-      basePos[i * 3 + 2] = -(trimmedPos[i * 3 + 2] - cz);
+      basePos[i * 3]     = trimmedPos[i * 3] - bbCenterX;
+      basePos[i * 3 + 1] = -trimmedPos[i * 3 + 1];                    // rotateX(PI): Y反転のみ（センタリングなし）
+      basePos[i * 3 + 2] = -(trimmedPos[i * 3 + 2] - bbCenterZ);      // XZセンタリング + Z反転
     }
     _gsInterpCache = { trimKey, basePos, baseCol: trimmedCol, baseCount: keepCount, levels: null };
   }
@@ -12819,6 +13854,9 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
       }
       if (plySmokeEnabled) {
         setupPlySmokeEffect();
+      }
+      if (plyFireEnabled) {
+        setupPlyFireEffect();
       }
       return;
     }
@@ -12996,6 +14034,7 @@ function setupGlbScene(sceneGroup, file) {
     if (plyWaterEnabled) setupPlyWaterEffect();
     if (plyTreeEnabled) setupPlyTreeEffect();
     if (plySmokeEnabled) setupPlySmokeEffect();
+    if (plyFireEnabled) setupPlyFireEffect();
   }
 
   console.log('GLB/PLY model loaded:', file.name, 'children:', glbModel.children.length);
@@ -13207,6 +14246,10 @@ function clearGlbModel() {
     glbModel = null;
   }
   glbHeightGrid = null;
+  // 3DGSキャッシュをクリア（別モデルのキャッシュで位置がずれるのを防止）
+  _gsCache = null;
+  _gsInterpCache = null;
+  _gsDisplayState = null;
 
   window.currentMediaRefs.glb = null;
 
@@ -13384,6 +14427,7 @@ const glbColorUniforms = {
   cloudOpacity: { value: 0.0 },
   cloudPlaneSize: { value: 10000.0 },
   cloudWarmTint: { value: 0.0 },
+  glbPosterize: { value: 0.0 },
 };
 
 function applyGlbColorAdjustments() {
@@ -13398,6 +14442,7 @@ function applyGlbColorAdjustments() {
   glbColorUniforms.glbHue.value = getV('glbHue', 0) / 360;
   glbColorUniforms.glbBrightness.value = getV('glbBrightness', 0) / 100;
   glbColorUniforms.glbContrast.value = getV('glbContrast', 0) / 100;
+  glbColorUniforms.glbPosterize.value = getV('glbPosterize', 0);
   glbColorUniforms.chromaKeyThreshold.value = getV('glbChromaThreshold', 0);
   // クロマキーカラーはDOMまたはビューワー設定から取得
   const chromaEl = document.getElementById('glbChromaColor');
@@ -14469,6 +15514,9 @@ function animate() {
   updatePlyWaterEffect();
   updatePlyTreeEffect();
   updatePlySmokeEffect();
+  updatePlyFireEffect();
+  updateFireSmokeParticles();
+  updateFireSparkParticles();
   plyWaterUniforms.causticsTime.value += 0.016 * plyWaterCausticsSpeed;
 
   // 水面アニメーション更新（両レイヤー同期）
@@ -14692,6 +15740,11 @@ function animate() {
         obj.visible = false;
         return;
       }
+      // depthWrite無効のオブジェクトは深度パスから除外（天候パーティクル等）
+      if (mat.depthWrite === false) {
+        obj.visible = false;
+        return;
+      }
       // クロマキーが有効なマテリアル → テクスチャ+discard付き深度マテリアル
       const ckThresh = mat.uniforms?.chromaKeyThreshold?.value
                     || mat.userData?.chromaKeyThreshold?.value || 0;
@@ -14731,7 +15784,32 @@ function animate() {
     toonPass.uniforms.cameraFar.value = camera.far;
   };
 
+  // 平塗りバイラテラルフィルタ: readBuffer上の画像を複数回フィルタリング
+  // 偶数回で実行し、結果が必ずreadBufferに戻るようにする
+  const flatEnabled = document.getElementById('glbFlatEnabled')?.checked ?? false;
+  const flatStr = flatEnabled ? glbColorUniforms.glbPosterize.value : 0;
+  const useFlatColor = flatColorPass && flatStr > 0.01;
+  const applyFlatColor = () => {
+    if (!useFlatColor) return;
+    flatColorPass.uniforms.strength.value = flatStr;
+    flatColorPass.uniforms.resolution.value.set(
+      renderer.domElement.width, renderer.domElement.height
+    );
+    let iters = Math.min(4, Math.ceil(flatStr * 4));
+    if (iters % 2 === 1) iters++; // 偶数にして結果をreadBufferに戻す
+    for (let i = 0; i < iters; i++) {
+      flatColorPass.renderToScreen = false;
+      if (i % 2 === 0) {
+        flatColorPass.render(renderer, composer.writeBuffer, composer.readBuffer);
+      } else {
+        flatColorPass.render(renderer, composer.readBuffer, composer.writeBuffer);
+      }
+    }
+    // 偶数回なので結果はreadBufferに戻っている
+  };
+
   // ブルーム描画 / ピクセレーション
+  if (bloomPass) bloomPass.enabled = bloomEnabled && bloomPass.strength > 0;
   const useBloom = composer && bloomPass && bloomEnabled && bloomPass.strength > 0;
   const usePixel = pixelPass && pixelPass.enabled;
   const useToon = toonPass && ((document.getElementById('toonEnabled')?.checked ?? false) || (document.getElementById('celShadingEnabled')?.checked ?? false));
@@ -14845,6 +15923,9 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
+    // 平塗りフィルタ（ピクセル化・トゥーンの前に適用）
+    applyFlatColor();
+
     // ピクセルパスを手動適用
     pixelPass.enabled = true;
     composer.renderToScreen = true;
@@ -14858,11 +15939,15 @@ function animate() {
       toonPass.renderToScreen = false;
       syncToonDepth();
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
+      // 煙をwriteBufferに描画（トゥーン後=アウトライン除外、ピクセル前=ピクセル化対象）
+      window._renderSmokeOverlay(composer.writeBuffer);
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.readBuffer, composer.writeBuffer);
       finalBuffer = composer.readBuffer;
     } else {
       // ピクセル→トゥーン（除外モード: 輪郭は細いまま）or トゥーンなし
+      // 煙をreadBufferに描画（ピクセル化対象）
+      window._renderSmokeOverlay(composer.readBuffer);
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.writeBuffer, composer.readBuffer);
       if (useToon) {
@@ -14929,13 +16014,65 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
+    // 平塗りフィルタ（トゥーンの前に適用）
+    applyFlatColor();
+
     // トゥーンパスを手動適用 → 画面に出力
     toonPass.enabled = true;
     toonPass.renderToScreen = true;
     syncToonDepth();
     toonPass.render(renderer, null, composer.readBuffer);
+    // 煙を画面に描画（トゥーン後=アウトライン除外）
+    window._renderSmokeOverlay(null);
+  } else if (useFlatColor) {
+    // 平塗りのみON（ピクセルアートOFF・トゥーンOFF）: バッファに描画→フィルタ→画面出力
+    composer.renderToScreen = false;
+    if (useBloom) {
+      if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
+        camera.layers.disable(1);
+        composer.render();
+        camera.layers.enable(1);
+        renderer.setRenderTarget(composer.readBuffer);
+        const savedBg = scene.background;
+        scene.background = null;
+        camera.layers.set(1);
+        renderer.autoClear = false;
+        renderer.clearDepth();
+        renderer.render(scene, camera);
+        renderer.autoClear = true;
+        scene.background = savedBg;
+        camera.layers.set(0);
+        camera.layers.enable(1);
+      } else {
+        composer.render();
+      }
+    } else {
+      // ブルームなし: シーンをreadBufferに描画
+      renderer.setRenderTarget(composer.readBuffer);
+      renderer.clear();
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(null);
+    }
+
+    // レンズフレアをreadBufferに描画
+    if (_flareVisible) {
+      renderer.setRenderTarget(composer.readBuffer);
+      renderer.autoClear = false;
+      renderer.render(flareScene, flareCamera);
+      renderer.autoClear = true;
+      renderer.setRenderTarget(null);
+    }
+
+    // 平塗りフィルタ適用
+    applyFlatColor();
+
+    // 煙をreadBufferに描画
+    window._renderSmokeOverlay(composer.readBuffer);
+    // readBufferから画面に出力
+    _pixelCopyPass.renderToScreen = true;
+    _pixelCopyPass.render(renderer, null, composer.readBuffer);
   } else {
-    // ピクセルアートOFF・トゥーンOFF: 通常描画
+    // ピクセルアートOFF・トゥーンOFF・平塗りOFF: 通常描画
     composer.renderToScreen = true;
     if (useBloom) {
       if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) || (state.iconSprites && state.iconSprites.length > 0) || (state.popIcons && state.popIcons.length > 0))) {
@@ -14965,6 +16102,8 @@ function animate() {
       renderer.render(flareScene, flareCamera);
       renderer.autoClear = true;
     }
+    // 煙を画面に描画
+    window._renderSmokeOverlay(null);
   }
 
   // 色数モニター（ピクセルアートON時のみ）

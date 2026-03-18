@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Orchestra Visualizer</title>
-  <link rel="stylesheet" href="style.css?v=20260314aj">
+  <link rel="stylesheet" href="style.css?v=20260318a">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
@@ -727,6 +727,160 @@
           <input type="range" id="plyTreeWavelength" min="1" max="50" step="1" value="15">
           <span id="plyTreeWavelengthValue">15</span>
         </div>
+      </div>
+    </div>
+
+    <div class="settings-column">
+      <h3>炎エフェクト</h3>
+      <div>
+        <h4 class="setting-category"><span>PLY炎</span><input type="checkbox" id="plyFireEnabled"></h4>
+        <div class="setting-item">
+          <label>選択方法</label>
+          <select id="plyFireMode">
+            <option value="color">色</option>
+            <option value="sphere">球体</option>
+            <option value="box">バウンディングボックス</option>
+          </select>
+        </div>
+        <div class="setting-item fire-mode-pick" style="flex-direction:column;align-items:flex-start">
+          <div style="display:flex;align-items:center;gap:6px">
+            <button id="plyFirePickBtn" style="font-size:11px;padding:2px 8px">範囲をピック</button>
+            <span id="plyFirePickCoord" style="font-size:11px;color:#aaa">2点クリックで範囲指定</span>
+          </div>
+        </div>
+        <div class="setting-item fire-mode-color">
+          <label>対象色</label>
+          <input type="color" id="plyFireColor" value="#cc4400">
+        </div>
+        <div class="setting-item fire-mode-color">
+          <label>許容範囲</label>
+          <input type="range" id="plyFireThreshold" min="0.05" max="1" step="0.05" value="0.3">
+          <span id="plyFireThresholdValue">0.3</span>
+        </div>
+        <div class="setting-item fire-mode-sphere">
+          <label>中心X</label>
+          <input type="number" id="plyFireSphereX" step="0.01" value="0" style="width:70px">
+        </div>
+        <div class="setting-item fire-mode-sphere">
+          <label>中心Y</label>
+          <input type="number" id="plyFireSphereY" step="0.01" value="0" style="width:70px">
+        </div>
+        <div class="setting-item fire-mode-sphere">
+          <label>中心Z</label>
+          <input type="number" id="plyFireSphereZ" step="0.01" value="0" style="width:70px">
+        </div>
+        <div class="setting-item fire-mode-sphere">
+          <label>半径</label>
+          <input type="number" id="plyFireSphereRadius" step="0.01" min="0.01" value="1" style="width:70px">
+        </div>
+        <div class="setting-item fire-mode-box">
+          <label>X min</label>
+          <input type="number" id="plyFireBoxMinX" step="0.01" value="-1" style="width:70px">
+        </div>
+        <div class="setting-item fire-mode-box">
+          <label>X max</label>
+          <input type="number" id="plyFireBoxMaxX" step="0.01" value="1" style="width:70px">
+        </div>
+        <div class="setting-item fire-mode-box">
+          <label>Y min</label>
+          <input type="number" id="plyFireBoxMinY" step="0.01" value="-1" style="width:70px">
+        </div>
+        <div class="setting-item fire-mode-box">
+          <label>Y max</label>
+          <input type="number" id="plyFireBoxMaxY" step="0.01" value="1" style="width:70px">
+        </div>
+        <div class="setting-item fire-mode-box">
+          <label>Z min</label>
+          <input type="number" id="plyFireBoxMinZ" step="0.01" value="-1" style="width:70px">
+        </div>
+        <div class="setting-item fire-mode-box">
+          <label>Z max</label>
+          <input type="number" id="plyFireBoxMaxZ" step="0.01" value="1" style="width:70px">
+        </div>
+        <div class="setting-item">
+          <label>強度</label>
+          <input type="range" id="plyFireIntensity" min="0.1" max="5" step="0.1" value="1">
+          <span id="plyFireIntensityValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>速度</label>
+          <input type="range" id="plyFireSpeed" min="0.1" max="5" step="0.1" value="1">
+          <span id="plyFireSpeedValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>フリッカー</label>
+          <input type="range" id="plyFireFlicker" min="0" max="3" step="0.05" value="0.5">
+          <span id="plyFireFlickerValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>発光</label>
+          <input type="range" id="plyFireGlow" min="0" max="5" step="0.1" value="2">
+          <span id="plyFireGlowValue">2</span>
+        </div>
+        <div class="setting-item">
+          <label>発光色</label>
+          <input type="color" id="plyFireGlowColor" value="#ff4400">
+        </div>
+        <h4 class="setting-category" style="margin-top:8px"><span>煙</span><input type="checkbox" id="plyFireSmokeEnabled"></h4>
+        <div class="setting-item">
+          <label>上昇速度</label>
+          <input type="range" id="plyFireSmokeRiseSpeed" min="5" max="100" step="1" value="10">
+          <span id="plyFireSmokeRiseSpeedValue">2</span>
+        </div>
+        <div class="setting-item">
+          <label>サイズ</label>
+          <input type="range" id="plyFireSmokeSize" min="0.1" max="30" step="0.5" value="1">
+          <span id="plyFireSmokeSizeValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>拡散</label>
+          <input type="range" id="plyFireSmokeSpread" min="0" max="20" step="0.5" value="0.5">
+          <span id="plyFireSmokeSpreadValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label>不透過度</label>
+          <input type="range" id="plyFireSmokeOpacity" min="0.05" max="1" step="0.05" value="0.4">
+          <span id="plyFireSmokeOpacityValue">0.4</span>
+        </div>
+        <div class="setting-item">
+          <label>濃度</label>
+          <input type="range" id="plyFireSmokeDensity" min="0" max="1" step="0.05" value="0.4">
+          <span id="plyFireSmokeDensityValue">0.4</span>
+        </div>
+        <div class="setting-item">
+          <label>色</label>
+          <input type="color" id="plyFireSmokeColor" value="#888888">
+        </div>
+        <h4 class="setting-category"><span>火の粉</span><input type="checkbox" id="plyFireSparkEnabled"></h4>
+        <div class="setting-item">
+          <label>上昇速度</label>
+          <input type="range" id="plyFireSparkRiseSpeed" min="1" max="100" step="1" value="3">
+          <span id="plyFireSparkRiseSpeedValue">3</span>
+        </div>
+        <div class="setting-item">
+          <label>サイズ</label>
+          <input type="range" id="plyFireSparkSize" min="0.05" max="5" step="0.05" value="0.3">
+          <span id="plyFireSparkSizeValue">0.3</span>
+        </div>
+        <div class="setting-item">
+          <label>拡散</label>
+          <input type="range" id="plyFireSparkSpread" min="0" max="20" step="0.5" value="1">
+          <span id="plyFireSparkSpreadValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>揺れ</label>
+          <input type="range" id="plyFireSparkSwirl" min="0" max="20" step="0.5" value="1">
+          <span id="plyFireSparkSwirlValue">1</span>
+        </div>
+        <div class="setting-item">
+          <label>濃度</label>
+          <input type="range" id="plyFireSparkDensity" min="0" max="1" step="0.05" value="0.8">
+          <span id="plyFireSparkDensityValue">0.8</span>
+        </div>
+        <div class="setting-item">
+          <label>色</label>
+          <input type="color" id="plyFireSparkColor" value="#ffaa33">
+        </div>
         <h4 class="setting-category"><span>PLY煙</span><input type="checkbox" id="plySmokeEnabled"></h4>
         <div class="setting-item">
           <label>上昇方向</label>
@@ -1130,6 +1284,7 @@
             <div class="control-row"><label>色合い</label><input type="range" id="glbHue" min="0" max="360" step="1" value="0"><span id="glbHueValue">0</span></div>
             <div class="control-row"><label>明るさ</label><input type="range" id="glbBrightness" min="-100" max="100" step="1" value="0"><span id="glbBrightnessValue">0</span></div>
             <div class="control-row"><label>コントラスト</label><input type="range" id="glbContrast" min="-100" max="100" step="1" value="0"><span id="glbContrastValue">0</span></div>
+            <div class="control-row"><label>平塗り</label><input type="checkbox" id="glbFlatEnabled"><input type="range" id="glbPosterize" min="0" max="1" step="0.01" value="0.5"><span id="glbPosterizeValue">0.5</span></div>
           </div>
         </div>
       </div>
@@ -1501,7 +1656,13 @@
   <!-- メディアライブラリモーダル -->
   <div id="mediaLibraryModal" class="modal-overlay modal-centered" style="display:none;">
     <div class="modal-content media-library-modal">
-      <h3>メディアライブラリ</h3>
+      <div class="media-library-header">
+        <h3>メディアライブラリ</h3>
+        <div class="media-library-actions">
+          <button id="mediaLibrarySelectMode" class="media-action-btn"><i class="fa-solid fa-check-double"></i> 選択</button>
+          <button id="mediaLibraryDeleteSelected" class="media-action-btn media-action-danger" style="display:none;"><i class="fa-solid fa-trash"></i> <span id="mediaLibraryDeleteCount">0</span>件削除</button>
+        </div>
+      </div>
       <div id="mediaLibraryGrid" class="media-grid"></div>
       <div class="modal-buttons">
         <button id="mediaLibraryCancel">閉じる</button>
@@ -1572,6 +1733,6 @@
 
   <script src="src/presetManager.js?v=20260313g"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260317g"></script>
+  <script type="module" src="src/main.js?v=20260319e"></script>
 </body>
 </html>
