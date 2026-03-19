@@ -136,6 +136,25 @@ body {
 .layer-item .layer-count {
   font-size: 0.7rem; color: #667; min-width: 35px; text-align: right;
 }
+.context-toolbar {
+  position: absolute; display: none; z-index: 50;
+  background: rgba(10, 15, 30, 0.92); border: 1px solid #4361ee;
+  border-radius: 6px; padding: 4px; gap: 3px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  pointer-events: auto;
+  flex-direction: row;
+}
+.context-toolbar.visible { display: flex; }
+.ctx-btn {
+  padding: 5px 10px; border: 1px solid #2a3a5c; border-radius: 4px;
+  background: #0f1a30; color: #e0e0e0; font-size: 0.75rem;
+  cursor: pointer; white-space: nowrap;
+}
+.ctx-btn:hover { background: #4361ee; color: white; border-color: #4361ee; }
+.ctx-delete { color: #ff6b6b; border-color: #5c2a2a; }
+.ctx-delete:hover { background: #cc3333; color: white; border-color: #cc3333; }
+.ctx-color { color: #7ec8e3; border-color: #2a4a5c; }
+.ctx-color:hover { background: #2a7a9c; color: white; border-color: #2a7a9c; }
 </style>
 <script type="importmap">
 {
@@ -195,6 +214,14 @@ body {
     <canvas id="canvas3d"></canvas>
     <canvas id="overlayCanvas"></canvas>
     <div class="drop-overlay" id="dropOverlay"><p id="dropOverlayText">Drop PLY file here</p></div>
+    <div class="context-toolbar" id="contextToolbar">
+      <button class="ctx-btn" id="ctxMove" title="Move (G)">Move</button>
+      <button class="ctx-btn" id="ctxScale" title="Scale (S)">Scale</button>
+      <button class="ctx-btn" id="ctxRotate" title="Rotate (T)">Rotate</button>
+      <button class="ctx-btn ctx-delete" id="ctxDelete" title="Delete (Del)">Delete</button>
+      <input type="color" id="ctxColorPicker" value="#ff0000" title="Recolor selected points" style="width:28px; height:24px; border:1px solid #2a3a5c; border-radius:4px; background:none; cursor:pointer; padding:0; vertical-align:middle;">
+      <button class="ctx-btn ctx-color" id="ctxColor" title="Apply color">Color</button>
+    </div>
     <div class="placeholder" id="placeholder">
       <p>Drop a 3DGS PLY file here</p>
       <p>or click "Load PLY"</p>
@@ -378,6 +405,7 @@ function animate() {
   renderer.render(scene, camera);
 }
 animate();
+controls.addEventListener('change', () => updateContextToolbar());
 
 // ===== PLY Parser =====
 // PLYバイナリ解析（純粋関数、stateを変更しない）
@@ -755,7 +783,75 @@ function updateSelectionDisplay() {
   updateInfo();
   updateButtons();
   renderLayerList();
+  // 選択があればツールバー表示フラグON、なければOFF
+  if (state.selected.size >= 2 && selBoxBounds) _ctxToolbarVisible = true;
+  else _ctxToolbarVisible = false;
+  updateContextToolbar();
 }
+
+// ===== Context Toolbar (フローティングメニュー) =====
+let _ctxToolbarVisible = false;
+function showContextToolbar() { _ctxToolbarVisible = true; updateContextToolbar(); }
+function hideContextToolbar() { _ctxToolbarVisible = false; $('contextToolbar').classList.remove('visible'); }
+
+function updateContextToolbar() {
+  const tb = $('contextToolbar');
+  if (!_ctxToolbarVisible || !selBoxBounds || state.selected.size < 2) {
+    tb.classList.remove('visible');
+    return;
+  }
+  // ドラッグ中（変形・ブラシ・矩形選択）は非表示
+  // 注: これらの変数はコード後方でlet宣言されるため、TDZ回避にtry-catchを使用
+  try {
+    if (moveActive || scaleActive || rotateActive || isDragging) {
+      tb.classList.remove('visible');
+      return;
+    }
+  } catch (e) { /* 初期化前は無視（ドラッグ中ではないので続行） */ }
+  // 選択中心をスクリーン座標に投影
+  const center = new THREE.Vector3(selBoxBounds.center[0], selBoxBounds.center[1], selBoxBounds.center[2]);
+  state.pointCloud.localToWorld(center);
+  const ndc = center.project(camera);
+  if (ndc.z < 0 || ndc.z > 1) { tb.classList.remove('visible'); return; }
+
+  const rect = viewport.getBoundingClientRect();
+  let sx = (ndc.x * 0.5 + 0.5) * rect.width;
+  let sy = (-ndc.y * 0.5 + 0.5) * rect.height;
+
+  // バウンディングボックスの上端を使ってメニューを選択範囲の上に配置
+  const topPt = new THREE.Vector3(selBoxBounds.center[0], selBoxBounds.max[1], selBoxBounds.center[2]);
+  state.pointCloud.localToWorld(topPt);
+  const topNdc = topPt.project(camera);
+  const topSy = (-topNdc.y * 0.5 + 0.5) * rect.height;
+  sy = Math.min(sy, topSy) - 40; // 上端の少し上
+
+  // ビューポート内にクランプ
+  const tbW = tb.offsetWidth || 150;
+  sx = Math.max(0, Math.min(sx - tbW / 2, rect.width - tbW));
+  sy = Math.max(0, sy);
+
+  tb.style.left = sx + 'px';
+  tb.style.top = sy + 'px';
+  tb.classList.add('visible');
+}
+
+// コンテキストツールバーからのツール切り替え
+// pointerdownで即座に反応し、イベント伝播を完全にブロック
+$('contextToolbar').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
+$('contextToolbar').addEventListener('pointerup', (e) => { e.stopPropagation(); e.preventDefault(); });
+$('contextToolbar').addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); });
+function ctxSetTool(tool) {
+  // selBoxBoundsを再計算してからツール切り替え（確実にギズモを生成）
+  selBoxBounds = getSelectionBounds();
+  setTool(tool);
+}
+$('ctxMove').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); ctxSetTool('move'); });
+$('ctxScale').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); ctxSetTool('scale'); });
+$('ctxRotate').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); ctxSetTool('rotate'); });
+$('ctxDelete').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); deleteSelected(); });
+$('ctxColorPicker').addEventListener('pointerdown', (e) => { e.stopPropagation(); });
+$('ctxColorPicker').addEventListener('click', (e) => { e.stopPropagation(); });
+$('ctxColor').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); recolorSelected($('ctxColorPicker').value); });
 
 // ===== Layer Functions =====
 function getActiveLayer() {
@@ -777,6 +873,16 @@ function getSelectableVertexSet() {
   const result = new Set();
   for (const layer of state.layers) {
     if (layer.visible && !layer.locked) {
+      for (const idx of layer.vertexIndices) result.add(idx);
+    }
+  }
+  return result;
+}
+
+function getLockedVertexSet() {
+  const result = new Set();
+  for (const layer of state.layers) {
+    if (layer.locked) {
       for (const idx of layer.vertexIndices) result.add(idx);
     }
   }
@@ -1079,6 +1185,8 @@ let warpLastX = 0, warpLastY = 0;
 let warpOrigPositions = null;  // Float32Array snapshot at stroke start
 let warpModifiedIndices = null; // Set of indices modified during stroke
 
+let warpLockedSet = null; // ワープ中にロックされた頂点をスキップするためのセット
+
 function startWarp(e) {
   if (!state.pointCloud) return;
   warpActive = true;
@@ -1088,6 +1196,7 @@ function startWarp(e) {
   cacheScreenPositions();
   warpOrigPositions = new Float32Array(state.positions);
   warpModifiedIndices = new Set();
+  warpLockedSet = getLockedVertexSet();
   canvas.style.cursor = 'none';
 }
 
@@ -1118,6 +1227,7 @@ function updateWarp(e) {
   camUp.applyQuaternion(invQ);
 
   for (let i = 0; i < n; i++) {
+    if (warpLockedSet && warpLockedSet.has(i)) continue; // ロックレイヤーをスキップ
     const sx = cachedScreenPos[i * 2];
     const sy = cachedScreenPos[i * 2 + 1];
     const bx = sx - coords.x, by = sy - coords.y;
@@ -1266,6 +1376,7 @@ function densifyBrushAt(coords) {
   const cellSize = state.cellSize || 0.01;
   const n = state.vertices.length; // only original+previously committed
   const mask = state.masked;
+  const locked = getLockedVertexSet();
   const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
   const { f_dc_0: dc0Off, f_dc_1: dc1Off, f_dc_2: dc2Off } = state.offsets;
   let added = 0;
@@ -1273,6 +1384,7 @@ function densifyBrushAt(coords) {
   for (let i = 0; i < n; i++) {
     if (densifySourceUsed.has(i)) continue;
     if (mask.has(i)) continue;
+    if (locked.has(i)) continue;
 
     const sx = cachedScreenPos[i * 2];
     const sy = cachedScreenPos[i * 2 + 1];
@@ -1369,6 +1481,8 @@ function commitDensifyBrush() {
 }
 
 // ===== Move Tool =====
+let moveFirstOrigPositions = null;  // very first state (for undo/cancel across multi-drag)
+let moveAccumulated = false;        // true after at least one drag completed
 let moveArrows = []; // [{mesh, axis, axisIdx, origColor}]
 const moveRaycaster = new THREE.Raycaster();
 const ARROW_COLORS = { x: 0xff5555, y: 0x55ff55, z: 0x5599ff };
@@ -1454,12 +1568,20 @@ let moveAxisConstraint = null; // null = free, 'x'/'y'/'z' = axis
 let moveScreenAxisDir = null;
 
 function startMoveDrag(e) {
+  // ロック頂点を除外
+  const locked = getLockedVertexSet();
+  for (const idx of locked) state.selected.delete(idx);
+  if (state.selected.size === 0) return;
   const arrow = getMoveArrowAtMouse(e);
   moveActive = true;
   moveInitMouseX = e.clientX;
   moveInitMouseY = e.clientY;
   // basePositionsから取る（state.positionsは非表示レイヤーで1e10に書き換わっている可能性がある）
   moveOrigPositions = new Float32Array(state.basePositions || state.positions);
+  // Save the very first state only on the first drag (for undo/cancel across multi-drag)
+  if (!moveFirstOrigPositions) {
+    moveFirstOrigPositions = new Float32Array(state.basePositions || state.positions);
+  }
   moveSelectedArr = Array.from(state.selected);
 
   if (arrow) {
@@ -1549,25 +1671,74 @@ function updateMovePreview(e) {
   updateMoveArrowPositions();
 }
 
+// Accept current drag, update baseline, allow re-drag
 function commitMove() {
   if (!moveActive) return;
   moveActive = false;
 
   const posArr = state.positions;
-  const undoEntries = [];
 
+  // Check if actually moved
+  let moved = false;
   for (const i of moveSelectedArr) {
     const j = i * 3;
-    const ox = moveOrigPositions[j], oy = moveOrigPositions[j + 1], oz = moveOrigPositions[j + 2];
+    if (posArr[j] !== moveOrigPositions[j] || posArr[j+1] !== moveOrigPositions[j+1] || posArr[j+2] !== moveOrigPositions[j+2]) {
+      moved = true; break;
+    }
+  }
+
+  if (!moved) {
+    // No movement, if no prior drags clean up
+    if (!moveAccumulated) {
+      moveFirstOrigPositions = null;
+      moveOrigPositions = null;
+    }
+    moveAxisConstraint = null;
+    canvas.style.cursor = 'default';
+    return;
+  }
+
+  // Sync basePositions with moved positions (for display/next drag)
+  for (const i of moveSelectedArr) {
+    const j = i * 3;
+    state.basePositions[j] = posArr[j];
+    state.basePositions[j + 1] = posArr[j + 1];
+    state.basePositions[j + 2] = posArr[j + 2];
+  }
+
+  moveAccumulated = true;
+  moveOrigPositions = new Float32Array(state.basePositions);
+  moveAxisConstraint = null;
+  canvas.style.cursor = 'default';
+
+  // Update arrow positions and selection box
+  updateMoveArrowPositions();
+  selBoxBounds = getSelectionBounds();
+  updateSelectionDisplay();
+  setStatus('Move — drag another axis, Enter to apply, Esc to cancel');
+}
+
+// Commit all accumulated move drags (Enter)
+function applyMove() {
+  if (!moveAccumulated || !moveFirstOrigPositions) return;
+
+  const posArr = state.positions;
+  const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
+  const undoEntries = [];
+  const selectedArr = moveSelectedArr || Array.from(state.selected);
+
+  for (const i of selectedArr) {
+    const j = i * 3;
+    const ox = moveFirstOrigPositions[j], oy = moveFirstOrigPositions[j + 1], oz = moveFirstOrigPositions[j + 2];
     const nx = posArr[j], ny = posArr[j + 1], nz = posArr[j + 2];
-    if (ox === nx && oy === ny && oz === nz) continue;
+    if (Math.abs(nx-ox) < 0.0001 && Math.abs(ny-oy) < 0.0001 && Math.abs(nz-oz) < 0.0001) continue;
 
     const oldVertex = state.vertices[i];
     const newData = cloneVertexData(i);
     const dv = new DataView(newData.buffer, newData.byteOffset, newData.byteLength);
-    dv.setFloat32(state.offsets.x, nx, true);
-    dv.setFloat32(state.offsets.y, ny, true);
-    dv.setFloat32(state.offsets.z, nz, true);
+    dv.setFloat32(xOff, nx, true);
+    dv.setFloat32(yOff, ny, true);
+    dv.setFloat32(zOff, nz, true);
     const newVertex = { data: newData };
     undoEntries.push({ index: i, oldVertex, newVertex });
     state.vertices[i] = newVertex;
@@ -1576,26 +1747,52 @@ function commitMove() {
   if (undoEntries.length > 0) {
     state.undoStack.push({ type: 'move', entries: undoEntries, prevSelection: new Set(state.selected) });
     state.redoStack = [];
-    // Sync basePositions with moved positions
-    for (const entry of undoEntries) {
-      const j = entry.index * 3;
-      state.basePositions[j] = state.positions[j];
-      state.basePositions[j + 1] = state.positions[j + 1];
-      state.basePositions[j + 2] = state.positions[j + 2];
-    }
   }
 
+  moveFirstOrigPositions = null;
   moveOrigPositions = null;
   moveSelectedArr = null;
   moveAxisConstraint = null;
+  moveAccumulated = false;
 
   updateSelectionDisplay();
-  if (state.currentTool === 'move') createMoveArrows();
+  revertToSelectionTool();
   setStatus(`Move applied (${undoEntries.length.toLocaleString()} points)`);
+}
+
+// Cancel all accumulated move drags (Esc when not mid-drag)
+function cancelMoveAll() {
+  if (!moveFirstOrigPositions || !moveSelectedArr) return;
+
+  const posArr = state.positions;
+  for (const i of moveSelectedArr) {
+    const j = i * 3;
+    posArr[j] = moveFirstOrigPositions[j];
+    posArr[j + 1] = moveFirstOrigPositions[j + 1];
+    posArr[j + 2] = moveFirstOrigPositions[j + 2];
+    state.basePositions[j] = moveFirstOrigPositions[j];
+    state.basePositions[j + 1] = moveFirstOrigPositions[j + 1];
+    state.basePositions[j + 2] = moveFirstOrigPositions[j + 2];
+  }
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+
+  moveFirstOrigPositions = null;
+  moveOrigPositions = null;
+  moveSelectedArr = null;
+  moveAxisConstraint = null;
+  moveAccumulated = false;
+  moveActive = false;
+
+  updateMoveArrowPositions();
+  selBoxBounds = getSelectionBounds();
+  updateSelectionDisplay();
+  revertToSelectionTool();
+  setStatus('Move cancelled');
 }
 
 function cancelMove() {
   if (!moveActive || !moveOrigPositions) return;
+  // Revert current drag only (back to baseline)
   const posArr = state.positions;
   for (const i of moveSelectedArr) {
     const j = i * 3;
@@ -1605,11 +1802,14 @@ function cancelMove() {
   }
   state.pointCloud.geometry.attributes.position.needsUpdate = true;
   moveActive = false;
-  moveOrigPositions = null;
-  moveSelectedArr = null;
   moveAxisConstraint = null;
+  canvas.style.cursor = 'default';
   updateMoveArrowPositions();
-  setStatus('Move cancelled');
+  // If no prior drags, clean up; otherwise stay in move mode
+  if (!moveAccumulated) {
+    moveFirstOrigPositions = null;
+    moveOrigPositions = null;
+  }
 }
 
 function updateMoveArrowPositions() {
@@ -1717,7 +1917,8 @@ function getScreenAxisDir(axis) {
 let scaleActive = false;
 let scaleInitMouseX = 0;
 let scaleInitMouseY = 0;
-let scaleOrigPositions = null;
+let scaleOrigPositions = null;       // baseline for current drag (updated after each drag)
+let scaleFirstOrigPositions = null;  // very first state (for undo/cancel across multi-drag)
 let scaleCenter = [0, 0, 0];
 let scaleBBoxMin = [0, 0, 0];
 let scaleBBoxMax = [0, 0, 0];
@@ -1725,7 +1926,7 @@ let scaleSelectedArr = null;
 let activeHandle = null;
 let scaleScreenAxisDir = null;
 let scaleOrigBoxCenter = [0, 0, 0]; // for box visual update
-let scalePreviewMode = false; // post-drag preview for slider adjustment
+let scalePreviewMode = false; // true after at least one drag completed (awaiting Enter/Esc)
 let scaleLockedFactor = 1;   // factor locked at end of drag
 let scaleLockedUseCenter = false;
 let scaleLockedUniform = false;
@@ -1733,12 +1934,26 @@ let scaleLockedUniform = false;
 function startScaleDrag(e) {
   const handle = getHandleAtMouse(e);
   if (!handle) return;
+  // ロック頂点を除外
+  const locked = getLockedVertexSet();
+  for (const idx of locked) state.selected.delete(idx);
+  if (state.selected.size < 2) return;
+
+  // Reset previous handle highlight if re-grabbing
+  if (activeHandle) {
+    activeHandle.mesh.material.color.setHex(activeHandle.origColor);
+    activeHandle.mesh.material.opacity = 0.85;
+  }
 
   activeHandle = handle;
   scaleActive = true;
   scaleInitMouseX = e.clientX;
   scaleInitMouseY = e.clientY;
   scaleOrigPositions = new Float32Array(state.positions);
+  // Save the very first state only on the first drag (for undo/cancel across multi-drag)
+  if (!scaleFirstOrigPositions) {
+    scaleFirstOrigPositions = new Float32Array(state.positions);
+  }
   scaleSelectedArr = Array.from(state.selected);
 
   const bounds = selBoxBounds;
@@ -1823,31 +2038,53 @@ function updateScalePreview(e) {
   setStatus(`Scale ${label} (${anchor}): ${factor.toFixed(3)}x`);
 }
 
-// On mouse-up: enter scale preview mode (factor locked, falloff adjustable)
+// On mouse-up: accept drag result, allow grabbing another handle
 function endScaleDrag(e) {
   if (!scaleActive) return;
   scaleActive = false;
 
-  // Compute and lock the factor
+  // Compute the factor for status display
   const rect = viewport.getBoundingClientRect();
   const dx = (e.clientX - scaleInitMouseX) / rect.width * 2;
   const dy = -(e.clientY - scaleInitMouseY) / rect.height * 2;
   const mouseDelta = new THREE.Vector2(dx, dy);
   let projected = mouseDelta.dot(scaleScreenAxisDir);
   if (activeHandle.sign < 0) projected = -projected;
-  scaleLockedFactor = Math.max(0.01, 1 + projected * 2);
-  scaleLockedUseCenter = e.altKey;
-  scaleLockedUniform = e.shiftKey;
+  const factor = Math.max(0.01, 1 + projected * 2);
 
-  if (Math.abs(scaleLockedFactor - 1) < 0.001) {
-    cancelScalePreview();
+  if (Math.abs(factor - 1) < 0.001) {
+    // Negligible drag — revert this drag only
+    const posArr = state.pointCloud.geometry.attributes.position.array;
+    for (const i of scaleSelectedArr) {
+      const j = i * 3;
+      posArr[j] = scaleOrigPositions[j];
+      posArr[j+1] = scaleOrigPositions[j+1];
+      posArr[j+2] = scaleOrigPositions[j+2];
+    }
+    state.pointCloud.geometry.attributes.position.needsUpdate = true;
+    // If no prior drags either, clean up entirely
+    if (!scalePreviewMode) {
+      scaleFirstOrigPositions = null;
+      scaleOrigPositions = null;
+    }
+    activeHandle.mesh.material.color.setHex(activeHandle.origColor);
+    activeHandle.mesh.material.opacity = 0.85;
+    canvas.style.cursor = 'default';
     return;
   }
 
-  scalePreviewMode = true;
+  // Accept the drag: update baseline for next drag
+  scaleOrigPositions = new Float32Array(state.positions);
+  scalePreviewMode = true; // marks that we have uncommitted changes
+
+  // Reset handle highlight
+  activeHandle.mesh.material.color.setHex(activeHandle.origColor);
+  activeHandle.mesh.material.opacity = 0.85;
   canvas.style.cursor = 'default';
+
+  // Update bounding box and handle positions
   updateScaleHandlesPositions();
-  setStatus(`Scale preview: ${scaleLockedFactor.toFixed(3)}x — adjust Falloff, then Enter to apply / Esc to cancel`);
+  setStatus(`Scale ${activeHandle.axis.toUpperCase()}: ${factor.toFixed(3)}x — drag another axis, Enter to apply, Esc to cancel`);
 }
 
 // Regenerate scale preview with current falloff (called from slider)
@@ -1943,19 +2180,20 @@ function updateScaleHandlesPositions() {
   }
 }
 
-// Apply scale preview (commit to undo stack)
+// Apply scale (commit all accumulated drags to undo stack)
 function applyScalePreview() {
-  if (!scalePreviewMode) return;
+  if (!scalePreviewMode || !scaleFirstOrigPositions) return;
   scalePreviewMode = false;
 
   const posArr = state.pointCloud.geometry.attributes.position.array;
   const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
   const undoEntries = [];
 
+  // Compare current positions to the very first state (before any drag)
   for (const i of scaleSelectedArr) {
     const j = i * 3;
     const nx = posArr[j], ny = posArr[j+1], nz = posArr[j+2];
-    const ox = scaleOrigPositions[j], oy = scaleOrigPositions[j+1], oz = scaleOrigPositions[j+2];
+    const ox = scaleFirstOrigPositions[j], oy = scaleFirstOrigPositions[j+1], oz = scaleFirstOrigPositions[j+2];
     if (Math.abs(nx-ox) > 0.0001 || Math.abs(ny-oy) > 0.0001 || Math.abs(nz-oz) > 0.0001) {
       const oldVertex = state.vertices[i];
       const newData = cloneVertexData(i);
@@ -1981,26 +2219,26 @@ function applyScalePreview() {
   state.selected = savedSel;
   state.rawSelected = savedRaw;
   updateSelectionDisplay();
-  // Re-create handles at updated positions
-  if (state.currentTool === 'scale') createScaleHandles();
+  revertToSelectionTool();
   setStatus(`Scale applied (${undoEntries.length.toLocaleString()} points)`);
 }
 
-// Cancel scale preview (revert positions)
+// Cancel scale (revert all accumulated drags to the very first state)
 function cancelScalePreview() {
-  if (scalePreviewMode && scaleOrigPositions) {
+  if (scaleFirstOrigPositions && scaleSelectedArr) {
     const posArr = state.pointCloud.geometry.attributes.position.array;
     for (const i of scaleSelectedArr) {
       const j = i * 3;
-      posArr[j] = scaleOrigPositions[j];
-      posArr[j+1] = scaleOrigPositions[j+1];
-      posArr[j+2] = scaleOrigPositions[j+2];
+      posArr[j] = scaleFirstOrigPositions[j];
+      posArr[j+1] = scaleFirstOrigPositions[j+1];
+      posArr[j+2] = scaleFirstOrigPositions[j+2];
     }
     state.pointCloud.geometry.attributes.position.needsUpdate = true;
   }
   scalePreviewMode = false;
   resetScaleState();
   if (selBoxMesh) { selBoxMesh.rotation.set(0, 0, 0); selBoxMesh.scale.set(1, 1, 1); selBoxMesh.position.set(scaleOrigBoxCenter[0], scaleOrigBoxCenter[1], scaleOrigBoxCenter[2]); }
+  revertToSelectionTool();
   setStatus('Scale cancelled');
 }
 
@@ -2011,6 +2249,7 @@ function resetScaleState() {
   }
   activeHandle = null;
   scaleOrigPositions = null;
+  scaleFirstOrigPositions = null;
   scaleSelectedArr = null;
   scaleActive = false;
 }
@@ -2086,6 +2325,10 @@ let rotateScreenCenter = null;
 function startRotateDrag(e) {
   const ring = getRingAtMouse(e);
   if (!ring) return;
+  // ロック頂点を除外
+  const locked = getLockedVertexSet();
+  for (const idx of locked) state.selected.delete(idx);
+  if (state.selected.size < 2) return;
 
   activeRing = ring;
   rotateActive = true;
@@ -2232,6 +2475,7 @@ function commitRotate() {
   state.selected = savedSel;
   state.rawSelected = savedRaw;
   updateSelectionDisplay();
+  revertToSelectionTool();
 
   setStatus(changed ? `Rotation applied (${undoEntries.length.toLocaleString()} points)` : 'Rotation cancelled');
 }
@@ -2368,6 +2612,12 @@ function autoFitCamera() {
 }
 
 // ===== Tool Management =====
+let lastSelectionTool = 'brush'; // 直前に使った選択ツール（brush or rect）
+
+function revertToSelectionTool() {
+  setTool(lastSelectionTool);
+}
+
 const toolButtons = {
   navigate: $('toolNavigate'),
   brush: $('toolBrush'),
@@ -2381,7 +2631,13 @@ const toolButtons = {
 
 function setTool(tool) {
   state.currentTool = tool;
+  if (tool === 'brush' || tool === 'rect') lastSelectionTool = tool;
   controls.enabled = (tool === 'navigate');
+  // 変形ツールではツールバーを一時的に隠す（操作完了後に再表示される）
+  // それ以外のツールに切り替えた場合はツールバーを完全に隠す
+  const isTransform = tool === 'move' || tool === 'scale' || tool === 'rotate';
+  if (!isTransform) hideContextToolbar();
+  else $('contextToolbar').classList.remove('visible');
   for (const [t, btn] of Object.entries(toolButtons)) {
     btn.classList.toggle('active', t === tool);
   }
@@ -2501,7 +2757,6 @@ viewport.addEventListener('pointerdown', (e) => {
     return;
   }
   if (state.currentTool === 'scale') {
-    if (scalePreviewMode) return; // in preview, use Enter/Esc
     if (state.selected.size >= 2) startScaleDrag(e);
     return;
   }
@@ -2797,6 +3052,10 @@ function findKNearestNeighbors(points, K) {
 // ===== Edit Operations =====
 function deleteSelected() {
   if (state.selected.size === 0) return;
+  // ロックレイヤーの頂点を削除対象から除外
+  const locked = getLockedVertexSet();
+  for (const idx of locked) state.selected.delete(idx);
+  if (state.selected.size === 0) { setStatus('All selected points are on locked layers'); return; }
   const prevSelection = new Set(state.selected);
   // レイヤー情報を保存（undo用）
   const prevLayerMap = new Map();
@@ -2815,6 +3074,60 @@ function deleteSelected() {
   state.redoStack = [];
   rebuildGeometry();
   setStatus(`Deleted ${entries.length.toLocaleString()} points`);
+}
+
+// ===== Recolor =====
+function recolorSelected(hexColor) {
+  if (state.selected.size === 0) return;
+  const locked = getLockedVertexSet();
+  const targets = new Set(state.selected);
+  for (const idx of locked) targets.delete(idx);
+  if (targets.size === 0) { setStatus('All selected points are on locked layers'); return; }
+
+  // Parse hex to RGB [0-1]
+  const r = parseInt(hexColor.slice(1, 3), 16) / 255;
+  const g = parseInt(hexColor.slice(3, 5), 16) / 255;
+  const b = parseInt(hexColor.slice(5, 7), 16) / 255;
+
+  // RGB → SH DC
+  const newDC0 = (r - 0.5) / C0;
+  const newDC1 = (g - 0.5) / C0;
+  const newDC2 = (b - 0.5) / C0;
+
+  const { f_dc_0: dc0Off, f_dc_1: dc1Off, f_dc_2: dc2Off } = state.offsets;
+  const undoEntries = [];
+
+  for (const i of targets) {
+    const oldVertex = state.vertices[i];
+    const newData = cloneVertexData(i);
+    const dv = new DataView(newData.buffer, newData.byteOffset, newData.byteLength);
+    dv.setFloat32(dc0Off, newDC0, true);
+    dv.setFloat32(dc1Off, newDC1, true);
+    dv.setFloat32(dc2Off, newDC2, true);
+    const newVertex = { data: newData };
+    undoEntries.push({ index: i, oldVertex, newVertex });
+    state.vertices[i] = newVertex;
+  }
+
+  if (undoEntries.length > 0) {
+    state.undoStack.push({ type: 'recolor', entries: undoEntries, prevSelection: new Set(state.selected) });
+    state.redoStack = [];
+  }
+
+  // Update display colors directly (avoid full rebuildGeometry for performance)
+  const colors = state.pointCloud.geometry.attributes.color.array;
+  const baseColors = state.baseColors;
+  for (const i of targets) {
+    const j = i * 3;
+    baseColors[j] = r; baseColors[j + 1] = g; baseColors[j + 2] = b;
+    // If selected, keep cyan; color will show when deselected
+    if (!state.selected.has(i)) {
+      colors[j] = r; colors[j + 1] = g; colors[j + 2] = b;
+    }
+  }
+  state.pointCloud.geometry.attributes.color.needsUpdate = true;
+
+  setStatus(`Recolored ${undoEntries.length.toLocaleString()} points`);
 }
 
 // ===== Copy / Paste =====
@@ -3278,7 +3591,7 @@ function undo() {
       for (let i = startIdx; i < state.vertices.length; i++) layer.vertexIndices.delete(i);
     }
     state.vertices.splice(startIdx, op.count);
-  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp') {
+  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp' || op.type === 'recolor') {
     for (const entry of op.entries) {
       state.vertices[entry.index] = entry.oldVertex;
     }
@@ -3312,7 +3625,7 @@ function redo() {
     const startIdx = state.vertices.length;
     for (let i = 0; i < op.vertices.length; i++) state.vertices.push(op.vertices[i]);
     updateLayerIndicesAfterAdd(startIdx, op.count);
-  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp') {
+  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp' || op.type === 'recolor') {
     for (const entry of op.entries) {
       state.vertices[entry.index] = entry.newVertex;
     }
@@ -3368,7 +3681,8 @@ function exportPLY() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = state.fileName ? state.fileName.replace('.ply', '_edited.ply') : 'edited.ply';
+  const baseName = state.fileName ? state.fileName.replace(/\.(ply|plyproj)$/i, '') : 'edited';
+  a.download = baseName + '_edited.ply';
   a.click();
   URL.revokeObjectURL(url);
   setStatus(`Exported ${exportVertices.length.toLocaleString()} splats (${state.vertices.length - exportVertices.length} hidden excluded)`);
@@ -3585,7 +3899,7 @@ $('warpStrength').addEventListener('input', () => {
 $('scaleFalloff').addEventListener('input', () => {
   const v = parseFloat($('scaleFalloff').value);
   $('scaleFalloffVal').textContent = v === 0 ? '0 (uniform)' : v.toFixed(1);
-  if (scalePreviewMode) regenerateScalePreview();
+  if (scaleActive) regenerateScalePreview();
 });
 
 // ===== Keyboard Shortcuts =====
@@ -3600,11 +3914,29 @@ window.addEventListener('keydown', (e) => {
 
   if (e.key === 'Escape') {
     if (moveActive) { cancelMove(); e.preventDefault(); return; }
+    if (moveAccumulated) { cancelMoveAll(); e.preventDefault(); return; }
+    if (scaleActive) {
+      // Mid-drag: revert current drag to baseline, keep prior drags
+      const posArr = state.pointCloud.geometry.attributes.position.array;
+      for (const i of scaleSelectedArr) {
+        const j = i * 3;
+        posArr[j] = scaleOrigPositions[j];
+        posArr[j+1] = scaleOrigPositions[j+1];
+        posArr[j+2] = scaleOrigPositions[j+2];
+      }
+      state.pointCloud.geometry.attributes.position.needsUpdate = true;
+      scaleActive = false;
+      if (activeHandle) { activeHandle.mesh.material.color.setHex(activeHandle.origColor); activeHandle.mesh.material.opacity = 0.85; }
+      canvas.style.cursor = 'default';
+      updateScaleHandlesPositions();
+      e.preventDefault(); return;
+    }
     if (scalePreviewMode) { cancelScalePreview(); e.preventDefault(); return; }
     if (state.previewMode) { cancelDensifyPreview(); e.preventDefault(); return; }
     state.selected.clear(); state.rawSelected.clear(); updateSelectionDisplay(); e.preventDefault();
   }
   else if (e.key === 'Enter') {
+    if (moveAccumulated) { applyMove(); e.preventDefault(); return; }
     if (scalePreviewMode) { applyScalePreview(); e.preventDefault(); return; }
     if (state.previewMode) { applyDensifyPreview(); e.preventDefault(); return; }
   }
