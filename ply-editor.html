@@ -191,6 +191,7 @@ body {
   <div class="toolbar-group">
     <button class="btn danger" id="btnDelete" title="Delete (Del)" disabled>Delete</button>
     <button class="btn" id="btnDensify" title="Densify" disabled>Densify</button>
+    <button class="btn" id="btnThin" title="Thin (decimate dense points)" disabled>Thin</button>
     <button class="btn primary" id="btnDensifyApply" style="display:none">Apply</button>
     <button class="btn danger" id="btnDensifyCancel" style="display:none">Cancel</button>
   </div>
@@ -219,8 +220,7 @@ body {
       <button class="ctx-btn" id="ctxScale" title="Scale (S)">Scale</button>
       <button class="ctx-btn" id="ctxRotate" title="Rotate (T)">Rotate</button>
       <button class="ctx-btn ctx-delete" id="ctxDelete" title="Delete (Del)">Delete</button>
-      <input type="color" id="ctxColorPicker" value="#ff0000" title="Recolor selected points" style="width:28px; height:24px; border:1px solid #2a3a5c; border-radius:4px; background:none; cursor:pointer; padding:0; vertical-align:middle;">
-      <button class="ctx-btn ctx-color" id="ctxColor" title="Apply color">Color</button>
+      <button class="ctx-btn ctx-color" id="ctxAdjustColor" title="Apply color adjustment">Adjust</button>
     </div>
     <div class="placeholder" id="placeholder">
       <p>Drop a 3DGS PLY file here</p>
@@ -237,6 +237,11 @@ body {
       <label>Point Size</label>
       <input type="range" id="pointSize" min="1" max="10" step="0.5" value="2">
       <span class="val" id="pointSizeVal">2</span>
+    </div>
+    <div class="setting-row">
+      <label>Opacity Cut</label>
+      <input type="range" id="opacityCut" min="0" max="1" step="0.01" value="0">
+      <span class="val" id="opacityCutVal">0.00</span>
     </div>
     <h3>Brush</h3>
     <div class="setting-row">
@@ -260,6 +265,12 @@ body {
       <input type="range" id="densifyJitter" min="0" max="0.5" step="0.01" value="0.2">
       <span class="val" id="densifyJitterVal">0.20</span>
     </div>
+    <h3>Thin</h3>
+    <div class="setting-row">
+      <label>Spacing</label>
+      <input type="range" id="thinSpacing" min="0.001" max="0.1" step="0.001" value="0.01">
+      <span class="val" id="thinSpacingVal">0.010</span>
+    </div>
     <h3>Warp</h3>
     <div class="setting-row">
       <label>Strength</label>
@@ -271,6 +282,26 @@ body {
       <label>Falloff</label>
       <input type="range" id="scaleFalloff" min="0" max="5" step="0.1" value="0">
       <span class="val" id="scaleFalloffVal">0 (uniform)</span>
+    </div>
+    <h3>Color Adjust</h3>
+    <div class="setting-row">
+      <label>Hue</label>
+      <input type="range" id="colorHue" min="-180" max="180" step="1" value="0">
+      <span class="val" id="colorHueVal">0°</span>
+    </div>
+    <div class="setting-row">
+      <label>Saturation</label>
+      <input type="range" id="colorSat" min="-100" max="100" step="1" value="0">
+      <span class="val" id="colorSatVal">0%</span>
+    </div>
+    <div class="setting-row">
+      <label>Brightness</label>
+      <input type="range" id="colorBri" min="-100" max="100" step="1" value="0">
+      <span class="val" id="colorBriVal">0%</span>
+    </div>
+    <div class="setting-row">
+      <button class="btn" id="btnApplyColor" disabled style="flex:1">Apply</button>
+      <button class="btn" id="btnResetColorSliders" style="flex:0 0 auto; padding:4px 8px; font-size:0.75rem;">Reset</button>
     </div>
     <h3>Select by Color</h3>
     <div class="setting-row">
@@ -337,6 +368,7 @@ const state = {
   masked: new Set(),
 
   baseColors: null,   // Float32Array(n*3)
+  baseOpacities: null, // Float32Array(n) — sigmoid-decoded opacity per vertex
   positions: null,    // Float32Array(n*3)
   density: null,      // Uint32Array(n) — neighbor count per vertex
   cellSize: 0.01,     // grid cell size from density computation
@@ -535,15 +567,31 @@ function mergePLY(arrayBuffer, fileName) {
   return count;
 }
 
-function mergeProject(json) {
-  const proj = JSON.parse(json);
-  if (!proj.version || !proj.ply || !proj.layers) throw new Error('Invalid project file');
-
-  // base64デコード → ArrayBuffer
-  const binary = atob(proj.ply);
-  const buf = new ArrayBuffer(binary.length);
-  const view = new Uint8Array(buf);
-  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+function mergeProject(data) {
+  let proj, buf;
+  if (data instanceof ArrayBuffer) {
+    const bytes = new Uint8Array(data);
+    const magic = new TextDecoder().decode(bytes.subarray(0, 8));
+    if (magic === 'PLYPROJ2') {
+      const metaLen = new DataView(data, 8, 4).getUint32(0, true);
+      proj = JSON.parse(new TextDecoder().decode(bytes.subarray(12, 12 + metaLen)));
+      buf = data.slice(12 + metaLen);
+    } else {
+      const text = new TextDecoder().decode(bytes);
+      proj = JSON.parse(text);
+      const b = atob(proj.ply);
+      buf = new ArrayBuffer(b.length);
+      const v = new Uint8Array(buf);
+      for (let i = 0; i < b.length; i++) v[i] = b.charCodeAt(i);
+    }
+  } else {
+    proj = JSON.parse(data);
+    const b = atob(proj.ply);
+    buf = new ArrayBuffer(b.length);
+    const v = new Uint8Array(buf);
+    for (let i = 0; i < b.length; i++) v[i] = b.charCodeAt(i);
+  }
+  if (!proj.layers) throw new Error('Invalid project file');
 
   const incoming = parsePLYRaw(buf);
 
@@ -603,14 +651,17 @@ function rebuildGeometry() {
   const n = state.vertices.length;
   const positions = new Float32Array(n * 3);
   const colors = new Float32Array(n * 3);
+  const opacities = new Float32Array(n);
 
   const { x: xOff, y: yOff, z: zOff, f_dc_0: dc0Off, f_dc_1: dc1Off, f_dc_2: dc2Off } = state.offsets;
+  const hasOpacity = state.offsets.opacity !== undefined;
+  const opOff = hasOpacity ? state.offsets.opacity : 0;
   const vs = state.vertexSize;
   const dv = state.dataView;
 
   for (let i = 0; i < n; i++) {
     const v = state.vertices[i];
-    let x, y, z, dc0, dc1, dc2;
+    let x, y, z, dc0, dc1, dc2, rawOp = 10; // default high opacity if no property
     if ('srcIndex' in v) {
       const base = v.srcIndex * vs;
       x = dv.getFloat32(base + xOff, true);
@@ -619,6 +670,7 @@ function rebuildGeometry() {
       dc0 = dv.getFloat32(base + dc0Off, true);
       dc1 = dv.getFloat32(base + dc1Off, true);
       dc2 = dv.getFloat32(base + dc2Off, true);
+      if (hasOpacity) rawOp = dv.getFloat32(base + opOff, true);
     } else {
       const vdv = new DataView(v.data.buffer, v.data.byteOffset, v.data.byteLength);
       x = vdv.getFloat32(xOff, true);
@@ -627,7 +679,12 @@ function rebuildGeometry() {
       dc0 = vdv.getFloat32(dc0Off, true);
       dc1 = vdv.getFloat32(dc1Off, true);
       dc2 = vdv.getFloat32(dc2Off, true);
+      if (hasOpacity) rawOp = vdv.getFloat32(opOff, true);
     }
+    // sigmoid decode: actual opacity = 1 / (1 + exp(-raw))
+    const alpha = 1.0 / (1.0 + Math.exp(-rawOp));
+    opacities[i] = alpha;
+
     const j = i * 3;
     positions[j] = x; positions[j + 1] = y; positions[j + 2] = z;
     colors[j]     = Math.max(0, Math.min(1, 0.5 + C0 * dc0));
@@ -638,14 +695,21 @@ function rebuildGeometry() {
   state.positions = positions;
   state.basePositions = new Float32Array(positions);
   state.baseColors = new Float32Array(colors);
+  state.baseOpacities = opacities;
 
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  if (n > 0) geom.computeBoundingSphere();
 
+  // 常にPointsオブジェクトを再作成（geometry差し替えによるWebGL VAOキャッシュ不整合を防止）
   if (state.pointCloud) {
+    const oldMat = state.pointCloud.material;
+    scene.remove(state.pointCloud);
     state.pointCloud.geometry.dispose();
-    state.pointCloud.geometry = geom;
+    state.pointCloud = new THREE.Points(geom, oldMat);
+    state.pointCloud.rotation.x = Math.PI;
+    scene.add(state.pointCloud);
   } else {
     const mat = new THREE.PointsMaterial({
       size: parseFloat($('pointSize').value),
@@ -754,22 +818,37 @@ function updateSelectionDisplay() {
 
   // 非表示レイヤーの頂点セットを構築
   const hiddenSet = getHiddenVertexSet();
+  const opCut = parseFloat($('opacityCut').value);
+  const opacities = state.baseOpacities;
 
   for (let i = 0; i < n; i++) {
     const j = i * 3;
-    if (hiddenSet.has(i)) {
-      // 非表示レイヤー: 位置を無限遠に飛ばして完全に見えなくする
+    // opacity threshold: hide points below cutoff
+    if (hiddenSet.has(i) || (opacities && opacities[i] < opCut)) {
       positions[j] = 1e10; positions[j + 1] = 1e10; positions[j + 2] = 1e10;
       colors[j] = 0; colors[j + 1] = 0; colors[j + 2] = 0;
     } else {
       // 位置を復元
       positions[j] = basePos[j]; positions[j + 1] = basePos[j + 1]; positions[j + 2] = basePos[j + 2];
       if (sel.has(i)) {
-        // 元の色に薄い水色をブレンド（元の色が見える程度）
-        const blend = 0.45;
-        colors[j]     = base[j]     * (1 - blend) + 0 * blend;
-        colors[j + 1] = base[j + 1] * (1 - blend) + 1 * blend;
-        colors[j + 2] = base[j + 2] * (1 - blend) + 1 * blend;
+        if (colorPreviewActive) {
+          // Color adjust preview: show adjusted colors
+          const hueDeg = parseInt($('colorHue').value);
+          const satPct = parseInt($('colorSat').value);
+          const briPct = parseInt($('colorBri').value);
+          let [h, s, l] = rgbToHsl(base[j], base[j+1], base[j+2]);
+          h = h + hueDeg;
+          s = Math.max(0, Math.min(1, s + satPct / 100));
+          l = Math.max(0, Math.min(1, l + briPct / 100));
+          const [nr, ng, nb] = hslToRgb(h, s, l);
+          colors[j] = nr; colors[j + 1] = ng; colors[j + 2] = nb;
+        } else {
+          // 元の色に薄い水色をブレンド（元の色が見える程度）
+          const blend = 0.45;
+          colors[j]     = base[j]     * (1 - blend) + 0 * blend;
+          colors[j + 1] = base[j + 1] * (1 - blend) + 1 * blend;
+          colors[j + 2] = base[j + 2] * (1 - blend) + 1 * blend;
+        }
       } else if (mask.has(i)) {
         colors[j] = base[j] * 0.25; colors[j + 1] = base[j + 1] * 0.25; colors[j + 2] = base[j + 2] * 0.25;
       } else {
@@ -849,9 +928,14 @@ $('ctxMove').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.pre
 $('ctxScale').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); ctxSetTool('scale'); });
 $('ctxRotate').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); ctxSetTool('rotate'); });
 $('ctxDelete').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); deleteSelected(); });
-$('ctxColorPicker').addEventListener('pointerdown', (e) => { e.stopPropagation(); });
-$('ctxColorPicker').addEventListener('click', (e) => { e.stopPropagation(); });
-$('ctxColor').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); recolorSelected($('ctxColorPicker').value); });
+$('ctxAdjustColor').addEventListener('pointerdown', (e) => {
+  e.stopPropagation(); e.preventDefault();
+  colorPreviewActive = false;
+  adjustColorSelected(parseInt($('colorHue').value), parseInt($('colorSat').value), parseInt($('colorBri').value));
+  $('colorHue').value = 0; $('colorHueVal').textContent = '0°';
+  $('colorSat').value = 0; $('colorSatVal').textContent = '0%';
+  $('colorBri').value = 0; $('colorBriVal').textContent = '0%';
+});
 
 // ===== Layer Functions =====
 function getActiveLayer() {
@@ -1044,17 +1128,29 @@ function deleteLayer(layerId) {
   const layer = state.layers.find(l => l.id === layerId);
   if (!layer) return;
 
-  // この層の頂点を次のレイヤー(またはひとつ前)に移動
-  const idx = state.layers.indexOf(layer);
-  const targetIdx = idx > 0 ? idx - 1 : 1;
-  const target = state.layers[targetIdx];
-  for (const vi of layer.vertexIndices) target.vertexIndices.add(vi);
+  // このレイヤーの頂点を削除（単一パスfilter、O(n)）
+  const toDelete = new Set(layer.vertexIndices);
+  if (toDelete.size > 0) {
+    state.vertices = state.vertices.filter((_, i) => !toDelete.has(i));
+    // 他レイヤーのインデックスを更新
+    updateLayerIndicesAfterDelete(toDelete);
+  }
 
+  // レイヤー自体を削除
+  const idx = state.layers.indexOf(layer);
   state.layers.splice(idx, 1);
   if (state.activeLayerId === layerId) {
-    state.activeLayerId = target.id;
+    const newIdx = Math.min(idx, state.layers.length - 1);
+    state.activeLayerId = state.layers[newIdx].id;
   }
+
+  state.selected.clear();
+  state.rawSelected.clear();
+  state.undoStack = [];
+  state.redoStack = [];
+  rebuildGeometry();
   updateSelectionDisplay();
+  setStatus(`Deleted layer "${layer.name}" (${toDelete.size.toLocaleString()} points removed)`);
 }
 
 function mergeLayerDown() {
@@ -1072,20 +1168,22 @@ function mergeLayerDown() {
   setStatus(`Merged "${active.name}" into "${target.name}"`);
 }
 
-// 頂点削除時にレイヤーのインデックスを更新
+// 頂点削除時にレイヤーのインデックスを更新（二分探索でO(n log k)）
 function updateLayerIndicesAfterDelete(deletedIndices) {
   const sorted = [...deletedIndices].sort((a, b) => a - b);
+  const k = sorted.length;
   for (const layer of state.layers) {
     const newSet = new Set();
     for (const idx of layer.vertexIndices) {
       if (deletedIndices.has(idx)) continue;
-      // 削除されたインデックスより小さいものの数をカウントしてシフト
-      let shift = 0;
-      for (const d of sorted) {
-        if (d < idx) shift++;
-        else break;
+      // 二分探索: sorted内でidx未満の要素数 = シフト量
+      let lo = 0, hi = k;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (sorted[mid] < idx) lo = mid + 1;
+        else hi = mid;
       }
-      newSet.add(idx - shift);
+      newSet.add(idx - lo);
     }
     layer.vertexIndices = newSet;
   }
@@ -1099,19 +1197,22 @@ function updateLayerIndicesAfterAdd(startIdx, count) {
   }
 }
 
-// Undo delete: 再挿入された頂点のレイヤーインデックスを復元
+// Undo delete: 再挿入された頂点のレイヤーインデックスを復元（二分探索版）
 function rebuildLayerIndicesForUndelete(entries, prevLayerMap) {
-  // まず既存インデックスを挿入分だけシフト（昇順で処理）
   const insertedIndices = entries.map(e => e.index).sort((a, b) => a - b);
+  const k = insertedIndices.length;
   for (const layer of state.layers) {
     const newSet = new Set();
     for (const idx of layer.vertexIndices) {
-      let shift = 0;
-      for (const ins of insertedIndices) {
-        if (ins <= idx + shift) shift++;
-        else break;
+      // 二分探索: insertedIndices内で (idx + shift) 以下の要素数を求める
+      // shift自体がshiftに依存するので、iterativeに解く
+      let lo = 0, hi = k;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (insertedIndices[mid] <= idx + mid) lo = mid + 1;
+        else hi = mid;
       }
-      newSet.add(idx + shift);
+      newSet.add(idx + lo);
     }
     layer.vertexIndices = newSet;
   }
@@ -1124,7 +1225,6 @@ function rebuildLayerIndicesForUndelete(entries, prevLayerMap) {
       else if (state.layers[0]) state.layers[0].vertexIndices.add(entry.index);
     }
   } else {
-    // fallback: アクティブレイヤーに追加
     const active = getActiveLayer();
     for (const entry of entries) active.vertexIndices.add(entry.index);
   }
@@ -1718,9 +1818,9 @@ function commitMove() {
   setStatus('Move — drag another axis, Enter to apply, Esc to cancel');
 }
 
-// Commit all accumulated move drags (Enter)
-function applyMove() {
-  if (!moveAccumulated || !moveFirstOrigPositions) return;
+// Core move commit logic (shared by applyMove and applyMoveImmediate)
+function _commitMoveData() {
+  if (!moveAccumulated || !moveFirstOrigPositions) return 0;
 
   const posArr = state.positions;
   const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
@@ -1755,9 +1855,22 @@ function applyMove() {
   moveAxisConstraint = null;
   moveAccumulated = false;
 
+  return undoEntries.length;
+}
+
+// Commit all accumulated move drags (Enter)
+function applyMove() {
+  const count = _commitMoveData();
   updateSelectionDisplay();
   revertToSelectionTool();
-  setStatus(`Move applied (${undoEntries.length.toLocaleString()} points)`);
+  setStatus(`Move applied (${count.toLocaleString()} points)`);
+}
+
+// Auto-commit when switching tools (no revertToSelectionTool)
+function applyMoveImmediate() {
+  const count = _commitMoveData();
+  updateSelectionDisplay();
+  setStatus(`Move applied (${count.toLocaleString()} points)`);
 }
 
 // Cancel all accumulated move drags (Esc when not mid-drag)
@@ -2180,9 +2293,9 @@ function updateScaleHandlesPositions() {
   }
 }
 
-// Apply scale (commit all accumulated drags to undo stack)
-function applyScalePreview() {
-  if (!scalePreviewMode || !scaleFirstOrigPositions) return;
+// Core scale commit logic (shared by applyScalePreview and applyScaleImmediate)
+function _commitScaleData() {
+  if (!scalePreviewMode || !scaleFirstOrigPositions) return 0;
   scalePreviewMode = false;
 
   const posArr = state.pointCloud.geometry.attributes.position.array;
@@ -2218,9 +2331,23 @@ function applyScalePreview() {
   rebuildGeometry();
   state.selected = savedSel;
   state.rawSelected = savedRaw;
+
+  return undoEntries.length;
+}
+
+// Apply scale (Enter)
+function applyScalePreview() {
+  const count = _commitScaleData();
   updateSelectionDisplay();
   revertToSelectionTool();
-  setStatus(`Scale applied (${undoEntries.length.toLocaleString()} points)`);
+  setStatus(`Scale applied (${count.toLocaleString()} points)`);
+}
+
+// Auto-commit when switching tools (no revertToSelectionTool)
+function applyScaleImmediate() {
+  const count = _commitScaleData();
+  updateSelectionDisplay();
+  setStatus(`Scale applied (${count.toLocaleString()} points)`);
 }
 
 // Cancel scale (revert all accumulated drags to the very first state)
@@ -2503,7 +2630,7 @@ function loadFile(file, mergeMode) {
         console.error(err);
       }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   } else {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -2630,6 +2757,10 @@ const toolButtons = {
 };
 
 function setTool(tool) {
+  // 未確定の変形操作を自動確定してからツール切り替え
+  if (moveAccumulated && tool !== 'move') applyMoveImmediate();
+  if (scalePreviewMode && tool !== 'scale') applyScaleImmediate();
+
   state.currentTool = tool;
   if (tool === 'brush' || tool === 'rect') lastSelectionTool = tool;
   controls.enabled = (tool === 'navigate');
@@ -2865,7 +2996,7 @@ window.addEventListener('pointerup', (e) => {
 
   if (state.currentTool === 'rect' && rectStart && rectEnd && state.pointCloud) {
     _clearSimilarSource();
-    rectSelectRegion();
+    rectSelectRegion(e.altKey);
     updateSelectionDisplay();
     rectStart = null;
     rectEnd = null;
@@ -2899,7 +3030,7 @@ function brushSelectAt(mx, my, erase = false) {
   }
 }
 
-function rectSelectRegion() {
+function rectSelectRegion(erase = false) {
   if (!cachedScreenPos || !rectStart || !rectEnd) return;
   const x1 = Math.min(rectStart.x, rectEnd.x);
   const y1 = Math.min(rectStart.y, rectEnd.y);
@@ -2915,8 +3046,13 @@ function rectSelectRegion() {
     const sx = cachedScreenPos[i * 2];
     const sy = cachedScreenPos[i * 2 + 1];
     if (sx >= x1 && sx <= x2 && sy >= y1 && sy <= y2) {
-      state.rawSelected.add(i);
-      if (!sparse || state.density[i] <= densityMax) state.selected.add(i);
+      if (erase) {
+        state.rawSelected.delete(i);
+        state.selected.delete(i);
+      } else {
+        state.rawSelected.add(i);
+        if (!sparse || state.density[i] <= densityMax) state.selected.add(i);
+      }
     }
   }
 }
@@ -3063,41 +3199,191 @@ function deleteSelected() {
     const layer = getLayerForVertex(idx);
     if (layer) prevLayerMap.set(idx, layer.id);
   }
-  const sorted = Array.from(state.selected).sort((a, b) => b - a); // descending
-  const entries = [];
-  for (const idx of sorted) {
-    const vertex = state.vertices.splice(idx, 1)[0];
-    entries.unshift({ index: idx, vertex }); // ascending order
-  }
+  // undo用エントリを昇順で収集（O(n)、spliceなし）
+  const sortedAsc = Array.from(state.selected).sort((a, b) => a - b);
+  const entries = sortedAsc.map(idx => ({ index: idx, vertex: state.vertices[idx] }));
+  // 単一パスで削除対象を除外（O(n)、splice O(k*n) → filter O(n)）
+  state.vertices = state.vertices.filter((_, i) => !state.selected.has(i));
   updateLayerIndicesAfterDelete(state.selected);
   state.undoStack.push({ type: 'delete', entries, prevSelection, prevLayerMap });
   state.redoStack = [];
   rebuildGeometry();
+  // 削除後に非表示レイヤーの頂点しか残っていない場合、自動で全レイヤー表示
+  if (state.vertices.length > 0) {
+    const hiddenSet = getHiddenVertexSet();
+    const allHidden = state.vertices.every((_, i) => hiddenSet.has(i));
+    if (allHidden) {
+      for (const layer of state.layers) layer.visible = true;
+      updateSelectionDisplay();
+      setStatus(`Deleted ${entries.length.toLocaleString()} points — hidden layers auto-shown`);
+      return;
+    }
+  }
   setStatus(`Deleted ${entries.length.toLocaleString()} points`);
 }
 
-// ===== Recolor =====
-function recolorSelected(hexColor) {
+// ===== Thin (decimate dense points) =====
+function thinSelected() {
   if (state.selected.size === 0) return;
   const locked = getLockedVertexSet();
   const targets = new Set(state.selected);
   for (const idx of locked) targets.delete(idx);
   if (targets.size === 0) { setStatus('All selected points are on locked layers'); return; }
 
-  // Parse hex to RGB [0-1]
-  const r = parseInt(hexColor.slice(1, 3), 16) / 255;
-  const g = parseInt(hexColor.slice(3, 5), 16) / 255;
-  const b = parseInt(hexColor.slice(5, 7), 16) / 255;
+  const spacing = parseFloat($('thinSpacing').value);
+  const posArr = state.positions;
 
-  // RGB → SH DC
-  const newDC0 = (r - 0.5) / C0;
-  const newDC1 = (g - 0.5) / C0;
-  const newDC2 = (b - 0.5) / C0;
+  // Build spatial grid from selected points
+  const cellSize = spacing;
+  const invCell = 1 / cellSize;
+  const grid = new Map(); // "cx,cy,cz" → [vertexIndex, ...]
+
+  for (const i of targets) {
+    const j = i * 3;
+    const x = posArr[j], y = posArr[j + 1], z = posArr[j + 2];
+    const cx = Math.floor(x * invCell);
+    const cy = Math.floor(y * invCell);
+    const cz = Math.floor(z * invCell);
+    const key = cx + ',' + cy + ',' + cz;
+    if (!grid.has(key)) grid.set(key, []);
+    grid.get(key).push(i);
+  }
+
+  // For each cell with multiple points, keep one, mark rest for removal
+  const toRemove = new Set();
+  for (const [, indices] of grid) {
+    if (indices.length <= 1) continue;
+    // Shuffle to randomize which one survives
+    for (let k = indices.length - 1; k > 0; k--) {
+      const r = Math.floor(Math.random() * (k + 1));
+      [indices[k], indices[r]] = [indices[r], indices[k]];
+    }
+    // Keep the first, remove the rest
+    for (let k = 1; k < indices.length; k++) {
+      toRemove.add(indices[k]);
+    }
+  }
+
+  if (toRemove.size === 0) {
+    setStatus('No points to thin at this spacing');
+    return;
+  }
+
+  // Use same deletion logic as deleteSelected
+  const prevSelection = new Set(state.selected);
+  const prevLayerMap = new Map();
+  for (const idx of toRemove) {
+    const layer = getLayerForVertex(idx);
+    if (layer) prevLayerMap.set(idx, layer.id);
+  }
+
+  // undo用エントリを昇順で収集（O(k)、spliceなし）
+  const sortedAsc = Array.from(toRemove).sort((a, b) => a - b);
+  const entries = sortedAsc.map(idx => ({ index: idx, vertex: state.vertices[idx] }));
+  // 単一パスで除外（O(n)）
+  state.vertices = state.vertices.filter((_, i) => !toRemove.has(i));
+  updateLayerIndicesAfterDelete(toRemove);
+  state.undoStack.push({ type: 'delete', entries, prevSelection, prevLayerMap });
+  state.redoStack = [];
+  rebuildGeometry();
+  setStatus(`Thinned: removed ${toRemove.size.toLocaleString()} / ${targets.size.toLocaleString()} points (spacing: ${spacing})`);
+}
+
+// ===== Recolor =====
+// ===== RGB ↔ HSL helpers =====
+function rgbToHsl(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) { h = s = 0; }
+  else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  return [h * 360, s, l]; // h: 0-360, s: 0-1, l: 0-1
+}
+
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360; // normalize
+  s = Math.max(0, Math.min(1, s));
+  l = Math.max(0, Math.min(1, l));
+  if (s === 0) return [l, l, l];
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [hue2rgb(p, q, h/360 + 1/3), hue2rgb(p, q, h/360), hue2rgb(p, q, h/360 - 1/3)];
+}
+
+// Real-time color preview (visual only, no vertex data change)
+let colorPreviewActive = false;
+function previewColorAdjust() {
+  if (!state.pointCloud || state.selected.size === 0) return;
+  const hueDeg = parseInt($('colorHue').value);
+  const satPct = parseInt($('colorSat').value);
+  const briPct = parseInt($('colorBri').value);
+
+  const colors = state.pointCloud.geometry.attributes.color.array;
+  const base = state.baseColors;
+
+  if (hueDeg === 0 && satPct === 0 && briPct === 0) {
+    // No adjustment — restore selection overlay
+    colorPreviewActive = false;
+    updateSelectionDisplay();
+    return;
+  }
+
+  colorPreviewActive = true;
+  for (const i of state.selected) {
+    const j = i * 3;
+    const cr = base[j], cg = base[j + 1], cb = base[j + 2];
+    let [h, s, l] = rgbToHsl(cr, cg, cb);
+    h = h + hueDeg;
+    s = Math.max(0, Math.min(1, s + satPct / 100));
+    l = Math.max(0, Math.min(1, l + briPct / 100));
+    const [nr, ng, nb] = hslToRgb(h, s, l);
+    colors[j] = nr; colors[j + 1] = ng; colors[j + 2] = nb;
+  }
+  state.pointCloud.geometry.attributes.color.needsUpdate = true;
+}
+
+// Adjust colors of selected points by HSL offsets
+function adjustColorSelected(hueDeg, satPct, briPct) {
+  if (state.selected.size === 0) return;
+  const locked = getLockedVertexSet();
+  const targets = new Set(state.selected);
+  for (const idx of locked) targets.delete(idx);
+  if (targets.size === 0) { setStatus('All selected points are on locked layers'); return; }
 
   const { f_dc_0: dc0Off, f_dc_1: dc1Off, f_dc_2: dc2Off } = state.offsets;
   const undoEntries = [];
+  const colors = state.pointCloud.geometry.attributes.color.array;
+  const baseColors = state.baseColors;
 
   for (const i of targets) {
+    // Read current base color (RGB 0-1)
+    const j = i * 3;
+    const cr = baseColors[j], cg = baseColors[j + 1], cb = baseColors[j + 2];
+
+    // RGB → HSL → adjust → RGB
+    let [h, s, l] = rgbToHsl(cr, cg, cb);
+    h = h + hueDeg;
+    s = Math.max(0, Math.min(1, s + satPct / 100));
+    l = Math.max(0, Math.min(1, l + briPct / 100));
+    const [nr, ng, nb] = hslToRgb(h, s, l);
+
+    // Write SH DC
+    const newDC0 = (nr - 0.5) / C0;
+    const newDC1 = (ng - 0.5) / C0;
+    const newDC2 = (nb - 0.5) / C0;
+
     const oldVertex = state.vertices[i];
     const newData = cloneVertexData(i);
     const dv = new DataView(newData.buffer, newData.byteOffset, newData.byteLength);
@@ -3107,27 +3393,21 @@ function recolorSelected(hexColor) {
     const newVertex = { data: newData };
     undoEntries.push({ index: i, oldVertex, newVertex });
     state.vertices[i] = newVertex;
+
+    // Update display colors
+    baseColors[j] = nr; baseColors[j + 1] = ng; baseColors[j + 2] = nb;
+    if (!state.selected.has(i)) {
+      colors[j] = nr; colors[j + 1] = ng; colors[j + 2] = nb;
+    }
   }
 
   if (undoEntries.length > 0) {
     state.undoStack.push({ type: 'recolor', entries: undoEntries, prevSelection: new Set(state.selected) });
     state.redoStack = [];
   }
-
-  // Update display colors directly (avoid full rebuildGeometry for performance)
-  const colors = state.pointCloud.geometry.attributes.color.array;
-  const baseColors = state.baseColors;
-  for (const i of targets) {
-    const j = i * 3;
-    baseColors[j] = r; baseColors[j + 1] = g; baseColors[j + 2] = b;
-    // If selected, keep cyan; color will show when deselected
-    if (!state.selected.has(i)) {
-      colors[j] = r; colors[j + 1] = g; colors[j + 2] = b;
-    }
-  }
   state.pointCloud.geometry.attributes.color.needsUpdate = true;
 
-  setStatus(`Recolored ${undoEntries.length.toLocaleString()} points`);
+  setStatus(`Color adjusted (${undoEntries.length.toLocaleString()} points) H:${hueDeg > 0 ? '+' : ''}${hueDeg}° S:${satPct > 0 ? '+' : ''}${satPct}% B:${briPct > 0 ? '+' : ''}${briPct}%`);
 }
 
 // ===== Copy / Paste =====
@@ -3392,14 +3672,17 @@ $('btnDelete').addEventListener('click', deleteSelected);
 $('btnDensify').addEventListener('click', startDensifyPreview);
 $('btnDensifyApply').addEventListener('click', applyDensifyPreview);
 $('btnDensifyCancel').addEventListener('click', cancelDensifyPreview);
+$('btnThin').addEventListener('click', thinSelected);
 
 $('btnInvert').addEventListener('click', () => {
   if (!state.pointCloud) return;
   _clearSimilarSource();
   const selectable = getSelectableVertexSet();
+  const opCut = parseFloat($('opacityCut').value);
+  const opacities = state.baseOpacities;
   const newSel = new Set();
   for (let i = 0; i < state.vertices.length; i++) {
-    if (!state.masked.has(i) && selectable.has(i) && !state.selected.has(i)) newSel.add(i);
+    if (!state.masked.has(i) && selectable.has(i) && !state.selected.has(i) && !(opacities && opacities[i] < opCut)) newSel.add(i);
   }
   state.selected = newSel; state.rawSelected = new Set(newSel);
   updateSelectionDisplay();
@@ -3410,8 +3693,10 @@ $('btnSelectAll').addEventListener('click', () => {
   _clearSimilarSource();
   state.selected.clear(); state.rawSelected.clear();
   const selectable = getSelectableVertexSet();
+  const opCut = parseFloat($('opacityCut').value);
+  const opacities = state.baseOpacities;
   for (let i = 0; i < state.vertices.length; i++) {
-    if (!state.masked.has(i) && selectable.has(i)) { state.selected.add(i); state.rawSelected.add(i); }
+    if (!state.masked.has(i) && selectable.has(i) && !(opacities && opacities[i] < opCut)) { state.selected.add(i); state.rawSelected.add(i); }
   }
   updateSelectionDisplay();
 });
@@ -3578,11 +3863,19 @@ function undo() {
   state.redoStack.push(op);
 
   if (op.type === 'delete') {
-    // Re-insert removed vertices at their original indices (ascending)
-    for (const entry of op.entries) {
-      state.vertices.splice(entry.index, 0, entry.vertex);
+    // Re-insert removed vertices — 単一パスで新配列構築（O(n)）
+    const newLen = state.vertices.length + op.entries.length;
+    const newVerts = new Array(newLen);
+    let si = 0, ei = 0;
+    for (let i = 0; i < newLen; i++) {
+      if (ei < op.entries.length && op.entries[ei].index === i) {
+        newVerts[i] = op.entries[ei].vertex;
+        ei++;
+      } else {
+        newVerts[i] = state.vertices[si++];
+      }
     }
-    // レイヤーインデックスを再構築: 挿入された頂点以降をシフト
+    state.vertices = newVerts;
     rebuildLayerIndicesForUndelete(op.entries, op.prevLayerMap);
   } else if (op.type === 'densify') {
     // Remove last N vertices & layer indices
@@ -3613,12 +3906,9 @@ function redo() {
   state.undoStack.push(op);
 
   if (op.type === 'delete') {
-    // Re-remove vertices (descending order)
+    // Re-remove vertices — 単一パスfilter（O(n)）
     const deletedSet = new Set(op.entries.map(e => e.index));
-    const descEntries = [...op.entries].reverse();
-    for (const entry of descEntries) {
-      state.vertices.splice(entry.index, 1);
-    }
+    state.vertices = state.vertices.filter((_, i) => !deletedSet.has(i));
     updateLayerIndicesAfterDelete(deletedSet);
   } else if (op.type === 'densify') {
     // Re-add vertices
@@ -3681,7 +3971,7 @@ function exportPLY() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const baseName = state.fileName ? state.fileName.replace(/\.(ply|plyproj)$/i, '') : 'edited';
+  const baseName = state.fileName ? state.fileName.replace(/\.(ply|plyproj)$/i, '').replace(/_edited$/, '') : 'edited';
   a.download = baseName + '_edited.ply';
   a.click();
   URL.revokeObjectURL(url);
@@ -3695,7 +3985,7 @@ function saveProject() {
   if (!state.headerStr || state.vertices.length === 0) return;
   setStatus('Saving project...');
 
-  // 現在の頂点データからPLYバイナリを生成（全レイヤー含む）
+  // PLYバイナリ生成
   const newHeader = state.headerStr.replace(
     /element vertex \d+/,
     `element vertex ${state.vertices.length}`
@@ -3715,18 +4005,10 @@ function saveProject() {
     off += vs;
   }
 
-  // base64エンコード（チャンクで処理、大きいファイル対応）
-  let binary = '';
-  const chunkSize = 8192;
-  for (let i = 0; i < plyBuf.length; i += chunkSize) {
-    binary += String.fromCharCode(...plyBuf.subarray(i, Math.min(i + chunkSize, plyBuf.length)));
-  }
-  const plyBase64 = btoa(binary);
-
-  const proj = {
-    version: 1,
+  // メタデータJSON（レイヤー情報のみ、PLYデータは含まない）
+  const meta = {
+    version: 2,
     fileName: state.fileName || 'untitled.ply',
-    ply: plyBase64,
     layers: state.layers.map(l => ({
       name: l.name,
       visible: l.visible,
@@ -3735,9 +4017,14 @@ function saveProject() {
     })),
     activeLayerIndex: state.layers.findIndex(l => l.id === state.activeLayerId),
   };
+  const metaBytes = new TextEncoder().encode(JSON.stringify(meta));
 
-  const json = JSON.stringify(proj);
-  const blob = new Blob([json], { type: 'application/json' });
+  // バイナリ形式: "PLYPROJ2" + [4byte metaLen] + metaJSON + PLYバイナリ
+  const magic = new TextEncoder().encode('PLYPROJ2');
+  const lenBuf = new Uint8Array(4);
+  new DataView(lenBuf.buffer).setUint32(0, metaBytes.length, true);
+
+  const blob = new Blob([magic, lenBuf, metaBytes, plyBuf], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -3748,15 +4035,38 @@ function saveProject() {
   setStatus(`Project saved: ${baseName}.plyproj (${state.layers.length} layers, ${state.vertices.length.toLocaleString()} splats)`);
 }
 
-function loadProject(json) {
-  const proj = JSON.parse(json);
-  if (!proj.version || !proj.ply || !proj.layers) throw new Error('Invalid project file');
+// Parse project file (auto-detect v1 JSON or v2 binary)
+function loadProject(data) {
+  let proj, plyBuf;
 
-  // base64デコード → ArrayBuffer
-  const binary = atob(proj.ply);
-  const buf = new ArrayBuffer(binary.length);
-  const view = new Uint8Array(buf);
-  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+  if (data instanceof ArrayBuffer) {
+    const bytes = new Uint8Array(data);
+    const magic = new TextDecoder().decode(bytes.subarray(0, 8));
+    if (magic === 'PLYPROJ2') {
+      // v2 binary format
+      const metaLen = new DataView(data, 8, 4).getUint32(0, true);
+      const metaJson = new TextDecoder().decode(bytes.subarray(12, 12 + metaLen));
+      proj = JSON.parse(metaJson);
+      plyBuf = data.slice(12 + metaLen);
+    } else {
+      // Might be v1 text read as ArrayBuffer
+      const text = new TextDecoder().decode(bytes);
+      proj = JSON.parse(text);
+      const binary = atob(proj.ply);
+      plyBuf = new ArrayBuffer(binary.length);
+      const view = new Uint8Array(plyBuf);
+      for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+    }
+  } else {
+    // v1 JSON string
+    proj = JSON.parse(data);
+    const binary = atob(proj.ply);
+    plyBuf = new ArrayBuffer(binary.length);
+    const view = new Uint8Array(plyBuf);
+    for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+  }
+
+  if (!proj.layers) throw new Error('Invalid project file');
 
   // 既存を破棄
   if (state.pointCloud) {
@@ -3767,7 +4077,7 @@ function loadProject(json) {
   }
 
   state.fileName = proj.fileName || 'untitled.ply';
-  const count = parsePLY(buf);
+  const count = parsePLY(plyBuf);
 
   // レイヤー復元
   state.layers = proj.layers.map((l, i) => ({
@@ -3835,6 +4145,7 @@ function updateButtons() {
   const hasSel = state.selected.size > 0;
   $('btnDelete').disabled = !hasSel;
   $('btnDensify').disabled = !hasSel;
+  $('btnThin').disabled = !hasSel;
   $('btnInvert').disabled = !hasData;
   $('btnSelectAll').disabled = !hasData;
   $('btnClearSel').disabled = !hasSel;
@@ -3848,6 +4159,7 @@ function updateButtons() {
   $('btnAddByColor').disabled = !hasData;
   $('btnSelectSimilar').disabled = !hasSel;
   $('btnAddSimilar').disabled = !hasSel;
+  $('btnApplyColor').disabled = !hasSel;
 }
 
 // ===== Slider Displays =====
@@ -3859,6 +4171,11 @@ $('pointSize').addEventListener('input', () => {
   const v = parseFloat($('pointSize').value);
   $('pointSizeVal').textContent = v;
   if (state.pointCloud) state.pointCloud.material.size = v;
+});
+
+$('opacityCut').addEventListener('input', () => {
+  $('opacityCutVal').textContent = parseFloat($('opacityCut').value).toFixed(2);
+  if (state.pointCloud) updateSelectionDisplay();
 });
 
 $('brushSize').addEventListener('input', () => {
@@ -3892,6 +4209,10 @@ $('densifyJitter').addEventListener('input', () => {
   if (state.previewMode) regenerateDensifyPreview();
 });
 
+$('thinSpacing').addEventListener('input', () => {
+  $('thinSpacingVal').textContent = parseFloat($('thinSpacing').value).toFixed(3);
+});
+
 $('warpStrength').addEventListener('input', () => {
   $('warpStrengthVal').textContent = parseFloat($('warpStrength').value).toFixed(1);
 });
@@ -3900,6 +4221,38 @@ $('scaleFalloff').addEventListener('input', () => {
   const v = parseFloat($('scaleFalloff').value);
   $('scaleFalloffVal').textContent = v === 0 ? '0 (uniform)' : v.toFixed(1);
   if (scaleActive) regenerateScalePreview();
+});
+
+// Color Adjust sliders (real-time preview)
+$('colorHue').addEventListener('input', () => {
+  const v = parseInt($('colorHue').value);
+  $('colorHueVal').textContent = (v > 0 ? '+' : '') + v + '°';
+  previewColorAdjust();
+});
+$('colorSat').addEventListener('input', () => {
+  const v = parseInt($('colorSat').value);
+  $('colorSatVal').textContent = (v > 0 ? '+' : '') + v + '%';
+  previewColorAdjust();
+});
+$('colorBri').addEventListener('input', () => {
+  const v = parseInt($('colorBri').value);
+  $('colorBriVal').textContent = (v > 0 ? '+' : '') + v + '%';
+  previewColorAdjust();
+});
+$('btnApplyColor').addEventListener('click', () => {
+  colorPreviewActive = false;
+  adjustColorSelected(parseInt($('colorHue').value), parseInt($('colorSat').value), parseInt($('colorBri').value));
+  // Reset sliders after apply
+  $('colorHue').value = 0; $('colorHueVal').textContent = '0°';
+  $('colorSat').value = 0; $('colorSatVal').textContent = '0%';
+  $('colorBri').value = 0; $('colorBriVal').textContent = '0%';
+});
+$('btnResetColorSliders').addEventListener('click', () => {
+  $('colorHue').value = 0; $('colorHueVal').textContent = '0°';
+  $('colorSat').value = 0; $('colorSatVal').textContent = '0%';
+  $('colorBri').value = 0; $('colorBriVal').textContent = '0%';
+  colorPreviewActive = false;
+  updateSelectionDisplay();
 });
 
 // ===== Keyboard Shortcuts =====
@@ -3933,6 +4286,12 @@ window.addEventListener('keydown', (e) => {
     }
     if (scalePreviewMode) { cancelScalePreview(); e.preventDefault(); return; }
     if (state.previewMode) { cancelDensifyPreview(); e.preventDefault(); return; }
+    // Transform tool selected but no operation started: revert to selection tool (keep selection)
+    const isTransformTool = state.currentTool === 'move' || state.currentTool === 'scale' || state.currentTool === 'rotate';
+    if (isTransformTool && state.selected.size > 0) {
+      revertToSelectionTool();
+      e.preventDefault(); return;
+    }
     state.selected.clear(); state.rawSelected.clear(); updateSelectionDisplay(); e.preventDefault();
   }
   else if (e.key === 'Enter') {

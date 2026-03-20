@@ -2147,6 +2147,7 @@ details.setting-section[open] > summary.setting-category > span::before {
   flex-shrink: 0;
 }
 
+.media-list-download,
 .media-list-delete {
   width: 22px;
   height: 22px;
@@ -2165,8 +2166,14 @@ details.setting-section[open] > summary.setting-category > span::before {
   transition: opacity 0.2s, background 0.2s;
 }
 
+.media-list-item:hover .media-list-download,
 .media-list-item:hover .media-list-delete {
   opacity: 1;
+}
+
+.media-list-download:hover {
+  background: rgba(67, 97, 238, 0.8);
+  color: #fff;
 }
 
 .media-list-delete:hover {
@@ -2294,6 +2301,7 @@ details.setting-section[open] > summary.setting-category > span::before {
 .media-grid.select-mode .media-list-item.selected {
   background: rgba(79, 195, 247, 0.15);
 }
+.media-grid.select-mode .media-list-item .media-list-download,
 .media-grid.select-mode .media-list-item .media-list-delete {
   display: none;
 }

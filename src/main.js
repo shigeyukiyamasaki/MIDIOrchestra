@@ -8783,6 +8783,23 @@ function setupEventListeners() {
               date.textContent = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
               item.appendChild(date);
 
+              const dlBtn = document.createElement('button');
+              dlBtn.className = 'media-list-download';
+              dlBtn.innerHTML = '<i class="fa-solid fa-download"></i>';
+              dlBtn.title = 'ダウンロード';
+              dlBtn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                const fullRec = await window.presetManager.getMediaFromLibrary(record.id);
+                if (!fullRec) return;
+                const url = URL.createObjectURL(fullRec.blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fullRec.name;
+                a.click();
+                URL.revokeObjectURL(url);
+              });
+              item.appendChild(dlBtn);
+
               const deleteBtn = document.createElement('button');
               deleteBtn.className = 'media-list-delete';
               deleteBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
@@ -13884,10 +13901,11 @@ function computeMidpointsInWorker(basePos, baseCol, baseCount, onProgress) {
 
 // 3DGSポイントクラウド用PointsMaterial生成
 function create3DGSMaterial(pointSize) {
+  const attenuation = document.getElementById('glbPointAttenuation')?.checked !== false;
   return new THREE.PointsMaterial({
     size: pointSize,
     vertexColors: true,
-    sizeAttenuation: true,
+    sizeAttenuation: attenuation,
   });
 }
 
@@ -14529,16 +14547,17 @@ function loadPlyBackground(files) {
   });
 }
 
-function savePlyToLibrary(files) {
+async function savePlyToLibrary(files) {
   if (!window.presetManager) return;
   const existingCount = plyBackground ? plyBackground.children.length : 0;
   const sorted = Array.from(files).sort((a, b) => a.name.localeCompare(b.name));
-  sorted.forEach((file, i) => {
+  for (let i = 0; i < sorted.length; i++) {
     const slotIndex = existingCount + i;
     if (slotIndex < 4) {
-      window.presetManager.handleFileUpload(file, 'plyBg' + slotIndex);
+      await window.presetManager.handleFileUpload(sorted[i], 'plyBg' + slotIndex);
+      console.log(`[PLY save] plyBg${slotIndex} saved, mediaId:`, window.currentMediaRefs['plyBg' + slotIndex]);
     }
-  });
+  }
 }
 
 function syncPlyCache() {

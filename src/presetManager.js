@@ -35,6 +35,13 @@ let db = null;
 // ============================================
 
 function openDatabase() {
+  // ブラウザにストレージの永続化をリクエスト（自動eviction防止）
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().then(granted => {
+      console.log('[Storage] Persistent storage:', granted ? 'granted' : 'denied');
+    });
+  }
+
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -742,9 +749,10 @@ function applySettings(s) {
 // ============================================
 
 async function restoreMediaSlot(mediaId, loadFn, fileNameSpanId) {
-  if (!mediaId) return;
+  if (!mediaId) { console.warn('[restoreMediaSlot] skipped: no mediaId'); return; }
   const record = await getMediaFromLibrary(mediaId);
-  if (!record) return;
+  if (!record) { console.warn('[restoreMediaSlot] record not found in IndexedDB for id:', mediaId); return; }
+  console.log('[restoreMediaSlot] found record:', record.name, 'type:', record.type, 'size:', record.size, 'mimeType:', record.mimeType);
 
   const file = new File([record.blob], record.name, { type: record.mimeType });
   await loadFn(file);
@@ -906,10 +914,16 @@ async function loadPreset(presetId) {
     await restoreMediaSlot(media.glb, app.loadGlbModel, null);
   }
   // PLY背景（複数ファイル）を順番に復元
+  console.log('[Preset] PLY restoration start, media keys:', Object.keys(media).filter(k => k.startsWith('plyBg')).map(k => `${k}=${media[k]}`));
   for (let i = 0; i < 4; i++) {
     const key = 'plyBg' + i;
     if (media[key]) {
-      await restoreMediaSlot(media[key], (file) => app.loadPlyBackground([file]), null);
+      console.log(`[Preset] Restoring ${key}, mediaId:`, media[key]);
+      await restoreMediaSlot(media[key], (file) => {
+        console.log(`[Preset] loadPlyBackground called for ${key}, file:`, file.name, 'size:', file.size);
+        return app.loadPlyBackground([file]);
+      }, null);
+      console.log(`[Preset] ${key} restoration complete`);
     }
   }
 
