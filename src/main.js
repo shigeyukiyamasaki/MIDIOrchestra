@@ -3958,14 +3958,17 @@ function setupThreeJS() {
   const fireLightShader = {
     uniforms: {
       tDiffuse: { value: null },
-      fireScreenPos: { value: new THREE.Vector2(0.5, 0.5) },
+      tDepth: { value: null },
       fireColor: { value: new THREE.Vector3(1.0, 0.27, 0.0) },
+      fireWorldPos: { value: new THREE.Vector3() },
       fireIntensity: { value: 2.0 },
-      fireRadius: { value: 0.5 },
+      fireDistance: { value: 50.0 },
       fireActive: { value: 0.0 },
       colorAmount: { value: 1.0 },
       lumAmount: { value: 0.5 },
-      aspect: { value: 1.0 },
+      invViewProjMatrix: { value: new THREE.Matrix4() },
+      debugMode: { value: 0.0 },
+      fireScreenUV: { value: new THREE.Vector2() },
     },
     vertexShader: `
       varying vec2 vUv;
@@ -3977,29 +3980,77 @@ function setupThreeJS() {
     fragmentShader: `
       precision highp float;
       uniform sampler2D tDiffuse;
-      uniform vec2 fireScreenPos;
+      uniform sampler2D tDepth;
       uniform vec3 fireColor;
+      uniform vec3 fireWorldPos;
       uniform float fireIntensity;
-      uniform float fireRadius;
+      uniform float fireDistance;
       uniform float fireActive;
       uniform float colorAmount;
       uniform float lumAmount;
-      uniform float aspect;
+      uniform mat4 invViewProjMatrix;
+      uniform float debugMode;
+      uniform vec2 fireScreenUV;
       varying vec2 vUv;
+
+      vec3 reconstructWorldPos(vec2 uv, float depth) {
+        // gl_FragCoord.z (0-1) → NDC (-1 to 1)
+        vec4 ndcPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+        vec4 worldPos = invViewProjMatrix * ndcPos;
+        return worldPos.xyz / worldPos.w;
+      }
 
       void main() {
         vec4 col = texture2D(tDiffuse, vUv);
-        if (fireActive > 0.5 && fireIntensity > 0.0) {
-          // アスペクト比補正: UV空間の横方向をaspect倍してピクセル等距離にする
-          vec2 diff = vUv - fireScreenPos;
-          diff.x *= aspect;
-          float d = length(diff);
-          float atten = exp(-d * d / (fireRadius * fireRadius * 0.5));
-          float amount = fireIntensity * atten;
-          // カラー加算: 発光色をそのまま加算（周囲が暖色に染まる）
-          col.rgb += fireColor * amount * colorAmount;
-          // 輝度加算: 元の色を維持したまま明るくする
-          col.rgb += col.rgb * amount * lumAmount;
+        if (fireActive > 0.5) {
+          float rawDepth = texture2D(tDepth, vUv).r;
+
+          // デバッグモード1: rawDepthの直接可視化（シェーダーが深度テクスチャを読めているか確認）
+          if (debugMode > 0.5 && debugMode < 1.5) {
+            // rawDepthは0.99x付近なので(1-rawDepth)*500で増幅
+            // 近い物体=白、遠い物体=暗い、背景(1.0)=赤
+            if (rawDepth > 0.9999) {
+              gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); // 背景=赤
+            } else {
+              float v = (1.0 - rawDepth) * 500.0;
+              gl_FragColor = vec4(v, v, v, 1.0);
+            }
+            return;
+          }
+
+          // デバッグモード2: 火源までのワールド距離ヒートマップ
+          if (debugMode > 1.5 && debugMode < 2.5) {
+            if (rawDepth > 0.999) {
+              gl_FragColor = vec4(0.0, 0.0, 0.1, 1.0);
+            } else {
+              vec3 wp = reconstructWorldPos(vUv, rawDepth);
+              float dist = length(wp - fireWorldPos);
+              float t = clamp(dist / (fireDistance * 2.0), 0.0, 1.0);
+              vec3 heatColor;
+              if (t < 0.5) {
+                heatColor = mix(vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 0.0), t * 2.0);
+              } else {
+                heatColor = mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), (t - 0.5) * 2.0);
+              }
+              gl_FragColor = vec4(heatColor, 1.0);
+            }
+            // 火源のスクリーン投影位置にマーカー
+            if (length(vUv - fireScreenUV) < 0.015) {
+              gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+            }
+            return;
+          }
+
+          // 通常モード: ワールド空間での照明
+          if (rawDepth < 0.999 && fireIntensity > 0.0) {
+            vec3 wp = reconstructWorldPos(vUv, rawDepth);
+            float dist = length(wp - fireWorldPos);
+            float normDist = dist / fireDistance;
+            float atten = 1.0 / (1.0 + normDist * normDist);
+            float amount = fireIntensity * atten;
+            col.rgb += fireColor * amount * colorAmount;
+            col.rgb += col.rgb * amount * lumAmount;
+          }
         }
         gl_FragColor = col;
       }
@@ -14078,6 +14129,7 @@ function computeMidpointsInWorker(basePos, baseCol, baseCount, onProgress) {
 }
 
 // 3DGSポイントクラウド用PointsMaterial生成
+// 火源照明はsetupPlyShaderOverride()のonBeforeCompileで注入される
 function create3DGSMaterial(pointSize) {
   const attenuation = document.getElementById('glbPointAttenuation')?.checked !== false;
   return new THREE.PointsMaterial({
@@ -15034,21 +15086,39 @@ function setupPlyShaderOverride() {
             shader.uniforms.causticsScale = plyWaterUniforms.causticsScale;
             shader.uniforms.causticsTime = plyWaterUniforms.causticsTime;
 
-            // 頂点シェーダー: fog_vertexの後にシャドウ座標＋ワールド座標計算を注入
-            shader.vertexShader = 'varying vec4 vPlyShadowCoord;\nuniform mat4 plyShadowMatrix;\n' + shader.vertexShader;
+            // 火源照明用uniform
+            shader.uniforms.fireWorldPos = { value: new THREE.Vector3() };
+            shader.uniforms.fireDistance = { value: 50.0 };
+            shader.uniforms.fireIntensity = { value: 0.0 };
+            shader.uniforms.fireColor = { value: new THREE.Vector3(1.0, 0.27, 0.0) };
+            shader.uniforms.fireLightColorAmount = { value: 1.0 };
+            shader.uniforms.fireLightLumAmount = { value: 0.5 };
+            // 外部からuniformsにアクセスするための参照を保存
+            m._fireLightShader = shader;
+
+            // 頂点シェーダー: fog_vertexの後にシャドウ座標＋ワールド座標＋火源距離計算を注入
+            shader.vertexShader = 'varying vec4 vPlyShadowCoord;\nuniform mat4 plyShadowMatrix;\n' +
+              'uniform vec3 fireWorldPos;\nuniform float fireDistance;\nuniform float fireIntensity;\nvarying float vFireAmount;\n' +
+              shader.vertexShader;
             shader.vertexShader = shader.vertexShader.replace(
               '#include <fog_vertex>',
               '#include <fog_vertex>\n' +
               'vec4 plyWP = modelMatrix * vec4(transformed, 1.0);\n' +
               'vPlyWorldPos = plyWP.xyz;\n' +
-              'vPlyShadowCoord = plyShadowMatrix * plyWP;'
+              'vPlyShadowCoord = plyShadowMatrix * plyWP;\n' +
+              '{\n' +
+              '  float _fd = length(plyWP.xyz - fireWorldPos);\n' +
+              '  float _fn = _fd / max(fireDistance, 0.1);\n' +
+              '  vFireAmount = fireIntensity / (1.0 + _fn * _fn);\n' +
+              '}'
             );
 
-            // フラグメントシェーダー: packing + シャドウuniform宣言 + 水面uniform宣言
+            // フラグメントシェーダー: packing + シャドウuniform宣言 + 水面uniform宣言 + 火源照明
             shader.fragmentShader =
               '#include <packing>\nvarying vec4 vPlyShadowCoord;\nuniform sampler2D plyShadowMap;\nuniform float plyShadowEnabled;\n' +
               'uniform float waterEnabled;\nuniform float waterOpacity;\nuniform vec3 waterColor;\nuniform float waterThreshold;\n' +
               'uniform float causticsIntensity;\nuniform float causticsScale;\nuniform float causticsTime;\n' +
+              'uniform vec3 fireColor;\nuniform float fireLightColorAmount;\nuniform float fireLightLumAmount;\nvarying float vFireAmount;\n' +
               shader.fragmentShader;
 
             const waterTransparencyCode = [
@@ -15075,6 +15145,11 @@ function setupPlyShaderOverride() {
               '  }',
               '}',
               'gl_FragColor.rgb *= plyLightColor;',
+              '// Fire light for 3DGS PLY',
+              'if (vFireAmount > 0.001) {',
+              '  gl_FragColor.rgb += fireColor * vFireAmount * fireLightColorAmount;',
+              '  gl_FragColor.rgb += gl_FragColor.rgb * vFireAmount * fireLightLumAmount;',
+              '}',
             ].join('\n') + '\n' + cloudShadowCode + '\n' + colorAdjustCode;
 
             const causticsCode = [
@@ -16212,43 +16287,39 @@ function animate() {
     }
   };
 
-  // 炎照明ポスト処理: readBuffer上の画像に炎の光を加算
-  const useFireLight = fireLightPass && plyFireLightEnabled && plyFireIndices && plyFireIndices.length > 0;
+  // 炎照明: PLYマテリアルのonBeforeCompileで注入したシェーダーuniformsを更新
+  // ポストプロセスではなくレンダリング時に直接ワールド座標で計算するため、カメラ非依存
+  const useFireLight = plyFireLightEnabled && plyFireIndices && plyFireIndices.length > 0 && glbModel;
   const applyFireLight = () => {
     if (!useFireLight) return;
-    // 炎頂点の重心をワールド座標→スクリーン座標に変換
+    // 炎頂点の重心をワールド座標で算出
     let cx = 0, cy = 0, cz = 0;
-    if (glbModel) {
-      glbModel.traverse((child) => {
-        if (!child.isPoints || !child.geometry) return;
-        const p = child.geometry.attributes.position.array;
-        for (let j = 0; j < plyFireIndices.length; j++) {
-          const idx = plyFireIndices[j];
-          cx += p[idx * 3]; cy += p[idx * 3 + 1]; cz += p[idx * 3 + 2];
-        }
-      });
-      cx /= plyFireIndices.length; cy /= plyFireIndices.length; cz /= plyFireIndices.length;
-      const wp = new THREE.Vector3(cx, cy, cz);
-      glbModel.localToWorld(wp);
-      wp.project(camera);
-      // NDC(-1〜1) → UV(0〜1)
-      fireLightPass.uniforms.fireScreenPos.value.set(wp.x * 0.5 + 0.5, wp.y * 0.5 + 0.5);
-    }
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.geometry) return;
+      const p = child.geometry.attributes.position.array;
+      for (let j = 0; j < plyFireIndices.length; j++) {
+        const idx = plyFireIndices[j];
+        cx += p[idx * 3]; cy += p[idx * 3 + 1]; cz += p[idx * 3 + 2];
+      }
+    });
+    cx /= plyFireIndices.length; cy /= plyFireIndices.length; cz /= plyFireIndices.length;
+    const wp = new THREE.Vector3(cx, cy, cz);
+    glbModel.localToWorld(wp);
     const fc = new THREE.Color(plyFireGlowColor);
-    fireLightPass.uniforms.fireColor.value.set(fc.r, fc.g, fc.b);
-    fireLightPass.uniforms.fireIntensity.value = plyFireLightIntensity;
-    fireLightPass.uniforms.fireRadius.value = plyFireLightDistance * 0.01;
-    fireLightPass.uniforms.fireActive.value = 1.0;
-    fireLightPass.uniforms.colorAmount.value = plyFireLightColorAmount;
-    fireLightPass.uniforms.lumAmount.value = plyFireLightLumAmount;
-    fireLightPass.uniforms.aspect.value = renderer.domElement.width / renderer.domElement.height;
-    fireLightPass.renderToScreen = false;
-    fireLightPass.render(renderer, composer.writeBuffer, composer.readBuffer);
-    if (_pixelCopyPass) {
-      _pixelCopyPass.renderToScreen = false;
-      _pixelCopyPass.render(renderer, composer.readBuffer, composer.writeBuffer);
-    }
+    // マテリアルのuniformsを更新
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.material || !child.material._fireLightShader) return;
+      const u = child.material._fireLightShader.uniforms;
+      u.fireWorldPos.value.copy(wp);
+      u.fireDistance.value = plyFireLightDistance;
+      u.fireIntensity.value = plyFireLightIntensity;
+      u.fireColor.value.set(fc.r, fc.g, fc.b);
+      u.fireLightColorAmount.value = plyFireLightColorAmount;
+      u.fireLightLumAmount.value = plyFireLightLumAmount;
+    });
   };
+  // シーンレンダリング前に毎フレーム更新（applyFireLightはレンダリング前に呼ぶ）
+  applyFireLight();
 
   // ブルーム描画 / ピクセレーション
   if (bloomPass) bloomPass.enabled = bloomEnabled && bloomPass.strength > 0;
@@ -16405,8 +16476,6 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
-    // 炎照明（ブルーム後・他エフェクト前）
-    applyFireLight();
     // 平塗りフィルタ（常にピクセル化・トゥーンの前）
     applyFlatColor();
     // Kuwaharaフィルタ: celBeforeKuwaharaならトゥーン後に適用
@@ -16481,8 +16550,6 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
-    // 炎照明（ブルーム後・他エフェクト前）
-    applyFireLight();
     // 平塗りフィルタ（トゥーンの前に適用）
     applyFlatColor();
     if (!celBeforeKuwahara) applyKuwahara();
@@ -16529,8 +16596,6 @@ function animate() {
       renderer.setRenderTarget(null);
     }
 
-    // 炎照明（ブルーム後・他エフェクト前）
-    applyFireLight();
     // 平塗り・Kuwaharaフィルタ適用
     applyFlatColor();
     applyKuwahara();
@@ -16555,44 +16620,23 @@ function animate() {
       renderer.setRenderTarget(null);
     }
 
-    applyFireLight();
     applyKuwahara();
 
     _pixelCopyPass.renderToScreen = true;
     _pixelCopyPass.render(renderer, null, composer.readBuffer);
   } else {
     // ピクセルアートOFF・トゥーンOFF・平塗りOFF・KuwaharaOFF: 通常描画
-    if (useFireLight) {
-      // 炎照明あり: バッファに描画→照明パス→画面出力
-      composer.renderToScreen = false;
-      if (useBloom) {
-        _composerRenderWithExclusions();
-      } else {
-        composer.render();
-      }
-      if (_flareVisible) {
-        renderer.setRenderTarget(composer.readBuffer);
-        renderer.autoClear = false;
-        renderer.render(flareScene, flareCamera);
-        renderer.autoClear = true;
-        renderer.setRenderTarget(null);
-      }
-      applyFireLight();
-      _pixelCopyPass.renderToScreen = true;
-      _pixelCopyPass.render(renderer, null, composer.readBuffer);
+    composer.renderToScreen = true;
+    if (useBloom) {
+      _composerRenderWithExclusions(true);
     } else {
-      composer.renderToScreen = true;
-      if (useBloom) {
-        _composerRenderWithExclusions(true);
-      } else {
-        renderer.render(scene, camera);
-      }
-      // レンズフレアを画面に直接描画
-      if (_flareVisible) {
-        renderer.autoClear = false;
-        renderer.render(flareScene, flareCamera);
-        renderer.autoClear = true;
-      }
+      renderer.render(scene, camera);
+    }
+    // レンズフレアを画面に直接描画
+    if (_flareVisible) {
+      renderer.autoClear = false;
+      renderer.render(flareScene, flareCamera);
+      renderer.autoClear = true;
     }
   }
 
