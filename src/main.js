@@ -389,6 +389,7 @@ let pixelPass = null;   // ピクセレーションShaderPass
 let toonPass = null;    // トゥーンレンダリングShaderPass
 let flatColorPass = null; // 平塗りバイラテラルフィルタShaderPass
 let kuwaharaPass = null;  // KuwaharaフィルタShaderPass
+let fireLightPass = null; // 炎照明ポスト処理ShaderPass
 let _depthColorRT = null;        // 深度をカラーとして描画するRenderTarget
 let _depthOverrideMaterial = null; // 深度書き出し用マテリアル
 let _depthChromaMaterial = null;   // クロマキー対応深度マテリアル
@@ -582,6 +583,11 @@ let plyFireIndices = null;
 let plyFireOrigPos = null;
 let plyFireOrigCol = null;   // 元の頂点カラー
 let plyFireTime = 0;
+let plyFireLightEnabled = false;
+let plyFireLightIntensity = 2.0;
+let plyFireLightDistance = 50;
+let plyFireLightColorAmount = 1.0;
+let plyFireLightLumAmount = 0.5;
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
@@ -2065,6 +2071,11 @@ function syncWaterSettingsFromDOM() {
   plyFireFlicker = gv('plyFireFlicker', 0.5);
   plyFireGlow = gv('plyFireGlow', 2.0);
   plyFireGlowColor = gs('plyFireGlowColor', '#ff4400');
+  plyFireLightEnabled = gc('plyFireLightEnabled', false);
+  plyFireLightIntensity = gv('plyFireLightIntensity', 2.0);
+  plyFireLightDistance = gv('plyFireLightDistance', 50);
+  plyFireLightColorAmount = gv('plyFireLightColorAmount', 1.0);
+  plyFireLightLumAmount = gv('plyFireLightLumAmount', 0.5);
   plyFireSmokeEnabled = gc('plyFireSmokeEnabled', false);
   plyFireSmokeRiseSpeed = gv('plyFireSmokeRiseSpeed', 2.0);
   plyFireSmokeSize = gv('plyFireSmokeSize', 1.0);
@@ -2771,6 +2782,7 @@ function updatePlyFireEffect() {
     posAttr.needsUpdate = true;
     if (colorDirty && colAttr) colAttr.needsUpdate = true;
   });
+
 }
 
 function clearPlyFireEffect() {
@@ -3941,6 +3953,60 @@ function setupThreeJS() {
   };
   kuwaharaPass = new THREE.ShaderPass(kuwaharaShader);
   kuwaharaPass.enabled = false;
+
+  // 炎照明ポスト処理パス: 炎のスクリーン座標から距離減衰で発光色を加算
+  const fireLightShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      fireScreenPos: { value: new THREE.Vector2(0.5, 0.5) },
+      fireColor: { value: new THREE.Vector3(1.0, 0.27, 0.0) },
+      fireIntensity: { value: 2.0 },
+      fireRadius: { value: 0.5 },
+      fireActive: { value: 0.0 },
+      colorAmount: { value: 1.0 },
+      lumAmount: { value: 0.5 },
+      aspect: { value: 1.0 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform sampler2D tDiffuse;
+      uniform vec2 fireScreenPos;
+      uniform vec3 fireColor;
+      uniform float fireIntensity;
+      uniform float fireRadius;
+      uniform float fireActive;
+      uniform float colorAmount;
+      uniform float lumAmount;
+      uniform float aspect;
+      varying vec2 vUv;
+
+      void main() {
+        vec4 col = texture2D(tDiffuse, vUv);
+        if (fireActive > 0.5 && fireIntensity > 0.0) {
+          // アスペクト比補正: UV空間の横方向をaspect倍してピクセル等距離にする
+          vec2 diff = vUv - fireScreenPos;
+          diff.x *= aspect;
+          float d = length(diff);
+          float atten = exp(-d * d / (fireRadius * fireRadius * 0.5));
+          float amount = fireIntensity * atten;
+          // カラー加算: 発光色をそのまま加算（周囲が暖色に染まる）
+          col.rgb += fireColor * amount * colorAmount;
+          // 輝度加算: 元の色を維持したまま明るくする
+          col.rgb += col.rgb * amount * lumAmount;
+        }
+        gl_FragColor = col;
+      }
+    `,
+  };
+  fireLightPass = new THREE.ShaderPass(fireLightShader);
+  fireLightPass.enabled = false;
 
   // 深度カラーRT: DepthTextureの代わりにシーン深度をカラーテクスチャとして描画
   _depthColorRT = new THREE.WebGLRenderTarget(rtW, rtH, {
@@ -6823,6 +6889,29 @@ function setupEventListeners() {
   });
   document.getElementById('plyFireGlowColor')?.addEventListener('input', (e) => {
     plyFireGlowColor = e.target.value;
+  });
+  document.getElementById('plyFireLightEnabled')?.addEventListener('change', (e) => {
+    plyFireLightEnabled = e.target.checked;
+  });
+  document.getElementById('plyFireLightIntensity')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireLightIntensityValue').textContent = v;
+    plyFireLightIntensity = v;
+  });
+  document.getElementById('plyFireLightDistance')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireLightDistanceValue').textContent = v;
+    plyFireLightDistance = v;
+  });
+  document.getElementById('plyFireLightColorAmount')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireLightColorAmountValue').textContent = v;
+    plyFireLightColorAmount = v;
+  });
+  document.getElementById('plyFireLightLumAmount')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireLightLumAmountValue').textContent = v;
+    plyFireLightLumAmount = v;
   });
   document.getElementById('plyFireSmokeEnabled')?.addEventListener('change', (e) => {
     plyFireSmokeEnabled = e.target.checked;
@@ -16123,6 +16212,44 @@ function animate() {
     }
   };
 
+  // 炎照明ポスト処理: readBuffer上の画像に炎の光を加算
+  const useFireLight = fireLightPass && plyFireLightEnabled && plyFireIndices && plyFireIndices.length > 0;
+  const applyFireLight = () => {
+    if (!useFireLight) return;
+    // 炎頂点の重心をワールド座標→スクリーン座標に変換
+    let cx = 0, cy = 0, cz = 0;
+    if (glbModel) {
+      glbModel.traverse((child) => {
+        if (!child.isPoints || !child.geometry) return;
+        const p = child.geometry.attributes.position.array;
+        for (let j = 0; j < plyFireIndices.length; j++) {
+          const idx = plyFireIndices[j];
+          cx += p[idx * 3]; cy += p[idx * 3 + 1]; cz += p[idx * 3 + 2];
+        }
+      });
+      cx /= plyFireIndices.length; cy /= plyFireIndices.length; cz /= plyFireIndices.length;
+      const wp = new THREE.Vector3(cx, cy, cz);
+      glbModel.localToWorld(wp);
+      wp.project(camera);
+      // NDC(-1〜1) → UV(0〜1)
+      fireLightPass.uniforms.fireScreenPos.value.set(wp.x * 0.5 + 0.5, wp.y * 0.5 + 0.5);
+    }
+    const fc = new THREE.Color(plyFireGlowColor);
+    fireLightPass.uniforms.fireColor.value.set(fc.r, fc.g, fc.b);
+    fireLightPass.uniforms.fireIntensity.value = plyFireLightIntensity;
+    fireLightPass.uniforms.fireRadius.value = plyFireLightDistance * 0.01;
+    fireLightPass.uniforms.fireActive.value = 1.0;
+    fireLightPass.uniforms.colorAmount.value = plyFireLightColorAmount;
+    fireLightPass.uniforms.lumAmount.value = plyFireLightLumAmount;
+    fireLightPass.uniforms.aspect.value = renderer.domElement.width / renderer.domElement.height;
+    fireLightPass.renderToScreen = false;
+    fireLightPass.render(renderer, composer.writeBuffer, composer.readBuffer);
+    if (_pixelCopyPass) {
+      _pixelCopyPass.renderToScreen = false;
+      _pixelCopyPass.render(renderer, composer.readBuffer, composer.writeBuffer);
+    }
+  };
+
   // ブルーム描画 / ピクセレーション
   if (bloomPass) bloomPass.enabled = bloomEnabled && bloomPass.strength > 0;
   const useBloom = composer && bloomPass && bloomEnabled && bloomPass.strength > 0;
@@ -16278,6 +16405,8 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
+    // 炎照明（ブルーム後・他エフェクト前）
+    applyFireLight();
     // 平塗りフィルタ（常にピクセル化・トゥーンの前）
     applyFlatColor();
     // Kuwaharaフィルタ: celBeforeKuwaharaならトゥーン後に適用
@@ -16352,6 +16481,8 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
+    // 炎照明（ブルーム後・他エフェクト前）
+    applyFireLight();
     // 平塗りフィルタ（トゥーンの前に適用）
     applyFlatColor();
     if (!celBeforeKuwahara) applyKuwahara();
@@ -16398,6 +16529,8 @@ function animate() {
       renderer.setRenderTarget(null);
     }
 
+    // 炎照明（ブルーム後・他エフェクト前）
+    applyFireLight();
     // 平塗り・Kuwaharaフィルタ適用
     applyFlatColor();
     applyKuwahara();
@@ -16422,24 +16555,44 @@ function animate() {
       renderer.setRenderTarget(null);
     }
 
+    applyFireLight();
     applyKuwahara();
 
     _pixelCopyPass.renderToScreen = true;
     _pixelCopyPass.render(renderer, null, composer.readBuffer);
   } else {
     // ピクセルアートOFF・トゥーンOFF・平塗りOFF・KuwaharaOFF: 通常描画
-    composer.renderToScreen = true;
-    if (useBloom) {
-      _composerRenderWithExclusions(true);
+    if (useFireLight) {
+      // 炎照明あり: バッファに描画→照明パス→画面出力
+      composer.renderToScreen = false;
+      if (useBloom) {
+        _composerRenderWithExclusions();
+      } else {
+        composer.render();
+      }
+      if (_flareVisible) {
+        renderer.setRenderTarget(composer.readBuffer);
+        renderer.autoClear = false;
+        renderer.render(flareScene, flareCamera);
+        renderer.autoClear = true;
+        renderer.setRenderTarget(null);
+      }
+      applyFireLight();
+      _pixelCopyPass.renderToScreen = true;
+      _pixelCopyPass.render(renderer, null, composer.readBuffer);
     } else {
-      renderer.render(scene, camera);
-    }
-
-    // レンズフレアを画面に直接描画
-    if (_flareVisible) {
-      renderer.autoClear = false;
-      renderer.render(flareScene, flareCamera);
-      renderer.autoClear = true;
+      composer.renderToScreen = true;
+      if (useBloom) {
+        _composerRenderWithExclusions(true);
+      } else {
+        renderer.render(scene, camera);
+      }
+      // レンズフレアを画面に直接描画
+      if (_flareVisible) {
+        renderer.autoClear = false;
+        renderer.render(flareScene, flareCamera);
+        renderer.autoClear = true;
+      }
     }
   }
 

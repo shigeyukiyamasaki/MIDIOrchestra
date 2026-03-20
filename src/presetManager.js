@@ -955,9 +955,17 @@ async function loadPreset(presetId) {
 // UI初期化
 // ============================================
 
+let _presetSortNewestFirst = true; // デフォルト: 新しい順
+
 async function updatePresetDropdown() {
   const select = document.getElementById('presetSelect');
   const presets = await listPresets();
+
+  // 並び順を適用
+  if (_presetSortNewestFirst) presets.reverse();
+
+  // 現在の選択値を保持
+  const currentValue = select.value;
 
   // 先頭のオプション以外を削除
   while (select.options.length > 1) {
@@ -970,6 +978,9 @@ async function updatePresetDropdown() {
     opt.textContent = p.name;
     select.appendChild(opt);
   });
+
+  // 選択値を復元
+  if (currentValue) select.value = currentValue;
 }
 
 async function initPresetSystem() {
@@ -985,6 +996,22 @@ async function initPresetSystem() {
   const overwriteWarning = document.getElementById('presetOverwriteWarning');
   const confirmBtn = document.getElementById('presetSaveConfirm');
   const cancelBtn = document.getElementById('presetSaveCancel');
+
+  // 並び順切り替えボタン
+  const sortBtn = document.getElementById('presetSortBtn');
+  if (sortBtn) {
+    sortBtn.addEventListener('click', async () => {
+      _presetSortNewestFirst = !_presetSortNewestFirst;
+      const icon = sortBtn.querySelector('i');
+      if (icon) {
+        icon.className = _presetSortNewestFirst
+          ? 'fa-solid fa-arrow-down-short-wide'
+          : 'fa-solid fa-arrow-up-short-wide';
+      }
+      sortBtn.title = _presetSortNewestFirst ? '新しい順' : '古い順';
+      await updatePresetDropdown();
+    });
+  }
 
   // 保存ボタン → モーダルを開く
   saveBtn.addEventListener('click', async () => {
