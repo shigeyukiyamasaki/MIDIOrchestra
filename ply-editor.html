@@ -240,8 +240,8 @@ body {
     </div>
     <div class="setting-row">
       <label>Opacity Cut</label>
-      <input type="range" id="opacityCut" min="0" max="1" step="0.01" value="0">
-      <span class="val" id="opacityCutVal">0.00</span>
+      <input type="range" id="opacityCut" min="0" max="1" step="0.01" value="0.1">
+      <span class="val" id="opacityCutVal">0.10</span>
     </div>
     <h3>Brush</h3>
     <div class="setting-row">
@@ -2608,60 +2608,68 @@ function commitRotate() {
 }
 
 // ===== File Loading =====
+function loadFromBuffer(buffer, filename, mergeMode) {
+  const isPlyproj = filename.toLowerCase().endsWith('.plyproj');
+  try {
+    const hasExisting = state.vertices.length > 0;
+    if (isPlyproj) {
+      if (hasExisting && mergeMode) {
+        const result = mergeProject(buffer);
+        $('placeholder').style.display = 'none';
+        setStatus(`Merged project ${filename} — ${result.count.toLocaleString()} splats, ${result.layers} layers added (total: ${state.vertices.length.toLocaleString()})`);
+        return;
+      }
+      loadProject(buffer);
+    } else {
+      if (hasExisting && mergeMode) {
+        const count = mergePLY(buffer, filename);
+        $('placeholder').style.display = 'none';
+        setStatus(`Merged ${filename} — ${count.toLocaleString()} splats added (total: ${state.vertices.length.toLocaleString()})`);
+        return;
+      }
+      if (state.pointCloud) {
+        scene.remove(state.pointCloud);
+        state.pointCloud.geometry.dispose();
+        state.pointCloud.material.dispose();
+        state.pointCloud = null;
+      }
+      const count = parsePLY(buffer);
+      rebuildGeometry();
+      autoFitCamera();
+      $('placeholder').style.display = 'none';
+      $('btnExport').disabled = false;
+      $('btnSaveProj').disabled = false;
+      setStatus(`Loaded ${filename} — ${count.toLocaleString()} splats`);
+    }
+  } catch (err) {
+    setStatus('Error: ' + err.message);
+    console.error(err);
+  }
+}
+
 function loadFile(file, mergeMode) {
   if (!file) return;
   setStatus('Loading: ' + file.name + '...');
   state.fileName = file.name;
+  const reader = new FileReader();
+  reader.onload = (e) => loadFromBuffer(e.target.result, file.name, mergeMode);
+  reader.readAsArrayBuffer(file);
+}
 
-  if (file.name.endsWith('.plyproj')) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const hasExisting = state.vertices.length > 0;
-        if (hasExisting && mergeMode) {
-          const result = mergeProject(e.target.result);
-          $('placeholder').style.display = 'none';
-          setStatus(`Merged project ${file.name} — ${result.count.toLocaleString()} splats, ${result.layers} layers added (total: ${state.vertices.length.toLocaleString()})`);
-          return;
-        }
-        loadProject(e.target.result);
-      } catch (err) {
-        setStatus('Error: ' + err.message);
-        console.error(err);
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  } else {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const hasExisting = state.vertices.length > 0;
-        if (hasExisting && mergeMode) {
-          const count = mergePLY(e.target.result, file.name);
-          $('placeholder').style.display = 'none';
-          setStatus(`Merged ${file.name} — ${count.toLocaleString()} splats added (total: ${state.vertices.length.toLocaleString()})`);
-          return;
-        }
-
-        if (state.pointCloud) {
-          scene.remove(state.pointCloud);
-          state.pointCloud.geometry.dispose();
-          state.pointCloud.material.dispose();
-          state.pointCloud = null;
-        }
-        const count = parsePLY(e.target.result);
-        rebuildGeometry();
-        autoFitCamera();
-        $('placeholder').style.display = 'none';
-        $('btnExport').disabled = false;
-        $('btnSaveProj').disabled = false;
-        setStatus(`Loaded ${file.name} — ${count.toLocaleString()} splats`);
-      } catch (err) {
-        setStatus('Error: ' + err.message);
-        console.error(err);
-      }
-    };
-    reader.readAsArrayBuffer(file);
+async function loadFromURL(url, filename, mergeMode) {
+  if (!filename) {
+    filename = decodeURIComponent(url.split('/').pop().split('?')[0].split('#')[0]) || 'remote.ply';
+  }
+  setStatus('Fetching: ' + filename + '...');
+  state.fileName = filename;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+    const buffer = await resp.arrayBuffer();
+    loadFromBuffer(buffer, filename, mergeMode);
+  } catch (err) {
+    setStatus('Fetch error: ' + err.message);
+    console.error(err);
   }
 }
 
@@ -4352,6 +4360,27 @@ window.addEventListener('keydown', (e) => {
     }
   }
 });
+
+// ===== URL Parameter Loading =====
+// Usage: ply-editor.html?load=URL&filename=NAME
+// Multiple files: ?load=URL1&load=URL2&filename=NAME1&filename=NAME2
+{
+  console.log('[PLY Editor] URL params:', location.search);
+  const params = new URLSearchParams(location.search);
+  const loadList = params.getAll('load');
+  console.log('[PLY Editor] load list:', loadList);
+  const filenameList = params.getAll('filename');
+  if (loadList.length > 0) {
+    (async () => {
+      for (const [i, raw] of loadList.entries()) {
+        const url = decodeURIComponent(raw);
+        const fn = i < filenameList.length ? decodeURIComponent(filenameList[i]) : null;
+        console.log('[PLY Editor] Loading from URL:', url, 'filename:', fn);
+        await loadFromURL(url, fn, i > 0);
+      }
+    })();
+  }
+}
 </script>
 </body>
 </html>
