@@ -8554,6 +8554,11 @@ function setupEventListeners() {
     debouncedGSRebuild();
   });
 
+  document.getElementById('glbOpacityCut')?.addEventListener('input', (e) => {
+    document.getElementById('glbOpacityCutValue').textContent = parseFloat(e.target.value).toFixed(2);
+    debouncedGSRebuild();
+  });
+
   // クリア
   document.getElementById('glbClear')?.addEventListener('click', () => {
     clearGlbModel();
@@ -13550,6 +13555,7 @@ function parse3DGSPly(arrayBuffer) {
   // 全頂点をそのまま抽出（フィルタなし）
   const positions = new Float32Array(vertexCount * 3);
   const colors = new Float32Array(vertexCount * 3);
+  const opacities = new Float32Array(vertexCount);
   for (let i = 0; i < vertexCount; i++) {
     const base = i * vertexSize;
     const dc0 = dataView.getFloat32(base + offsets.f_dc_0.offset, true);
@@ -13561,13 +13567,20 @@ function parse3DGSPly(arrayBuffer) {
     colors[i * 3]     = Math.max(0, Math.min(1, 0.5 + C0 * dc0));
     colors[i * 3 + 1] = Math.max(0, Math.min(1, 0.5 + C0 * dc1));
     colors[i * 3 + 2] = Math.max(0, Math.min(1, 0.5 + C0 * dc2));
+    // sigmoid decode: actual opacity = 1 / (1 + exp(-raw))
+    if (hasOpacity) {
+      const rawOp = dataView.getFloat32(base + offsets.opacity.offset, true);
+      opacities[i] = 1.0 / (1.0 + Math.exp(-rawOp));
+    } else {
+      opacities[i] = 1.0;
+    }
   }
   const kept = vertexCount;
 
   console.log('[PLY] 3DGS loaded:', vertexCount, 'points');
 
   // 生データを返す（トリム・センタリングは build3DGSGeometry で行う）
-  return { positions, colors, vertexCount: kept };
+  return { positions, colors, opacities, vertexCount: kept };
 }
 
 // 3DGS生データからジオメトリを構築（トリム適用→センタリング→座標変換）
@@ -13736,7 +13749,7 @@ function ensure3DGSCache(arrayBuffer) {
   if (_gsCache && _gsCache.arrayBuffer === arrayBuffer) return _gsCache;
   const gsResult = parse3DGSPly(arrayBuffer);
   if (!gsResult) return null;
-  const { positions, colors, vertexCount } = gsResult;
+  const { positions, colors, opacities, vertexCount } = gsResult;
 
   // 重心計算
   let cx = 0, cy = 0, cz = 0;
@@ -13755,7 +13768,7 @@ function ensure3DGSCache(arrayBuffer) {
   for (let i = 0; i < vertexCount; i++) sortedIndices[i] = i;
   sortedIndices.sort((a, b) => dists[a] - dists[b]);
 
-  _gsCache = { arrayBuffer, positions, colors, vertexCount, sortedIndices };
+  _gsCache = { arrayBuffer, positions, colors, opacities, vertexCount, sortedIndices };
   console.log(`[PLY] 3DGS cache built: ${vertexCount} points, sorted by distance`);
   return _gsCache;
 }
@@ -13917,8 +13930,9 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
   const cache = ensure3DGSCache(arrayBuffer);
   if (!cache) return;
   const trim = parseFloat(document.getElementById('glbTrim')?.value || '0');
+  const opacityCut = parseFloat(document.getElementById('glbOpacityCut')?.value || '0');
   const density = 0; // sizeAttenuation: trueで補間不要
-  const trimKey = trim.toFixed(4);
+  const trimKey = trim.toFixed(4) + '_' + opacityCut.toFixed(4);
 
   // drawRangeだけで対応できるか判定
   if (_gsDisplayState && _gsDisplayState.trimKey === trimKey && glbModel && glbModel.userData.is3DGS) {
@@ -13945,24 +13959,28 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
     _gsDisplayState = null;
   }
 
-  // ベースデータ構築
+  // ベースデータ構築（opacity cutoff → trim の順で適用）
   if (!_gsInterpCache) {
-    const keepCount = Math.max(1, Math.floor(cache.vertexCount * (1 - trim / 100)));
-    const trimmedPos = new Float32Array(keepCount * 3);
-    const trimmedCol = new Float32Array(keepCount * 3);
-    for (let i = 0; i < keepCount; i++) {
+    // まずopacity cutoffでフィルタリング
+    const trimTarget = Math.max(1, Math.floor(cache.vertexCount * (1 - trim / 100)));
+    const trimmedPos = [];
+    const trimmedCol = [];
+    let kept = 0;
+    for (let i = 0; i < cache.vertexCount && kept < trimTarget; i++) {
       const src = cache.sortedIndices[i];
-      trimmedPos[i * 3]     = cache.positions[src * 3];
-      trimmedPos[i * 3 + 1] = cache.positions[src * 3 + 1];
-      trimmedPos[i * 3 + 2] = cache.positions[src * 3 + 2];
-      trimmedCol[i * 3]     = cache.colors[src * 3];
-      trimmedCol[i * 3 + 1] = cache.colors[src * 3 + 1];
-      trimmedCol[i * 3 + 2] = cache.colors[src * 3 + 2];
+      if (cache.opacities[src] < opacityCut) continue;
+      trimmedPos.push(cache.positions[src * 3], cache.positions[src * 3 + 1], cache.positions[src * 3 + 2]);
+      trimmedCol.push(cache.colors[src * 3], cache.colors[src * 3 + 1], cache.colors[src * 3 + 2]);
+      kept++;
     }
+    const keepCount = kept;
+    const trimmedPosArr = new Float32Array(trimmedPos);
+    const trimmedColArr = new Float32Array(trimmedCol);
+    if (opacityCut > 0) console.log(`[PLY] Opacity cutoff ${opacityCut}: ${cache.vertexCount} → ${keepCount} points`);
     // build3DGSGeometryと同じセンタリング: XZのみバウンディングボックス中心、Yは保持
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (let i = 0; i < keepCount; i++) {
-      const x = trimmedPos[i * 3], z = trimmedPos[i * 3 + 2];
+      const x = trimmedPosArr[i * 3], z = trimmedPosArr[i * 3 + 2];
       if (x < minX) minX = x; if (x > maxX) maxX = x;
       if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
     }
@@ -13970,11 +13988,11 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
     const bbCenterZ = (minZ + maxZ) / 2;
     const basePos = new Float32Array(keepCount * 3);
     for (let i = 0; i < keepCount; i++) {
-      basePos[i * 3]     = trimmedPos[i * 3] - bbCenterX;
-      basePos[i * 3 + 1] = -trimmedPos[i * 3 + 1];                    // rotateX(PI): Y反転のみ（センタリングなし）
-      basePos[i * 3 + 2] = -(trimmedPos[i * 3 + 2] - bbCenterZ);      // XZセンタリング + Z反転
+      basePos[i * 3]     = trimmedPosArr[i * 3] - bbCenterX;
+      basePos[i * 3 + 1] = -trimmedPosArr[i * 3 + 1];                    // rotateX(PI): Y反転のみ（センタリングなし）
+      basePos[i * 3 + 2] = -(trimmedPosArr[i * 3 + 2] - bbCenterZ);      // XZセンタリング + Z反転
     }
-    _gsInterpCache = { trimKey, basePos, baseCol: trimmedCol, baseCount: keepCount, levels: null };
+    _gsInterpCache = { trimKey, basePos, baseCol: trimmedColArr, baseCount: keepCount, levels: null };
   }
 
   const ic = _gsInterpCache;
