@@ -16543,8 +16543,6 @@ function animate() {
     camera.layers.enable(2);
   }
 
-  let _fireGlowRenderedInPipeline = false;
-
   if (pixelHoldSkip) {
     // ホールド中: 前回キャプチャした画面をそのまま表示
     _pixelCopyPass.renderToScreen = true;
@@ -16589,26 +16587,24 @@ function animate() {
       syncToonDepth();
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
       if (celBeforeKuwahara) applyKuwahara();
-      // グロースプライト: トゥーン後・ピクセル前に描画（アウトライン除外、ピクセル化対象）
+      // グロースプライト: トゥーン後・ピクセル前（アウトライン除外、ピクセル化対象）
       if (_fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
         renderer.setRenderTarget(composer.writeBuffer);
         renderer.autoClear = false;
         renderer.render(_fireGlowScene, camera);
         renderer.autoClear = true;
-        _fireGlowRenderedInPipeline = true;
       }
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.readBuffer, composer.writeBuffer);
       finalBuffer = composer.readBuffer;
     } else {
       // ピクセル→トゥーン（除外モード: 輪郭は細いまま）or トゥーンなし
-      // グロースプライト: ピクセル前に描画（ピクセル化対象）
+      // グロースプライト: トゥーンなしの場合はピクセル前に描画
       if (!useToon && _fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
         renderer.setRenderTarget(composer.readBuffer);
         renderer.autoClear = false;
         renderer.render(_fireGlowScene, camera);
         renderer.autoClear = true;
-        _fireGlowRenderedInPipeline = true;
       }
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.writeBuffer, composer.readBuffer);
@@ -16750,8 +16746,8 @@ function animate() {
     }
   }
 
-  // 光源グロースプライト: ピクセルパイプライン内で描画済みでない場合のみ、画面に直接描画
-  if (!_fireGlowRenderedInPipeline && _fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
+  // 光源グロースプライト: ピクセル分岐外ではポストプロセス後に画面に直接描画
+  if (!usePixel && _fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
     renderer.setRenderTarget(null);
     renderer.autoClear = false;
     renderer.render(_fireGlowScene, camera);
