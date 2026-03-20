@@ -239,6 +239,9 @@ body {
       <span class="val" id="pointSizeVal">2</span>
     </div>
     <div class="setting-row">
+      <label style="min-width:auto"><input type="checkbox" id="useScale" style="accent-color:#7ec8e3; vertical-align:middle; margin-right:4px">Scale反映</label>
+    </div>
+    <div class="setting-row">
       <label>Opacity Cut</label>
       <input type="range" id="opacityCut" min="0" max="1" step="0.01" value="0.1">
       <span class="val" id="opacityCutVal">0.10</span>
@@ -652,16 +655,21 @@ function rebuildGeometry() {
   const positions = new Float32Array(n * 3);
   const colors = new Float32Array(n * 3);
   const opacities = new Float32Array(n);
+  const splatScales = new Float32Array(n);
 
   const { x: xOff, y: yOff, z: zOff, f_dc_0: dc0Off, f_dc_1: dc1Off, f_dc_2: dc2Off } = state.offsets;
   const hasOpacity = state.offsets.opacity !== undefined;
   const opOff = hasOpacity ? state.offsets.opacity : 0;
+  const hasScale = state.offsets.scale_0 !== undefined;
+  const s0Off = hasScale ? state.offsets.scale_0 : 0;
+  const s1Off = hasScale ? state.offsets.scale_1 : 0;
+  const s2Off = hasScale ? state.offsets.scale_2 : 0;
   const vs = state.vertexSize;
   const dv = state.dataView;
 
   for (let i = 0; i < n; i++) {
     const v = state.vertices[i];
-    let x, y, z, dc0, dc1, dc2, rawOp = 10; // default high opacity if no property
+    let x, y, z, dc0, dc1, dc2, rawOp = 10, rs0 = 0, rs1 = 0, rs2 = 0;
     if ('srcIndex' in v) {
       const base = v.srcIndex * vs;
       x = dv.getFloat32(base + xOff, true);
@@ -671,6 +679,11 @@ function rebuildGeometry() {
       dc1 = dv.getFloat32(base + dc1Off, true);
       dc2 = dv.getFloat32(base + dc2Off, true);
       if (hasOpacity) rawOp = dv.getFloat32(base + opOff, true);
+      if (hasScale) {
+        rs0 = dv.getFloat32(base + s0Off, true);
+        rs1 = dv.getFloat32(base + s1Off, true);
+        rs2 = dv.getFloat32(base + s2Off, true);
+      }
     } else {
       const vdv = new DataView(v.data.buffer, v.data.byteOffset, v.data.byteLength);
       x = vdv.getFloat32(xOff, true);
@@ -680,10 +693,17 @@ function rebuildGeometry() {
       dc1 = vdv.getFloat32(dc1Off, true);
       dc2 = vdv.getFloat32(dc2Off, true);
       if (hasOpacity) rawOp = vdv.getFloat32(opOff, true);
+      if (hasScale) {
+        rs0 = vdv.getFloat32(s0Off, true);
+        rs1 = vdv.getFloat32(s1Off, true);
+        rs2 = vdv.getFloat32(s2Off, true);
+      }
     }
     // sigmoid decode: actual opacity = 1 / (1 + exp(-raw))
     const alpha = 1.0 / (1.0 + Math.exp(-rawOp));
     opacities[i] = alpha;
+    // scale: stored as log-scale, average of 3 axes
+    splatScales[i] = hasScale ? (Math.exp(rs0) + Math.exp(rs1) + Math.exp(rs2)) / 3.0 : 1.0;
 
     const j = i * 3;
     positions[j] = x; positions[j + 1] = y; positions[j + 2] = z;
@@ -692,14 +712,23 @@ function rebuildGeometry() {
     colors[j + 2] = Math.max(0, Math.min(1, 0.5 + C0 * dc2));
   }
 
+  // スケールを正規化（中央値が1.0になるように）
+  const sortedScales = Float32Array.from(splatScales).sort();
+  const medianScale = sortedScales[Math.floor(n * 0.5)] || 1.0;
+  for (let i = 0; i < n; i++) {
+    splatScales[i] = Math.max(0.1, Math.min(10.0, splatScales[i] / medianScale));
+  }
+
   state.positions = positions;
   state.basePositions = new Float32Array(positions);
   state.baseColors = new Float32Array(colors);
   state.baseOpacities = opacities;
+  state.baseSplatScales = splatScales;
 
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geom.setAttribute('splatScale', new THREE.BufferAttribute(splatScales, 1));
   if (n > 0) geom.computeBoundingSphere();
 
   // 常にPointsオブジェクトを再作成（geometry差し替えによるWebGL VAOキャッシュ不整合を防止）
@@ -711,9 +740,28 @@ function rebuildGeometry() {
     state.pointCloud.rotation.x = Math.PI;
     scene.add(state.pointCloud);
   } else {
-    const mat = new THREE.PointsMaterial({
-      size: parseFloat($('pointSize').value),
-      sizeAttenuation: false,
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        pointSize: { value: parseFloat($('pointSize').value) },
+        useScale: { value: $('useScale')?.checked ? 1.0 : 0.0 },
+      },
+      vertexShader: `
+        attribute float splatScale;
+        uniform float pointSize;
+        uniform float useScale;
+        varying vec3 vColor;
+        void main() {
+          vColor = color;
+          gl_PointSize = useScale > 0.5 ? pointSize * splatScale : pointSize;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        void main() {
+          gl_FragColor = vec4(vColor, 1.0);
+        }
+      `,
       vertexColors: true,
     });
     state.pointCloud = new THREE.Points(geom, mat);
@@ -4178,7 +4226,17 @@ $('bgColor').addEventListener('input', () => {
 $('pointSize').addEventListener('input', () => {
   const v = parseFloat($('pointSize').value);
   $('pointSizeVal').textContent = v;
-  if (state.pointCloud) state.pointCloud.material.size = v;
+  if (state.pointCloud) {
+    const mat = state.pointCloud.material;
+    if (mat.uniforms?.pointSize) mat.uniforms.pointSize.value = v;
+    else mat.size = v;
+  }
+});
+
+$('useScale')?.addEventListener('change', (e) => {
+  if (state.pointCloud?.material?.uniforms?.useScale) {
+    state.pointCloud.material.uniforms.useScale.value = e.target.checked ? 1.0 : 0.0;
+  }
 });
 
 $('opacityCut').addEventListener('input', () => {
