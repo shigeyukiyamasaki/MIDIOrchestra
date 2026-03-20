@@ -3648,6 +3648,7 @@ function setupThreeJS() {
       outlineColor: { value: new THREE.Color(0x000000) },
       outlineMode: { value: 4 },  // 0=color, 1=depth, 2=both, 3=colorOuter, 4=bothOuter
       outlineWidth: { value: 1.0 },
+      outlineOuterOnly: { value: 1.0 },
       cameraNear: { value: camera.near },
       cameraFar: { value: camera.far },
       toonShades: { value: 0.0 },
@@ -3670,6 +3671,7 @@ function setupThreeJS() {
       uniform vec3 outlineColor;
       uniform int outlineMode;
       uniform float outlineWidth;
+      uniform float outlineOuterOnly;
       uniform float cameraNear;
       uniform float cameraFar;
       uniform float toonShades;
@@ -3714,6 +3716,30 @@ function setupThreeJS() {
         return sqrt(gx * gx + gy * gy);
       }
 
+      // 深度ダイレーション: 近傍にカメラに近いピクセルがあれば、そのピクセルは外側
+      // Sobelと違い構造的に片側（奥側）のみにエッジが出る
+      float depthDilation(vec2 center, float w) {
+        vec2 ps = 1.0 / resolution;
+        float cd = log(max(linearizeDepth(texture2D(tDepth, center).r), 0.01));
+        float minD = cd;
+        // outlineWidth距離で8方向
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(-w, w) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(0.0, w) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(w, w) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(-w, 0.0) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(w, 0.0) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(-w, -w) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(0.0, -w) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(w, -w) * ps).r), 0.01)));
+        // 中間距離でも4方向サンプリング（太い線での穴を防ぐ）
+        float h = w * 0.5;
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(-h, h) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(h, h) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(-h, -h) * ps).r), 0.01)));
+        minD = min(minD, log(max(linearizeDepth(texture2D(tDepth, center + vec2(h, -h) * ps).r), 0.01)));
+        return cd - minD;
+      }
+
       void main() {
         vec3 color = texture2D(tDiffuse, vUv).rgb;
 
@@ -3745,7 +3771,20 @@ function setupThreeJS() {
         if (outlineStrength > 0.0) {
           vec2 step = outlineWidth / resolution;
           float edge = 0.0;
-          if (outlineMode == 0) {
+          if (outlineOuterOnly > 0.5) {
+            // ハイブリッド: 色エッジ検出 + 深度ダイレーション外側マスク
+            // 色エッジで全オブジェクトのエッジを検出
+            float colorEdge = sobelEdgeColor(vUv, step);
+            // 深度ダイレーションで外側判定（色エッジより広い範囲でサンプリング）
+            float dd = depthDilation(vUv, outlineWidth + 2.0);
+            float outerMask = smoothstep(outlineThreshold * 0.15, outlineThreshold * 0.4, dd);
+            // 色エッジ × 外側マスク
+            float edge2 = colorEdge * outerMask;
+            float em = smoothstep(outlineThreshold * 0.3, outlineThreshold, edge2);
+            color = mix(color, outlineColor, em * outlineStrength);
+            gl_FragColor = vec4(color, 1.0);
+            return;
+          } else if (outlineMode == 0) {
             // 色ベース（内外両方）
             edge = sobelEdgeColor(vUv, step);
           } else if (outlineMode == 1) {
@@ -5886,6 +5925,7 @@ function setupEventListeners() {
     const modeMap = { color: 0, depth: 1, both: 2, colorOuter: 3, bothOuter: 4, depthPreview: 5 };
     const mode = document.getElementById('toonOutlineMode')?.value || 'bothOuter';
     toonPass.uniforms.outlineMode.value = modeMap[mode] ?? 4;
+    toonPass.uniforms.outlineOuterOnly.value = (document.getElementById('toonOutlineOuterOnly')?.checked ?? false) ? 1.0 : 0.0;
     // セルシェーディング
     const shades = celOn ? parseFloat(document.getElementById('toonShades')?.value || '0') : 0;
     toonPass.uniforms.toonShades.value = shades;
@@ -5913,6 +5953,9 @@ function setupEventListeners() {
   });
   document.getElementById('toonOutlineColor')?.addEventListener('input', (e) => {
     if (toonPass) toonPass.uniforms.outlineColor.value.set(e.target.value);
+  });
+  document.getElementById('toonOutlineOuterOnly')?.addEventListener('change', (e) => {
+    if (toonPass) toonPass.uniforms.outlineOuterOnly.value = e.target.checked ? 1.0 : 0.0;
   });
   document.getElementById('toonShades')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
@@ -16472,7 +16515,9 @@ function animate() {
     const outStr = toonPass ? toonPass.uniforms.outlineStrength.value : 0;
     const outMode = toonPass ? toonPass.uniforms.outlineMode.value : 0;
     // 深度が必要なモード: 1=depth, 2=both, 3=colorOuter, 4=bothOuter, 5=depthPreview
-    if (outStr > 0 && outMode >= 1) needDepthPass = true;
+    // 外側のみモードでも深度が必要（色のみモード=0でも）
+    const outOuter = toonPass ? toonPass.uniforms.outlineOuterOnly.value : 0;
+    if (outStr > 0 && (outMode >= 1 || outOuter > 0.5)) needDepthPass = true;
   }
   if (pixelDepthAware && _depthColorRT && _depthOverrideMaterial) needDepthPass = true;
   if (needDepthPass) renderDepthColorPass();
