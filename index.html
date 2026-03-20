@@ -1409,17 +1409,20 @@
           <span id="pixelSaturationValue">1</span>
         </div>
         <div class="setting-item">
+          <label><input type="checkbox" id="pixelEdgeEnabled" checked> エッジ</label>
+          <input type="range" id="pixelEdgeSharpness" min="0" max="1" step="0.05" value="0.7">
+          <span id="pixelEdgeSharpnessValue">0.7</span>
+        </div>
+        <div class="setting-item">
           <label>FPS制限</label>
           <input type="range" id="pixelFps" min="0" max="60" step="1" value="0">
           <span id="pixelFpsValue">なし</span>
         </div>
         <div class="setting-item">
-          <label>トゥーンを除外</label>
-          <input type="checkbox" id="pixelExcludeToon">
+          <label><input type="checkbox" id="pixelExcludeToon"> トゥーンを除外</label>
         </div>
         <div class="setting-item">
-          <label>深度分離</label>
-          <input type="checkbox" id="pixelDepthAware">
+          <label><input type="checkbox" id="pixelDepthAware"> 深度分離</label>
         </div>
       </div>
       <div class="display-section">
@@ -1446,6 +1449,11 @@
           <span id="toonOutlineThresholdValue">0.1</span>
         </div>
         <div class="setting-item">
+          <label>太さ</label>
+          <input type="range" id="toonOutlineWidth" min="1" max="10" step="0.5" value="1">
+          <span id="toonOutlineWidthValue">1</span>
+        </div>
+        <div class="setting-item">
           <label>色</label>
           <input type="color" id="toonOutlineColor" value="#000000">
         </div>
@@ -1462,18 +1470,28 @@
           <input type="range" id="toonDarkness" min="0" max="1" step="0.05" value="0">
           <span id="toonDarknessValue">0.5</span>
         </div>
+        <div class="setting-item">
+          <label>なめらかさ</label>
+          <input type="range" id="toonSmoothness" min="0" max="1" step="0.05" value="1">
+          <span id="toonSmoothnessValue">1</span>
+        </div>
       </div>
       <div class="display-section">
         <h4 class="setting-category"><span>Kuwahara（油絵風）</span><input type="checkbox" id="kuwaharaEnabled"></h4>
         <div class="setting-item">
           <label>半径</label>
-          <input type="range" id="kuwaharaRadius" min="1" max="12" step="1" value="4">
+          <input type="range" id="kuwaharaRadius" min="1" max="24" step="1" value="4">
           <span id="kuwaharaRadiusValue">4</span>
         </div>
         <div class="setting-item">
           <label>強度</label>
           <input type="range" id="kuwaharaStrength" min="0" max="1" step="0.05" value="1">
           <span id="kuwaharaStrengthValue">1</span>
+        </div>
+      </div>
+      <div class="display-section">
+        <div class="setting-item">
+          <label><input type="checkbox" id="celBeforeKuwahara"> セル→Kuwahara順</label>
         </div>
       </div>
     </div>
@@ -1728,6 +1746,6 @@
 
   <script src="src/presetManager.js?v=20260319a"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260320b"></script>
+  <script type="module" src="src/main.js?v=20260320j"></script>
 </body>
 </html>

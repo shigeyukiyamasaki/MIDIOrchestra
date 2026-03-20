@@ -3407,6 +3407,7 @@ function setupThreeJS() {
       ditherAmount: { value: 0.5 },
       saturationBoost: { value: 1.0 },
       colorSmooth: { value: 0.0 },
+      edgeSharpness: { value: 0.7 },
       paletteSize: { value: 0.0 },
       hueBands: { value: 0.0 },
       depthAware: { value: 0.0 },
@@ -3431,6 +3432,7 @@ function setupThreeJS() {
       uniform float ditherAmount;
       uniform float saturationBoost;
       uniform float colorSmooth;
+      uniform float edgeSharpness;
       uniform float paletteSize;
       uniform float hueBands;
       uniform float depthAware;
@@ -3507,31 +3509,59 @@ function setupThreeJS() {
             // 深度分離ピクセル化: グリッドセル中心の深度を基準に同セグメントのサンプルのみ平均
             float myDepth = linearizeDepth(texture2D(tDepth, coord).r);
             float logMy = log(max(myDepth, 0.01));
-            float threshold = 0.15; // log空間での閾値（約15%の距離差で分離）
+            float depthThreshold = 0.15; // log空間での閾値（約15%の距離差で分離）
 
-            vec3 sum = vec3(0.0);
-            float cnt = 0.0;
+            vec2 sp0 = coord + vec2(-q.x, -q.y);
+            vec2 sp1 = coord + vec2( q.x, -q.y);
+            vec2 sp2 = coord + vec2(-q.x,  q.y);
+            vec2 sp3 = coord + vec2( q.x,  q.y);
 
-            vec2 s0 = coord + vec2(-q.x, -q.y);
-            vec2 s1 = coord + vec2( q.x, -q.y);
-            vec2 s2 = coord + vec2(-q.x,  q.y);
-            vec2 s3 = coord + vec2( q.x,  q.y);
+            vec3 c0 = texture2D(tDiffuse, sp0).rgb;
+            vec3 c1 = texture2D(tDiffuse, sp1).rgb;
+            vec3 c2 = texture2D(tDiffuse, sp2).rgb;
+            vec3 c3 = texture2D(tDiffuse, sp3).rgb;
 
-            float ld0 = log(max(linearizeDepth(texture2D(tDepth, s0).r), 0.01));
-            float ld1 = log(max(linearizeDepth(texture2D(tDepth, s1).r), 0.01));
-            float ld2 = log(max(linearizeDepth(texture2D(tDepth, s2).r), 0.01));
-            float ld3 = log(max(linearizeDepth(texture2D(tDepth, s3).r), 0.01));
+            float ld0 = log(max(linearizeDepth(texture2D(tDepth, sp0).r), 0.01));
+            float ld1 = log(max(linearizeDepth(texture2D(tDepth, sp1).r), 0.01));
+            float ld2 = log(max(linearizeDepth(texture2D(tDepth, sp2).r), 0.01));
+            float ld3 = log(max(linearizeDepth(texture2D(tDepth, sp3).r), 0.01));
 
-            if (abs(ld0 - logMy) < threshold) { sum += texture2D(tDiffuse, s0).rgb; cnt += 1.0; }
-            if (abs(ld1 - logMy) < threshold) { sum += texture2D(tDiffuse, s1).rgb; cnt += 1.0; }
-            if (abs(ld2 - logMy) < threshold) { sum += texture2D(tDiffuse, s2).rgb; cnt += 1.0; }
-            if (abs(ld3 - logMy) < threshold) { sum += texture2D(tDiffuse, s3).rgb; cnt += 1.0; }
+            // 深度フィルタ: 同一深度セグメントのサンプルのみ採用
+            float dw0 = abs(ld0 - logMy) < depthThreshold ? 1.0 : 0.0;
+            float dw1 = abs(ld1 - logMy) < depthThreshold ? 1.0 : 0.0;
+            float dw2 = abs(ld2 - logMy) < depthThreshold ? 1.0 : 0.0;
+            float dw3 = abs(ld3 - logMy) < depthThreshold ? 1.0 : 0.0;
 
-            // cnt==0はセンター深度がアーティファクト → 深度フィルタ無視で通常4点平均
-            color = cnt > 0.0 ? sum / cnt : (
-              texture2D(tDiffuse, s0).rgb + texture2D(tDiffuse, s1).rgb +
-              texture2D(tDiffuse, s2).rgb + texture2D(tDiffuse, s3).rgb
-            ) * 0.25;
+            // エッジシャープネス: 中心色との色差で重み付け
+            if (edgeSharpness > 0.001) {
+              vec3 centerCol = texture2D(tDiffuse, coord).rgb;
+              float sharpSigma = max(0.01, 0.3 * (1.0 - edgeSharpness));
+              float inv2s = 1.0 / (2.0 * sharpSigma * sharpSigma);
+              dw0 *= exp(-dot(c0 - centerCol, c0 - centerCol) * inv2s);
+              dw1 *= exp(-dot(c1 - centerCol, c1 - centerCol) * inv2s);
+              dw2 *= exp(-dot(c2 - centerCol, c2 - centerCol) * inv2s);
+              dw3 *= exp(-dot(c3 - centerCol, c3 - centerCol) * inv2s);
+            }
+
+            float wTotal = dw0 + dw1 + dw2 + dw3;
+            color = wTotal > 0.001 ? (c0 * dw0 + c1 * dw1 + c2 * dw2 + c3 * dw3) / wTotal
+                                   : (c0 + c1 + c2 + c3) * 0.25;
+          } else if (edgeSharpness > 0.001) {
+            // エッジシャープ: 中心色に近いサンプルを優先（バイラテラル重み付け）
+            vec3 centerCol = texture2D(tDiffuse, coord).rgb;
+            vec3 s0 = texture2D(tDiffuse, coord + vec2(-q.x, -q.y)).rgb;
+            vec3 s1 = texture2D(tDiffuse, coord + vec2( q.x, -q.y)).rgb;
+            vec3 s2 = texture2D(tDiffuse, coord + vec2(-q.x,  q.y)).rgb;
+            vec3 s3 = texture2D(tDiffuse, coord + vec2( q.x,  q.y)).rgb;
+            // 中心色との色差が大きいサンプルの重みを下げる
+            float sharpSigma = max(0.01, 0.3 * (1.0 - edgeSharpness));
+            float inv2s = 1.0 / (2.0 * sharpSigma * sharpSigma);
+            float w0 = exp(-dot(s0 - centerCol, s0 - centerCol) * inv2s);
+            float w1 = exp(-dot(s1 - centerCol, s1 - centerCol) * inv2s);
+            float w2 = exp(-dot(s2 - centerCol, s2 - centerCol) * inv2s);
+            float w3 = exp(-dot(s3 - centerCol, s3 - centerCol) * inv2s);
+            float wTotal = w0 + w1 + w2 + w3;
+            color = (s0 * w0 + s1 * w1 + s2 * w2 + s3 * w3) / wTotal;
           } else {
             // 通常ピクセル化: ビッグピクセル内4点サンプリング（時間的ちらつき抑制）
             color = (
@@ -3598,10 +3628,12 @@ function setupThreeJS() {
       outlineThreshold: { value: 0.5 },
       outlineColor: { value: new THREE.Color(0x000000) },
       outlineMode: { value: 4 },  // 0=color, 1=depth, 2=both, 3=colorOuter, 4=bothOuter
+      outlineWidth: { value: 1.0 },
       cameraNear: { value: camera.near },
       cameraFar: { value: camera.far },
       toonShades: { value: 0.0 },
-      toonDarkness: { value: 0.0 }
+      toonDarkness: { value: 0.0 },
+      toonSmoothness: { value: 1.0 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -3618,10 +3650,12 @@ function setupThreeJS() {
       uniform float outlineThreshold;
       uniform vec3 outlineColor;
       uniform int outlineMode;
+      uniform float outlineWidth;
       uniform float cameraNear;
       uniform float cameraFar;
       uniform float toonShades;
       uniform float toonDarkness;
+      uniform float toonSmoothness;
       varying vec2 vUv;
 
       float luma(vec3 c) {
@@ -3664,10 +3698,25 @@ function setupThreeJS() {
       void main() {
         vec3 color = texture2D(tDiffuse, vUv).rgb;
 
-        // Toon shading (luminance banding)
+        // Toon shading (gamma-aware banding with smooth transitions)
         if (toonShades > 0.0) {
           float l = luma(color);
-          float banded = floor(l * toonShades + 0.5) / toonShades;
+          // ガンマ空間に変換（暗部の段階を細かく、明部を粗く）
+          float gamma = 2.2;
+          float lg = pow(max(l, 0.001), 1.0 / gamma);
+          // 段階化
+          float bandedG = floor(lg * toonShades + 0.5) / toonShades;
+          // スムーズ補間: 段階境界をなだらかにする
+          float bandWidth = 1.0 / toonShades;
+          float frac = (lg - bandedG + bandWidth * 0.5) / bandWidth; // 0..1 within band
+          float smoothFrac = smoothstep(0.0, toonSmoothness, frac) * smoothstep(1.0, 1.0 - toonSmoothness, frac);
+          float nextBand = bandedG + bandWidth;
+          float prevBand = bandedG - bandWidth;
+          // smoothnessが0ならfloor()と同じ、1ならほぼ連続的
+          float blended = mix(bandedG, mix(prevBand, nextBand, frac), toonSmoothness * (1.0 - abs(frac - 0.5) * 2.0));
+          blended = clamp(blended, 0.0, 1.0);
+          // リニアに戻す
+          float banded = pow(blended, gamma);
           banded = mix(banded, banded * banded, toonDarkness * 0.5);
           float ratio = (l > 0.001) ? banded / l : 1.0;
           color = clamp(color * ratio, 0.0, 1.0);
@@ -3675,7 +3724,7 @@ function setupThreeJS() {
 
         // Outline
         if (outlineStrength > 0.0) {
-          vec2 step = 1.0 / resolution;
+          vec2 step = outlineWidth / resolution;
           float edge = 0.0;
           if (outlineMode == 0) {
             // 色ベース（内外両方）
@@ -3815,7 +3864,7 @@ function setupThreeJS() {
 
       #define PI 3.14159265358979
       #define SECTORS 8
-      #define MAX_R 12
+      #define MAX_R 24
 
       void main() {
         vec4 orig = texture2D(tDiffuse, vUv);
@@ -5579,6 +5628,9 @@ function setupEventListeners() {
     if (fpsEl) pixelFpsLimit = parseInt(fpsEl.value);
     const hbEl = document.getElementById('pixelHueBands');
     if (hbEl) pixelPass.uniforms.hueBands.value = parseFloat(hbEl.value);
+    const esEl = document.getElementById('pixelEdgeSharpness');
+    const esOn = document.getElementById('pixelEdgeEnabled')?.checked ?? false;
+    if (esEl) pixelPass.uniforms.edgeSharpness.value = esOn ? parseFloat(esEl.value) : 0.0;
     const palEl = document.getElementById('pixelPalette');
     if (palEl) setPalette(palEl.value);
     const cb = document.getElementById('pixelArtEnabled');
@@ -5679,6 +5731,18 @@ function setupEventListeners() {
     if (pixelPass) pixelPass.uniforms.saturationBoost.value = v;
   });
 
+  document.getElementById('pixelEdgeSharpness')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('pixelEdgeSharpnessValue').textContent = v;
+    const on = document.getElementById('pixelEdgeEnabled')?.checked ?? false;
+    if (pixelPass) pixelPass.uniforms.edgeSharpness.value = on ? v : 0.0;
+  });
+  document.getElementById('pixelEdgeEnabled')?.addEventListener('change', () => {
+    const on = document.getElementById('pixelEdgeEnabled')?.checked ?? false;
+    const v = parseFloat(document.getElementById('pixelEdgeSharpness')?.value || '0.7');
+    if (pixelPass) pixelPass.uniforms.edgeSharpness.value = on ? v : 0.0;
+  });
+
   document.getElementById('pixelFps')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
     document.getElementById('pixelFpsValue').textContent = v === 0 ? 'なし' : v + 'fps';
@@ -5694,6 +5758,7 @@ function setupEventListeners() {
     // アウトライン
     const str = outlineOn ? parseFloat(document.getElementById('toonOutlineStrength')?.value || '0') : 0;
     toonPass.uniforms.outlineStrength.value = str;
+    toonPass.uniforms.outlineWidth.value = parseFloat(document.getElementById('toonOutlineWidth')?.value || '1');
     const modeMap = { color: 0, depth: 1, both: 2, colorOuter: 3, bothOuter: 4, depthPreview: 5 };
     const mode = document.getElementById('toonOutlineMode')?.value || 'bothOuter';
     toonPass.uniforms.outlineMode.value = modeMap[mode] ?? 4;
@@ -5702,6 +5767,7 @@ function setupEventListeners() {
     toonPass.uniforms.toonShades.value = shades;
     const darkness = celOn ? parseFloat(document.getElementById('toonDarkness')?.value || '0') : 0;
     toonPass.uniforms.toonDarkness.value = darkness;
+    toonPass.uniforms.toonSmoothness.value = parseFloat(document.getElementById('toonSmoothness')?.value || '0.5');
   };
   document.getElementById('toonEnabled')?.addEventListener('change', syncToonPassEnabled);
   document.getElementById('celShadingEnabled')?.addEventListener('change', syncToonPassEnabled);
@@ -5715,6 +5781,11 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('toonOutlineThresholdValue').textContent = v;
     if (toonPass) toonPass.uniforms.outlineThreshold.value = v;
+  });
+  document.getElementById('toonOutlineWidth')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('toonOutlineWidthValue').textContent = v;
+    if (toonPass) toonPass.uniforms.outlineWidth.value = v;
   });
   document.getElementById('toonOutlineColor')?.addEventListener('input', (e) => {
     if (toonPass) toonPass.uniforms.outlineColor.value.set(e.target.value);
@@ -5730,6 +5801,11 @@ function setupEventListeners() {
     document.getElementById('toonDarknessValue').textContent = v;
     const celOn = document.getElementById('celShadingEnabled')?.checked ?? false;
     if (toonPass) toonPass.uniforms.toonDarkness.value = celOn ? v : 0;
+  });
+  document.getElementById('toonSmoothness')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('toonSmoothnessValue').textContent = v;
+    if (toonPass) toonPass.uniforms.toonSmoothness.value = v;
   });
   document.getElementById('toonOutlineMode')?.addEventListener('change', (e) => {
     if (!toonPass) return;
@@ -16029,6 +16105,7 @@ function animate() {
   const kuwaharaRadius = kuwaharaEnabled ? parseFloat(document.getElementById('kuwaharaRadius')?.value || '4') : 0;
   const kuwaharaStrength = parseFloat(document.getElementById('kuwaharaStrength')?.value || '1');
   const useKuwahara = kuwaharaPass && kuwaharaEnabled && kuwaharaRadius >= 1;
+  const celBeforeKuwahara = document.getElementById('celBeforeKuwahara')?.checked ?? false;
   const applyKuwahara = () => {
     if (!useKuwahara) return;
     kuwaharaPass.uniforms.radius.value = kuwaharaRadius;
@@ -16201,9 +16278,10 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
-    // 平塗り・Kuwaharaフィルタ（ピクセル化・トゥーンの前に適用）
+    // 平塗りフィルタ（常にピクセル化・トゥーンの前）
     applyFlatColor();
-    applyKuwahara();
+    // Kuwaharaフィルタ: celBeforeKuwaharaならトゥーン後に適用
+    if (!celBeforeKuwahara) applyKuwahara();
 
     // ピクセルパスを手動適用
     pixelPass.enabled = true;
@@ -16218,6 +16296,7 @@ function animate() {
       toonPass.renderToScreen = false;
       syncToonDepth();
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
+      if (celBeforeKuwahara) applyKuwahara();
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.readBuffer, composer.writeBuffer);
       finalBuffer = composer.readBuffer;
@@ -16230,6 +16309,7 @@ function animate() {
         toonPass.renderToScreen = false;
         syncToonDepth();
         toonPass.render(renderer, composer.readBuffer, composer.writeBuffer);
+        if (celBeforeKuwahara) applyKuwahara();
       }
       finalBuffer = useToon ? composer.readBuffer : composer.writeBuffer;
     }
@@ -16272,15 +16352,30 @@ function animate() {
     }
     renderer.setRenderTarget(null);
 
-    // 平塗り・Kuwaharaフィルタ（トゥーンの前に適用）
+    // 平塗りフィルタ（トゥーンの前に適用）
     applyFlatColor();
-    applyKuwahara();
+    if (!celBeforeKuwahara) applyKuwahara();
 
-    // トゥーンパスを手動適用 → 画面に出力
+    // トゥーンパスを手動適用
     toonPass.enabled = true;
-    toonPass.renderToScreen = true;
     syncToonDepth();
-    toonPass.render(renderer, null, composer.readBuffer);
+    if (celBeforeKuwahara && useKuwahara) {
+      // セル→Kuwahara順: トゥーンをバッファに描画→Kuwahara→画面出力
+      toonPass.renderToScreen = false;
+      toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
+      // writeBufferの結果をreadBufferにコピー
+      if (_pixelCopyPass) {
+        _pixelCopyPass.renderToScreen = false;
+        _pixelCopyPass.render(renderer, composer.readBuffer, composer.writeBuffer);
+      }
+      applyKuwahara();
+      _pixelCopyPass.renderToScreen = true;
+      _pixelCopyPass.render(renderer, null, composer.readBuffer);
+    } else {
+      // デフォルト順（Kuwahara→セル）: トゥーンを画面に出力
+      toonPass.renderToScreen = true;
+      toonPass.render(renderer, null, composer.readBuffer);
+    }
   } else if (useFlatColor) {
     // 平塗りのみON（ピクセルアートOFF・トゥーンOFF）: バッファに描画→フィルタ→画面出力
     composer.renderToScreen = false;
