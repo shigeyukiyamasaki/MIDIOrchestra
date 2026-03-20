@@ -588,6 +588,11 @@ let plyFireLightIntensity = 2.0;
 let plyFireLightDistance = 50;
 let plyFireLightColorAmount = 1.0;
 let plyFireLightLumAmount = 0.5;
+let plyFireLightEmission = 0;
+let plyFireLightEmissionRadius = 5;
+let _fireGlowSprite = null;
+let _fireGlowTexture = null;
+let _fireGlowScene = null;
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
 
 // デバウンス用タイマー
@@ -2076,6 +2081,8 @@ function syncWaterSettingsFromDOM() {
   plyFireLightDistance = gv('plyFireLightDistance', 50);
   plyFireLightColorAmount = gv('plyFireLightColorAmount', 1.0);
   plyFireLightLumAmount = gv('plyFireLightLumAmount', 0.5);
+  plyFireLightEmission = gv('plyFireLightEmission', 0);
+  plyFireLightEmissionRadius = gv('plyFireLightEmissionRadius', 5);
   plyFireSmokeEnabled = gc('plyFireSmokeEnabled', false);
   plyFireSmokeRiseSpeed = gv('plyFireSmokeRiseSpeed', 2.0);
   plyFireSmokeSize = gv('plyFireSmokeSize', 1.0);
@@ -6963,6 +6970,16 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('plyFireLightLumAmountValue').textContent = v;
     plyFireLightLumAmount = v;
+  });
+  document.getElementById('plyFireLightEmission')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireLightEmissionValue').textContent = v;
+    plyFireLightEmission = v;
+  });
+  document.getElementById('plyFireLightEmissionRadius')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireLightEmissionRadiusValue').textContent = v;
+    plyFireLightEmissionRadius = v;
   });
   document.getElementById('plyFireSmokeEnabled')?.addEventListener('change', (e) => {
     plyFireSmokeEnabled = e.target.checked;
@@ -15093,12 +15110,15 @@ function setupPlyShaderOverride() {
             shader.uniforms.fireColor = { value: new THREE.Vector3(1.0, 0.27, 0.0) };
             shader.uniforms.fireLightColorAmount = { value: 1.0 };
             shader.uniforms.fireLightLumAmount = { value: 0.5 };
+            shader.uniforms.fireEmission = { value: 0.0 };
+            shader.uniforms.fireEmissionRadius = { value: 1.0 };
             // 外部からuniformsにアクセスするための参照を保存
             m._fireLightShader = shader;
 
             // 頂点シェーダー: fog_vertexの後にシャドウ座標＋ワールド座標＋火源距離計算を注入
             shader.vertexShader = 'varying vec4 vPlyShadowCoord;\nuniform mat4 plyShadowMatrix;\n' +
               'uniform vec3 fireWorldPos;\nuniform float fireDistance;\nuniform float fireIntensity;\nvarying float vFireAmount;\n' +
+              'uniform float fireEmission;\nuniform float fireEmissionRadius;\nvarying float vFireEmission;\n' +
               shader.vertexShader;
             shader.vertexShader = shader.vertexShader.replace(
               '#include <fog_vertex>',
@@ -15110,6 +15130,7 @@ function setupPlyShaderOverride() {
               '  float _fd = length(plyWP.xyz - fireWorldPos);\n' +
               '  float _fn = _fd / max(fireDistance, 0.1);\n' +
               '  vFireAmount = fireIntensity / (1.0 + _fn * _fn);\n' +
+              '  vFireEmission = fireEmission * (1.0 - smoothstep(0.0, fireEmissionRadius, _fd));\n' +
               '}'
             );
 
@@ -15119,6 +15140,7 @@ function setupPlyShaderOverride() {
               'uniform float waterEnabled;\nuniform float waterOpacity;\nuniform vec3 waterColor;\nuniform float waterThreshold;\n' +
               'uniform float causticsIntensity;\nuniform float causticsScale;\nuniform float causticsTime;\n' +
               'uniform vec3 fireColor;\nuniform float fireLightColorAmount;\nuniform float fireLightLumAmount;\nvarying float vFireAmount;\n' +
+              'uniform float fireEmission;\nvarying float vFireEmission;\n' +
               shader.fragmentShader;
 
             const waterTransparencyCode = [
@@ -15147,8 +15169,12 @@ function setupPlyShaderOverride() {
               'gl_FragColor.rgb *= plyLightColor;',
               '// Fire light for 3DGS PLY',
               'if (vFireAmount > 0.001) {',
-              '  gl_FragColor.rgb += fireColor * vFireAmount * fireLightColorAmount;',
-              '  gl_FragColor.rgb += gl_FragColor.rgb * vFireAmount * fireLightLumAmount;',
+              '  gl_FragColor.rgb += gl_FragColor.rgb * fireColor * vFireAmount * fireLightColorAmount * 0.3;',
+              '  gl_FragColor.rgb += gl_FragColor.rgb * vFireAmount * fireLightLumAmount * 0.3;',
+              '}',
+              '// Fire source vicinity glow',
+              'if (vFireEmission > 0.001) {',
+              '  gl_FragColor.rgb *= 1.0 + vFireEmission;',
               '}',
             ].join('\n') + '\n' + cloudShadowCode + '\n' + colorAdjustCode;
 
@@ -16291,7 +16317,18 @@ function animate() {
   // ポストプロセスではなくレンダリング時に直接ワールド座標で計算するため、カメラ非依存
   const useFireLight = plyFireLightEnabled && plyFireIndices && plyFireIndices.length > 0 && glbModel;
   const applyFireLight = () => {
-    if (!useFireLight) return;
+    if (!useFireLight) {
+      // 無効時はintensityを0にしてシェーダーの照明効果をオフにする
+      if (glbModel) {
+        glbModel.traverse((child) => {
+          if (!child.isPoints || !child.material || !child.material._fireLightShader) return;
+          child.material._fireLightShader.uniforms.fireIntensity.value = 0;
+          child.material._fireLightShader.uniforms.fireEmission.value = 0;
+        });
+      }
+      if (_fireGlowSprite) _fireGlowSprite.visible = false;
+      return;
+    }
     // 炎頂点の重心をワールド座標で算出
     let cx = 0, cy = 0, cz = 0;
     glbModel.traverse((child) => {
@@ -16303,6 +16340,19 @@ function animate() {
       }
     });
     cx /= plyFireIndices.length; cy /= plyFireIndices.length; cz /= plyFireIndices.length;
+    // 火源バウンディング半径を算出（スプライトサイズの基準）
+    let maxDist2 = 0;
+    glbModel.traverse((child) => {
+      if (!child.isPoints || !child.geometry) return;
+      const p = child.geometry.attributes.position.array;
+      for (let j = 0; j < plyFireIndices.length; j++) {
+        const idx = plyFireIndices[j];
+        const dx = p[idx * 3] - cx, dy = p[idx * 3 + 1] - cy, dz = p[idx * 3 + 2] - cz;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 > maxDist2) maxDist2 = d2;
+      }
+    });
+    const fireWorldRadius = Math.sqrt(maxDist2) * glbModel.scale.x;
     const wp = new THREE.Vector3(cx, cy, cz);
     glbModel.localToWorld(wp);
     const fc = new THREE.Color(plyFireGlowColor);
@@ -16316,7 +16366,49 @@ function animate() {
       u.fireColor.value.set(fc.r, fc.g, fc.b);
       u.fireLightColorAmount.value = plyFireLightColorAmount;
       u.fireLightLumAmount.value = plyFireLightLumAmount;
+      u.fireEmission.value = 0; // per-vertex emissionは無効（スプライトで代替）
+      u.fireEmissionRadius.value = 0;
     });
+    // 光源グロースプライト: 火源周囲の空間を光らせる
+    if (plyFireLightEmission > 0) {
+      if (!_fireGlowSprite) {
+        // ラジアルグラデーションテクスチャを生成
+        if (!_fireGlowTexture) {
+          const sz = 256;
+          const cv = document.createElement('canvas');
+          cv.width = sz; cv.height = sz;
+          const ctx = cv.getContext('2d');
+          const grad = ctx.createRadialGradient(sz / 2, sz / 2, 0, sz / 2, sz / 2, sz / 2);
+          grad.addColorStop(0, 'rgba(255,255,255,1)');
+          grad.addColorStop(0.2, 'rgba(255,255,255,0.5)');
+          grad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+          grad.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, sz, sz);
+          _fireGlowTexture = new THREE.CanvasTexture(cv);
+        }
+        const mat = new THREE.SpriteMaterial({
+          map: _fireGlowTexture,
+          blending: THREE.AdditiveBlending,
+          transparent: true,
+          depthWrite: false,
+          depthTest: false,
+          color: fc,
+        });
+        _fireGlowSprite = new THREE.Sprite(mat);
+        if (!_fireGlowScene) _fireGlowScene = new THREE.Scene();
+        _fireGlowScene.add(_fireGlowSprite);
+      }
+      _fireGlowSprite.material.color.copy(fc);
+      _fireGlowSprite.material.opacity = Math.min(plyFireLightEmission * 0.1, 1.0);
+      _fireGlowSprite.position.copy(wp);
+      // スプライトサイズ = 火源バウンディング半径 × スライダー倍率
+      const glowScale = Math.max(fireWorldRadius, 1) * plyFireLightEmissionRadius * 2;
+      _fireGlowSprite.scale.setScalar(glowScale);
+      _fireGlowSprite.visible = true;
+    } else if (_fireGlowSprite) {
+      _fireGlowSprite.visible = false;
+    }
   };
   // シーンレンダリング前に毎フレーム更新（applyFireLightはレンダリング前に呼ぶ）
   applyFireLight();
@@ -16451,6 +16543,8 @@ function animate() {
     camera.layers.enable(2);
   }
 
+  let _fireGlowRenderedInPipeline = false;
+
   if (pixelHoldSkip) {
     // ホールド中: 前回キャプチャした画面をそのまま表示
     _pixelCopyPass.renderToScreen = true;
@@ -16495,11 +16589,27 @@ function animate() {
       syncToonDepth();
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
       if (celBeforeKuwahara) applyKuwahara();
+      // グロースプライト: トゥーン後・ピクセル前に描画（アウトライン除外、ピクセル化対象）
+      if (_fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
+        renderer.setRenderTarget(composer.writeBuffer);
+        renderer.autoClear = false;
+        renderer.render(_fireGlowScene, camera);
+        renderer.autoClear = true;
+        _fireGlowRenderedInPipeline = true;
+      }
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.readBuffer, composer.writeBuffer);
       finalBuffer = composer.readBuffer;
     } else {
       // ピクセル→トゥーン（除外モード: 輪郭は細いまま）or トゥーンなし
+      // グロースプライト: ピクセル前に描画（ピクセル化対象）
+      if (!useToon && _fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
+        renderer.setRenderTarget(composer.readBuffer);
+        renderer.autoClear = false;
+        renderer.render(_fireGlowScene, camera);
+        renderer.autoClear = true;
+        _fireGlowRenderedInPipeline = true;
+      }
       pixelPass.renderToScreen = false;
       pixelPass.render(renderer, composer.writeBuffer, composer.readBuffer);
       if (useToon) {
@@ -16638,6 +16748,14 @@ function animate() {
       renderer.render(flareScene, flareCamera);
       renderer.autoClear = true;
     }
+  }
+
+  // 光源グロースプライト: ピクセルパイプライン内で描画済みでない場合のみ、画面に直接描画
+  if (!_fireGlowRenderedInPipeline && _fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
+    renderer.setRenderTarget(null);
+    renderer.autoClear = false;
+    renderer.render(_fireGlowScene, camera);
+    renderer.autoClear = true;
   }
 
   // 色数モニター（ピクセルアートON時のみ）
