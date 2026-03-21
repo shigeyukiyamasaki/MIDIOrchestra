@@ -1446,9 +1446,9 @@
           <span id="pixelEdgeSharpnessValue">0.7</span>
         </div>
         <div class="setting-item">
-          <label>FPS制限</label>
-          <input type="range" id="pixelFps" min="0" max="60" step="1" value="0">
-          <span id="pixelFpsValue">なし</span>
+          <label><input type="checkbox" id="pixelFpsEnabled"> FPS制限</label>
+          <input type="range" id="pixelFps" min="1" max="60" step="1" value="12" disabled>
+          <span id="pixelFpsValue">12</span>
         </div>
         <div class="setting-item">
           <label><input type="checkbox" id="pixelExcludeToon"> トゥーンを除外</label>
@@ -1782,6 +1782,6 @@
 
   <script src="src/presetManager.js?v=20260320a"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260321a"></script>
+  <script type="module" src="src/main.js?v=20260321a2"></script>
 </body>
 </html>

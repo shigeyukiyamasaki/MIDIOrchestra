@@ -5834,7 +5834,8 @@ function setupEventListeners() {
     const satEl = document.getElementById('pixelSaturation');
     if (satEl) pixelPass.uniforms.saturationBoost.value = parseFloat(satEl.value);
     const fpsEl = document.getElementById('pixelFps');
-    if (fpsEl) pixelFpsLimit = parseInt(fpsEl.value);
+    const fpsEnabled = document.getElementById('pixelFpsEnabled')?.checked ?? false;
+    if (fpsEl) pixelFpsLimit = fpsEnabled ? parseInt(fpsEl.value) : 0;
     const hbEl = document.getElementById('pixelHueBands');
     if (hbEl) pixelPass.uniforms.hueBands.value = parseFloat(hbEl.value);
     const esEl = document.getElementById('pixelEdgeSharpness');
@@ -5875,6 +5876,11 @@ function setupEventListeners() {
       const span = document.getElementById(id + 'Value');
       if (el) { el.value = val; el.dispatchEvent(new Event('input')); }
       if (span) span.textContent = val;
+    }
+    // FPS制限チェックボックスをONにする
+    if (p.fps > 0) {
+      const fpsChk = document.getElementById('pixelFpsEnabled');
+      if (fpsChk) { fpsChk.checked = true; fpsChk.dispatchEvent(new Event('change')); }
     }
     // パレット設定
     const palEl = document.getElementById('pixelPalette');
@@ -5952,11 +5958,22 @@ function setupEventListeners() {
     if (pixelPass) pixelPass.uniforms.edgeSharpness.value = on ? v : 0.0;
   });
 
+  document.getElementById('pixelFpsEnabled')?.addEventListener('change', (e) => {
+    const slider = document.getElementById('pixelFps');
+    if (slider) slider.disabled = !e.target.checked;
+    if (e.target.checked) {
+      pixelFpsLimit = parseInt(slider?.value || '12');
+    } else {
+      pixelFpsLimit = 0;
+      _pixelHoldReady = false;
+    }
+  });
   document.getElementById('pixelFps')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
-    document.getElementById('pixelFpsValue').textContent = v === 0 ? 'なし' : v + 'fps';
-    pixelFpsLimit = v;
-    if (v === 0) _pixelHoldReady = false;
+    document.getElementById('pixelFpsValue').textContent = v + 'fps';
+    const enabled = document.getElementById('pixelFpsEnabled')?.checked ?? false;
+    pixelFpsLimit = enabled ? v : 0;
+    if (pixelFpsLimit === 0) _pixelHoldReady = false;
   });
   // アウトライン / セルシェーディング
   const syncToonPassEnabled = () => {
@@ -17380,7 +17397,11 @@ async function loadViewerData() {
         if (s.pixelDither !== undefined) pixelPass.uniforms.ditherAmount.value = parseFloat(s.pixelDither);
         if (s.pixelSaturation !== undefined) pixelPass.uniforms.saturationBoost.value = parseFloat(s.pixelSaturation);
         if (s.pixelHueBands !== undefined) pixelPass.uniforms.hueBands.value = parseFloat(s.pixelHueBands);
-        if (s.pixelFps !== undefined) pixelFpsLimit = parseInt(s.pixelFps);
+        if (s.pixelFps !== undefined) {
+          const fpsVal = parseInt(s.pixelFps);
+          const fpsEnabled = s.pixelFpsEnabled === true || s.pixelFpsEnabled === 'true';
+          pixelFpsLimit = fpsEnabled ? fpsVal : 0;
+        }
         if (s.pixelPalette !== undefined) setPalette(s.pixelPalette);
       }
     }, 500);

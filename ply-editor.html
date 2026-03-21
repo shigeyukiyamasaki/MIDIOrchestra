@@ -187,6 +187,7 @@ body {
     <button class="btn" id="toolMove" title="Move (G)">Move</button>
     <button class="btn" id="toolScale" title="Scale (S)">Scale</button>
     <button class="btn" id="toolRotate" title="Rotate (T)">Rotate</button>
+    <button class="btn" id="toolBend" title="Bend (N)">Bend</button>
   </div>
   <div class="toolbar-group">
     <button class="btn danger" id="btnDelete" title="Delete (Del)" disabled>Delete</button>
@@ -279,6 +280,32 @@ body {
       <label>Strength</label>
       <input type="range" id="warpStrength" min="0.1" max="5" step="0.1" value="0.5">
       <span class="val" id="warpStrengthVal">0.5</span>
+    </div>
+    <h3>Bend</h3>
+    <div class="setting-row">
+      <label>Source</label>
+      <select id="bendSourceAxis" style="flex:1; background:#0f1a30; color:#e0e0e0; border:1px solid #2a3a5c; border-radius:3px; padding:2px 4px; font-size:0.8rem;">
+        <option value="x">X</option>
+        <option value="y">Y</option>
+        <option value="z" selected>Z</option>
+      </select>
+      <label style="min-width:auto; margin-left:4px;">Displace</label>
+      <select id="bendDisplaceAxis" style="flex:1; background:#0f1a30; color:#e0e0e0; border:1px solid #2a3a5c; border-radius:3px; padding:2px 4px; font-size:0.8rem;">
+        <option value="x">X</option>
+        <option value="y" selected>Y</option>
+        <option value="z">Z</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <label>Strength</label>
+      <input type="range" id="bendStrength" min="0.01" max="5" step="0.01" value="1">
+      <span class="val" id="bendStrengthVal">1.00</span>
+    </div>
+    <canvas id="bendCurveCanvas" width="280" height="160" style="width:100%; height:140px; background:#0d1117; border:1px solid #2a3a5c; border-radius:4px; cursor:crosshair; margin-bottom:4px;"></canvas>
+    <div class="setting-row">
+      <button class="btn primary" id="btnBendApply" style="flex:1" disabled>Apply</button>
+      <button class="btn danger" id="btnBendCancel" style="flex:1" disabled>Cancel</button>
+      <button class="btn" id="btnBendReset" style="flex:0 0 auto; padding:4px 8px; font-size:0.75rem;">Reset</button>
     </div>
     <h3>Scale</h3>
     <div class="setting-row">
@@ -1482,6 +1509,312 @@ function commitWarp() {
   setStatus(`Warp applied (${undoEntries.length.toLocaleString()} points)`);
 }
 
+// ===== Bend (Bézier Curve Deformation) Tool =====
+let bendActive = false;
+let bendOrigPositions = null;
+let bendControlPoints = [{ y: 0 }, { y: 0 }, { y: 0 }, { y: 0 }];
+let bendDraggingPoint = -1;
+let bendCurveCanvas = null;
+let bendCurveCtx = null;
+let bendTargetIndices = null;
+let bendSourceRange = null;
+let bendDisplaceIdx = 1;
+
+function cubicBezierVal(t, p0, p1, p2, p3) {
+  const mt = 1 - t;
+  return mt * mt * mt * p0 + 3 * mt * mt * t * p1 + 3 * mt * t * t * p2 + t * t * t * p3;
+}
+
+function initBend() {
+  if (!state.pointCloud) return;
+  if (bendActive) applyBend(); // auto-apply previous
+  bendOrigPositions = new Float32Array(state.basePositions || state.positions);
+  bendActive = true;
+  bendControlPoints = [{ y: 0 }, { y: 0 }, { y: 0 }, { y: 0 }];
+  cacheBendParams();
+  $('btnBendApply').disabled = false;
+  $('btnBendCancel').disabled = false;
+  drawBendCurve();
+}
+
+function cacheBendParams() {
+  const sourceAxis = $('bendSourceAxis').value;
+  const displaceAxis = $('bendDisplaceAxis').value;
+  const sIdx = { x: 0, y: 1, z: 2 }[sourceAxis];
+  bendDisplaceIdx = { x: 0, y: 1, z: 2 }[displaceAxis];
+
+  // Locked vertices should not be deformed
+  const locked = getLockedVertexSet();
+
+  if (state.selected.size > 0) {
+    bendTargetIndices = [...state.selected].filter(i => !locked.has(i));
+  } else {
+    bendTargetIndices = [];
+    for (let i = 0; i < state.vertices.length; i++) {
+      if (!locked.has(i)) bendTargetIndices.push(i);
+    }
+  }
+
+  let minS = Infinity, maxS = -Infinity;
+  for (const i of bendTargetIndices) {
+    const v = bendOrigPositions[i * 3 + sIdx];
+    if (v < minS) minS = v;
+    if (v > maxS) maxS = v;
+  }
+  bendSourceRange = { min: minS, max: maxS, axisIdx: sIdx };
+}
+
+function updateBendPreview() {
+  if (!bendActive || !bendOrigPositions) return;
+  const strength = parseFloat($('bendStrength').value);
+  const { min: minS, max: maxS, axisIdx: sIdx } = bendSourceRange;
+  const dIdx = bendDisplaceIdx;
+  const range = maxS - minS;
+  if (range < 0.0001) return;
+
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+  // Reset to original
+  for (const i of bendTargetIndices) {
+    const j = i * 3;
+    posArr[j] = bendOrigPositions[j];
+    posArr[j + 1] = bendOrigPositions[j + 1];
+    posArr[j + 2] = bendOrigPositions[j + 2];
+  }
+  // Apply Bézier deformation
+  const cy0 = bendControlPoints[0].y, cy1 = bendControlPoints[1].y;
+  const cy2 = bendControlPoints[2].y, cy3 = bendControlPoints[3].y;
+  for (const i of bendTargetIndices) {
+    const j = i * 3;
+    const t = (bendOrigPositions[j + sIdx] - minS) / range;
+    const d = cubicBezierVal(t, cy0, cy1, cy2, cy3);
+    posArr[j + dIdx] = bendOrigPositions[j + dIdx] + d * strength;
+  }
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+}
+
+function bendHasEffect() {
+  return bendControlPoints.some(p => Math.abs(p.y) > 0.001);
+}
+
+function applyBend() {
+  if (!bendActive || !bendOrigPositions) return;
+  if (!bendHasEffect()) { cancelBend(); return; }
+
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+  const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
+  const undoEntries = [];
+
+  for (const i of bendTargetIndices) {
+    const j = i * 3;
+    const nx = posArr[j], ny = posArr[j + 1], nz = posArr[j + 2];
+    const ox = bendOrigPositions[j], oy = bendOrigPositions[j + 1], oz = bendOrigPositions[j + 2];
+    if (Math.abs(nx - ox) < 0.0001 && Math.abs(ny - oy) < 0.0001 && Math.abs(nz - oz) < 0.0001) continue;
+
+    const oldVertex = state.vertices[i];
+    const newData = cloneVertexData(i);
+    const dv = new DataView(newData.buffer, newData.byteOffset, newData.byteLength);
+    dv.setFloat32(xOff, nx, true);
+    dv.setFloat32(yOff, ny, true);
+    dv.setFloat32(zOff, nz, true);
+    const newVertex = { data: newData };
+    undoEntries.push({ index: i, oldVertex, newVertex });
+    state.vertices[i] = newVertex;
+  }
+
+  if (undoEntries.length > 0) {
+    state.undoStack.push({ type: 'bend', entries: undoEntries, prevSelection: new Set(state.selected) });
+    state.redoStack = [];
+    state.positions = posArr;
+    for (const entry of undoEntries) {
+      const j = entry.index * 3;
+      state.basePositions[j] = posArr[j];
+      state.basePositions[j + 1] = posArr[j + 1];
+      state.basePositions[j + 2] = posArr[j + 2];
+    }
+  }
+
+  const cnt = undoEntries.length;
+  bendActive = false;
+  bendOrigPositions = null;
+  bendTargetIndices = null;
+  $('btnBendApply').disabled = true;
+  $('btnBendCancel').disabled = true;
+  updateInfo();
+  updateButtons();
+  setStatus(`Bend applied (${cnt.toLocaleString()} points)`);
+}
+
+function cancelBend() {
+  if (!bendActive || !bendOrigPositions) return;
+  // Restore original positions
+  const posArr = state.pointCloud.geometry.attributes.position.array;
+  for (const i of bendTargetIndices) {
+    const j = i * 3;
+    posArr[j] = bendOrigPositions[j];
+    posArr[j + 1] = bendOrigPositions[j + 1];
+    posArr[j + 2] = bendOrigPositions[j + 2];
+  }
+  state.pointCloud.geometry.attributes.position.needsUpdate = true;
+  bendActive = false;
+  bendOrigPositions = null;
+  bendTargetIndices = null;
+  $('btnBendApply').disabled = true;
+  $('btnBendCancel').disabled = true;
+  setStatus('Bend cancelled');
+}
+
+function resetBendCurve() {
+  bendControlPoints = [{ y: 0 }, { y: 0 }, { y: 0 }, { y: 0 }];
+  drawBendCurve();
+  if (bendActive) updateBendPreview();
+}
+
+function drawBendCurve() {
+  if (!bendCurveCanvas) {
+    bendCurveCanvas = $('bendCurveCanvas');
+    if (!bendCurveCanvas) return;
+    bendCurveCtx = bendCurveCanvas.getContext('2d');
+  }
+  const c = bendCurveCanvas;
+  const ctx = bendCurveCtx;
+  const w = c.width, h = c.height;
+  const mg = 14;
+  const pw = w - mg * 2, ph = h - mg * 2;
+  const cy = mg + ph / 2;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = '#1a2a3c';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = mg + ph * i / 4;
+    ctx.beginPath(); ctx.moveTo(mg, y); ctx.lineTo(w - mg, y); ctx.stroke();
+  }
+  for (let i = 0; i <= 4; i++) {
+    const x = mg + pw * i / 4;
+    ctx.beginPath(); ctx.moveTo(x, mg); ctx.lineTo(x, h - mg); ctx.stroke();
+  }
+
+  // Center line (zero displacement)
+  ctx.strokeStyle = '#2a5a4c';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(mg, cy); ctx.lineTo(w - mg, cy); ctx.stroke();
+
+  // Control point canvas positions (fixed X: 0, 1/3, 2/3, 1)
+  const cpX = [0, 1 / 3, 2 / 3, 1].map(v => mg + v * pw);
+  const cpY = bendControlPoints.map(p => cy - p.y * (ph / 2));
+
+  // Tangent handle lines
+  ctx.strokeStyle = 'rgba(255, 200, 80, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(cpX[0], cpY[0]); ctx.lineTo(cpX[1], cpY[1]); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cpX[2], cpY[2]); ctx.lineTo(cpX[3], cpY[3]); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Bézier curve
+  ctx.strokeStyle = '#4361ee';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= 80; i++) {
+    const t = i / 80;
+    const bv = cubicBezierVal(t, bendControlPoints[0].y, bendControlPoints[1].y, bendControlPoints[2].y, bendControlPoints[3].y);
+    const x = mg + t * pw;
+    const y = cy - bv * (ph / 2);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Control points
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.arc(cpX[i], cpY[i], 5, 0, Math.PI * 2);
+    ctx.fillStyle = (i === 0 || i === 3) ? '#ff6b6b' : '#ffcc00';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle = '#556';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('+', 7, mg + 4);
+  ctx.fillText('−', 7, h - mg + 3);
+}
+
+// Bend curve canvas interaction
+{
+  const bc = $('bendCurveCanvas');
+  bc.addEventListener('pointerdown', (e) => {
+    // Auto-activate bend if not active
+    if (!bendActive && state.pointCloud) initBend();
+
+    const rect = bc.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (bc.width / rect.width);
+    const my = (e.clientY - rect.top) * (bc.height / rect.height);
+    const mg = 14;
+    const pw = bc.width - mg * 2, ph = bc.height - mg * 2;
+    const cy = mg + ph / 2;
+    const cpX = [0, 1 / 3, 2 / 3, 1].map(v => mg + v * pw);
+
+    let bestDist = 18, bestIdx = -1;
+    for (let i = 0; i < 4; i++) {
+      const px = cpX[i];
+      const py = cy - bendControlPoints[i].y * (ph / 2);
+      const d = Math.sqrt((mx - px) ** 2 + (my - py) ** 2);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    if (bestIdx >= 0) {
+      bendDraggingPoint = bestIdx;
+      bc.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    }
+  });
+  bc.addEventListener('pointermove', (e) => {
+    if (bendDraggingPoint < 0) return;
+    const rect = bc.getBoundingClientRect();
+    const my = (e.clientY - rect.top) * (bc.height / rect.height);
+    const mg = 14;
+    const ph = bc.height - mg * 2;
+    const cy = mg + ph / 2;
+    const ny = -(my - cy) / (ph / 2);
+    bendControlPoints[bendDraggingPoint].y = Math.max(-1, Math.min(1, ny));
+    drawBendCurve();
+    if (bendActive) updateBendPreview();
+    e.preventDefault();
+  });
+  bc.addEventListener('pointerup', (e) => {
+    bendDraggingPoint = -1;
+  });
+  bc.addEventListener('lostpointercapture', () => {
+    bendDraggingPoint = -1;
+  });
+}
+
+// Bend settings event listeners
+$('bendStrength').addEventListener('input', (e) => {
+  $('bendStrengthVal').textContent = parseFloat(e.target.value).toFixed(2);
+  if (!bendActive && state.pointCloud) initBend();
+  if (bendActive) updateBendPreview();
+});
+$('bendSourceAxis').addEventListener('change', () => {
+  if (!bendActive && state.pointCloud) initBend();
+  if (bendActive) { cacheBendParams(); updateBendPreview(); }
+});
+$('bendDisplaceAxis').addEventListener('change', () => {
+  if (!bendActive && state.pointCloud) initBend();
+  if (bendActive) { cacheBendParams(); updateBendPreview(); }
+});
+$('btnBendApply').addEventListener('click', applyBend);
+$('btnBendCancel').addEventListener('click', cancelBend);
+$('btnBendReset').addEventListener('click', resetBendCurve);
+
+// Draw initial curve
+drawBendCurve();
+
 // ===== Densify Brush Tool =====
 let densifyBrushActive = false;
 let densifySourceUsed = null;     // Set<int> — source indices already densified this stroke
@@ -2007,8 +2340,11 @@ function createScaleHandles() {
   const maxDim = Math.max(size[0], size[1], size[2], 0.01);
   const handleRadius = maxDim * 0.04;
   const handleGeom = new THREE.SphereGeometry(handleRadius, 8, 8);
+  const cornerRadius = handleRadius * 0.75;
+  const cornerGeom = new THREE.SphereGeometry(cornerRadius, 8, 8);
 
-  const configs = [
+  // Face handles (6)
+  const faceConfigs = [
     { axis: 'x', axisIdx: 0, sign: -1, pos: [min[0], center[1], center[2]] },
     { axis: 'x', axisIdx: 0, sign: +1, pos: [max[0], center[1], center[2]] },
     { axis: 'y', axisIdx: 1, sign: -1, pos: [center[0], min[1], center[2]] },
@@ -2017,7 +2353,7 @@ function createScaleHandles() {
     { axis: 'z', axisIdx: 2, sign: +1, pos: [center[0], center[1], max[2]] },
   ];
 
-  for (const cfg of configs) {
+  for (const cfg of faceConfigs) {
     const color = HANDLE_COLORS[cfg.axis];
     const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.85 });
     const mesh = new THREE.Mesh(handleGeom, mat);
@@ -2025,6 +2361,26 @@ function createScaleHandles() {
     mesh.renderOrder = 999;
     state.pointCloud.add(mesh);
     scaleHandles.push({ mesh, axis: cfg.axis, axisIdx: cfg.axisIdx, sign: cfg.sign, origColor: color });
+  }
+
+  // Corner handles (8) — uniform scaling
+  const cornerColor = 0xffcc44;
+  const corners = [
+    [-1, -1, -1], [+1, -1, -1], [-1, +1, -1], [+1, +1, -1],
+    [-1, -1, +1], [+1, -1, +1], [-1, +1, +1], [+1, +1, +1],
+  ];
+  for (const [sx, sy, sz] of corners) {
+    const pos = [
+      sx < 0 ? min[0] : max[0],
+      sy < 0 ? min[1] : max[1],
+      sz < 0 ? min[2] : max[2],
+    ];
+    const mat = new THREE.MeshBasicMaterial({ color: cornerColor, depthTest: false, transparent: true, opacity: 0.7 });
+    const mesh = new THREE.Mesh(cornerGeom, mat);
+    mesh.position.set(pos[0], pos[1], pos[2]);
+    mesh.renderOrder = 999;
+    state.pointCloud.add(mesh);
+    scaleHandles.push({ mesh, axis: 'xyz', axisIdx: -1, sign: 1, signs: [sx, sy, sz], origColor: cornerColor });
   }
 }
 
@@ -2123,7 +2479,21 @@ function startScaleDrag(e) {
   scaleBBoxMax = [...bounds.max];
   scaleOrigBoxCenter = [...bounds.center];
 
-  scaleScreenAxisDir = getScreenAxisDir(handle.axis);
+  if (handle.axis === 'xyz') {
+    // Corner handle: screen direction = center → corner
+    const center3 = new THREE.Vector3(...scaleCenter);
+    const corner3 = handle.mesh.position.clone();
+    state.pointCloud.localToWorld(center3);
+    state.pointCloud.localToWorld(corner3);
+    const c2d = center3.project(camera);
+    const e2d = corner3.project(camera);
+    const dir = new THREE.Vector2(e2d.x - c2d.x, e2d.y - c2d.y);
+    const len = dir.length();
+    if (len > 0.0001) dir.divideScalar(len);
+    scaleScreenAxisDir = dir;
+  } else {
+    scaleScreenAxisDir = getScreenAxisDir(handle.axis);
+  }
 
   // Highlight active handle
   handle.mesh.material.color.setHex(0xffffff);
@@ -2134,7 +2504,8 @@ function startScaleDrag(e) {
 function updateScalePreview(e) {
   if (!scaleActive || !activeHandle) return;
 
-  const useCenter = e.altKey;   // Option: scale from center
+  const pinOpposite = e.altKey;  // Option: pin opposite side (linear falloff)
+  const useCenter = false;
   const uniform = e.shiftKey;   // Shift: uniform scale
 
   // Mouse delta in NDC
@@ -2145,58 +2516,140 @@ function updateScalePreview(e) {
 
   // Project mouse movement onto axis screen direction
   let projected = mouseDelta.dot(scaleScreenAxisDir);
+  const isCorner = activeHandle.axis === 'xyz';
   // Make the handle side move with the mouse (flip if sign < 0)
-  if (activeHandle.sign < 0) projected = -projected;
+  if (!isCorner && activeHandle.sign < 0) projected = -projected;
 
   const factor = Math.max(0.01, 1 + projected * 2);
   const ai = activeHandle.axisIdx;
-  const falloff = parseFloat($('scaleFalloff').value);
+  const falloff = pinOpposite ? 1.0 : parseFloat($('scaleFalloff').value);
 
   const posArr = state.pointCloud.geometry.attributes.position.array;
 
-  for (const i of scaleSelectedArr) {
-    const j = i * 3;
-    const ox = scaleOrigPositions[j], oy = scaleOrigPositions[j+1], oz = scaleOrigPositions[j+2];
+  if (pinOpposite) {
+    // Shear mode: grabbed face slides, opposite face stays fixed, trapezoid shape
+    const camRight = new THREE.Vector3();
+    const camUp = new THREE.Vector3();
+    camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+    const invQ = state.pointCloud.quaternion.clone().invert();
+    camRight.applyQuaternion(invQ);
+    camUp.applyQuaternion(invQ);
 
-    // Compute falloff t value (0=anchor side, 1=handle side)
-    let ef = factor;
-    if (falloff > 0) {
-      const origAxisVal = [ox, oy, oz][ai];
-      const handleFace = activeHandle.sign > 0 ? scaleBBoxMax[ai] : scaleBBoxMin[ai];
-      const anchorFace = useCenter ? scaleCenter[ai] : (activeHandle.sign > 0 ? scaleBBoxMin[ai] : scaleBBoxMax[ai]);
-      const range = handleFace - anchorFace;
-      const t = range !== 0 ? Math.max(0, Math.min(1, (origAxisVal - anchorFace) / range)) : 0;
-      ef = 1 + (factor - 1) * Math.pow(t, falloff);
-    }
+    const center3 = new THREE.Vector3(...scaleCenter);
+    state.pointCloud.localToWorld(center3);
+    const distToCam = center3.distanceTo(camera.position);
+    const pixelScale = distToCam * 0.002;
 
-    if (uniform) {
-      // Uniform scale all axes (with per-point falloff)
-      const anchor = useCenter ? scaleCenter : [
-        activeHandle.sign > 0 ? scaleBBoxMin[0] : scaleBBoxMax[0],
-        activeHandle.sign > 0 ? scaleBBoxMin[1] : scaleBBoxMax[1],
-        activeHandle.sign > 0 ? scaleBBoxMin[2] : scaleBBoxMax[2],
-      ];
-      posArr[j]   = anchor[0] + (ox - anchor[0]) * ef;
-      posArr[j+1] = anchor[1] + (oy - anchor[1]) * ef;
-      posArr[j+2] = anchor[2] + (oz - anchor[2]) * ef;
-    } else {
-      // Single-axis scale
-      const anchor = useCenter ? scaleCenter[ai] : (activeHandle.sign > 0 ? scaleBBoxMin[ai] : scaleBBoxMax[ai]);
-      posArr[j]   = ox;
-      posArr[j+1] = oy;
-      posArr[j+2] = oz;
-      const origVal = [ox, oy, oz][ai];
-      posArr[j + ai] = anchor + (origVal - anchor) * ef;
+    const dxPx = e.clientX - scaleInitMouseX;
+    const dyPx = -(e.clientY - scaleInitMouseY);
+    const wdx = (camRight.x * dxPx + camUp.x * dyPx) * pixelScale;
+    const wdy = (camRight.y * dxPx + camUp.y * dyPx) * pixelScale;
+    const wdz = (camRight.z * dxPx + camUp.z * dyPx) * pixelScale;
+
+    // Compute exact bbox from scaleOrigPositions for selected points
+    let eMinX = Infinity, eMinY = Infinity, eMinZ = Infinity;
+    let eMaxX = -Infinity, eMaxY = -Infinity, eMaxZ = -Infinity;
+    for (const i of scaleSelectedArr) {
+      const j = i * 3;
+      const x = scaleOrigPositions[j], y = scaleOrigPositions[j+1], z = scaleOrigPositions[j+2];
+      if (x < eMinX) eMinX = x; if (x > eMaxX) eMaxX = x;
+      if (y < eMinY) eMinY = y; if (y > eMaxY) eMaxY = y;
+      if (z < eMinZ) eMinZ = z; if (z > eMaxZ) eMaxZ = z;
     }
+    const eMin = [eMinX, eMinY, eMinZ], eMax = [eMaxX, eMaxY, eMaxZ];
+
+    for (const i of scaleSelectedArr) {
+      const j = i * 3;
+      const ox = scaleOrigPositions[j], oy = scaleOrigPositions[j+1], oz = scaleOrigPositions[j+2];
+
+      let t;
+      if (isCorner) {
+        // Trilinear: only the grabbed corner moves, all other 7 corners stay fixed
+        const cs = activeHandle.signs;
+        const rx = (eMax[0] - eMin[0]) > 0.0001 ? (ox - eMin[0]) / (eMax[0] - eMin[0]) : 0.5;
+        const ry = (eMax[1] - eMin[1]) > 0.0001 ? (oy - eMin[1]) / (eMax[1] - eMin[1]) : 0.5;
+        const rz = (eMax[2] - eMin[2]) > 0.0001 ? (oz - eMin[2]) / (eMax[2] - eMin[2]) : 0.5;
+        const tx = Math.max(0, Math.min(1, cs[0] > 0 ? rx : 1 - rx));
+        const ty = Math.max(0, Math.min(1, cs[1] > 0 ? ry : 1 - ry));
+        const tz = Math.max(0, Math.min(1, cs[2] > 0 ? rz : 1 - rz));
+        t = tx * ty * tz;
+      } else {
+        const handleEdge = activeHandle.sign > 0 ? eMax[ai] : eMin[ai];
+        const oppositeEdge = activeHandle.sign > 0 ? eMin[ai] : eMax[ai];
+        const range = handleEdge - oppositeEdge;
+        const origAxisVal = [ox, oy, oz][ai];
+        t = range !== 0 ? Math.max(0, Math.min(1, (origAxisVal - oppositeEdge) / range)) : 0;
+      }
+
+      if (t > 0.001) {
+        posArr[j]     = ox + wdx * t;
+        posArr[j + 1] = oy + wdy * t;
+        posArr[j + 2] = oz + wdz * t;
+      }
+      // t ≤ 0.001: leave position untouched (opposite side completely fixed)
+    }
+    state.pointCloud.geometry.attributes.position.needsUpdate = true;
+    updateScaleHandlesPositions();
+    setStatus(`Shear (⌥): drag to deform`);
+  } else {
+    // Normal scale mode
+    for (const i of scaleSelectedArr) {
+      const j = i * 3;
+      const ox = scaleOrigPositions[j], oy = scaleOrigPositions[j+1], oz = scaleOrigPositions[j+2];
+
+      let ef = factor;
+
+      if (isCorner || uniform) {
+        const cs = isCorner ? activeHandle.signs : [activeHandle.sign, activeHandle.sign, activeHandle.sign];
+        const anchor = [
+          cs[0] > 0 ? scaleBBoxMin[0] : scaleBBoxMax[0],
+          cs[1] > 0 ? scaleBBoxMin[1] : scaleBBoxMax[1],
+          cs[2] > 0 ? scaleBBoxMin[2] : scaleBBoxMax[2],
+        ];
+        if (falloff > 0 && isCorner) {
+          // Trilinear falloff for corner handles
+          const rx = (scaleBBoxMax[0] - scaleBBoxMin[0]) > 0.0001 ? (ox - scaleBBoxMin[0]) / (scaleBBoxMax[0] - scaleBBoxMin[0]) : 0.5;
+          const ry = (scaleBBoxMax[1] - scaleBBoxMin[1]) > 0.0001 ? (oy - scaleBBoxMin[1]) / (scaleBBoxMax[1] - scaleBBoxMin[1]) : 0.5;
+          const rz = (scaleBBoxMax[2] - scaleBBoxMin[2]) > 0.0001 ? (oz - scaleBBoxMin[2]) / (scaleBBoxMax[2] - scaleBBoxMin[2]) : 0.5;
+          const ttx = Math.max(0, Math.min(1, cs[0] > 0 ? rx : 1 - rx));
+          const tty = Math.max(0, Math.min(1, cs[1] > 0 ? ry : 1 - ry));
+          const ttz = Math.max(0, Math.min(1, cs[2] > 0 ? rz : 1 - rz));
+          const tt = ttx * tty * ttz;
+          ef = 1 + (factor - 1) * Math.pow(tt, falloff);
+        } else if (falloff > 0 && !isCorner) {
+          const origAxisVal = [ox, oy, oz][ai];
+          const handleFace = activeHandle.sign > 0 ? scaleBBoxMax[ai] : scaleBBoxMin[ai];
+          const anchorFace = activeHandle.sign > 0 ? scaleBBoxMin[ai] : scaleBBoxMax[ai];
+          const range = handleFace - anchorFace;
+          const tt = range !== 0 ? Math.max(0, Math.min(1, (origAxisVal - anchorFace) / range)) : 0;
+          ef = 1 + (factor - 1) * Math.pow(tt, falloff);
+        }
+        posArr[j]   = anchor[0] + (ox - anchor[0]) * ef;
+        posArr[j+1] = anchor[1] + (oy - anchor[1]) * ef;
+        posArr[j+2] = anchor[2] + (oz - anchor[2]) * ef;
+      } else {
+        if (falloff > 0) {
+          const origAxisVal = [ox, oy, oz][ai];
+          const handleFace = activeHandle.sign > 0 ? scaleBBoxMax[ai] : scaleBBoxMin[ai];
+          const anchorFace = activeHandle.sign > 0 ? scaleBBoxMin[ai] : scaleBBoxMax[ai];
+          const range = handleFace - anchorFace;
+          const tt = range !== 0 ? Math.max(0, Math.min(1, (origAxisVal - anchorFace) / range)) : 0;
+          ef = 1 + (factor - 1) * Math.pow(tt, falloff);
+        }
+        const anchor = activeHandle.sign > 0 ? scaleBBoxMin[ai] : scaleBBoxMax[ai];
+        posArr[j]   = ox;
+        posArr[j+1] = oy;
+        posArr[j+2] = oz;
+        const origVal = [ox, oy, oz][ai];
+        posArr[j + ai] = anchor + (origVal - anchor) * ef;
+      }
+    }
+    state.pointCloud.geometry.attributes.position.needsUpdate = true;
+    updateScaleHandlesPositions();
+
+    const label = isCorner ? 'uniform' : (uniform ? 'uniform' : activeHandle.axis.toUpperCase());
+    setStatus(`Scale ${label}: ${factor.toFixed(3)}x`);
   }
-  state.pointCloud.geometry.attributes.position.needsUpdate = true;
-
-  // Update bounding box and handle positions from actual point positions
-  updateScaleHandlesPositions();
-
-  const label = uniform ? 'uniform' : activeHandle.axis.toUpperCase();
-  const anchor = useCenter ? 'center' : 'edge';
-  setStatus(`Scale ${label} (${anchor}): ${factor.toFixed(3)}x`);
 }
 
 // On mouse-up: accept drag result, allow grabbing another handle
@@ -2210,10 +2663,14 @@ function endScaleDrag(e) {
   const dy = -(e.clientY - scaleInitMouseY) / rect.height * 2;
   const mouseDelta = new THREE.Vector2(dx, dy);
   let projected = mouseDelta.dot(scaleScreenAxisDir);
-  if (activeHandle.sign < 0) projected = -projected;
+  if (activeHandle.axis !== 'xyz' && activeHandle.sign < 0) projected = -projected;
   const factor = Math.max(0.01, 1 + projected * 2);
 
-  if (Math.abs(factor - 1) < 0.001) {
+  // For shear mode (Option), use pixel displacement instead of axis-projected factor
+  const pixelDist = Math.sqrt((e.clientX - scaleInitMouseX) ** 2 + (e.clientY - scaleInitMouseY) ** 2);
+  const isNegligible = e.altKey ? (pixelDist < 3) : (Math.abs(factor - 1) < 0.001);
+
+  if (isNegligible) {
     // Negligible drag — revert this drag only
     const posArr = state.pointCloud.geometry.attributes.position.array;
     for (const i of scaleSelectedArr) {
@@ -2331,13 +2788,17 @@ function updateScaleHandlesPositions() {
   }
 
   // Update handle positions: order matches createScaleHandles configs
-  const facePositions = [
+  // 6 face handles + 8 corner handles = 14 total
+  const handlePositions = [
     [minX, cy, cz], [maxX, cy, cz],  // -X, +X
     [cx, minY, cz], [cx, maxY, cz],  // -Y, +Y
     [cx, cy, minZ], [cx, cy, maxZ],  // -Z, +Z
+    // Corners
+    [minX, minY, minZ], [maxX, minY, minZ], [minX, maxY, minZ], [maxX, maxY, minZ],
+    [minX, minY, maxZ], [maxX, minY, maxZ], [minX, maxY, maxZ], [maxX, maxY, maxZ],
   ];
-  for (let h = 0; h < scaleHandles.length && h < facePositions.length; h++) {
-    scaleHandles[h].mesh.position.set(facePositions[h][0], facePositions[h][1], facePositions[h][2]);
+  for (let h = 0; h < scaleHandles.length && h < handlePositions.length; h++) {
+    scaleHandles[h].mesh.position.set(handlePositions[h][0], handlePositions[h][1], handlePositions[h][2]);
   }
 }
 
@@ -2810,12 +3271,14 @@ const toolButtons = {
   move: $('toolMove'),
   scale: $('toolScale'),
   rotate: $('toolRotate'),
+  bend: $('toolBend'),
 };
 
 function setTool(tool) {
   // 未確定の変形操作を自動確定してからツール切り替え
   if (moveAccumulated && tool !== 'move') applyMoveImmediate();
   if (scalePreviewMode && tool !== 'scale') applyScaleImmediate();
+  if (bendActive && tool !== 'bend') applyBend();
 
   state.currentTool = tool;
   if (tool === 'brush' || tool === 'rect') lastSelectionTool = tool;
@@ -2830,7 +3293,7 @@ function setTool(tool) {
   }
   clearOverlay();
   if (tool === 'navigate') canvas.style.cursor = 'grab';
-  else if (tool === 'move' || tool === 'scale' || tool === 'rotate') canvas.style.cursor = 'default';
+  else if (tool === 'move' || tool === 'scale' || tool === 'rotate' || tool === 'bend') canvas.style.cursor = 'default';
   else canvas.style.cursor = 'crosshair';
 
   // Show/hide gizmos
@@ -2840,6 +3303,7 @@ function setTool(tool) {
   if (tool === 'move') createMoveArrows();
   else if (tool === 'scale') createScaleHandles();
   else if (tool === 'rotate') createRotateRings();
+  else if (tool === 'bend') initBend();
 }
 
 $('toolNavigate').addEventListener('click', () => setTool('navigate'));
@@ -2850,6 +3314,7 @@ $('toolDensifyBrush').addEventListener('click', () => setTool('densifyBrush'));
 $('toolMove').addEventListener('click', () => setTool('move'));
 $('toolScale').addEventListener('click', () => setTool('scale'));
 $('toolRotate').addEventListener('click', () => setTool('rotate'));
+$('toolBend').addEventListener('click', () => setTool('bend'));
 
 // ===== Screen Projection =====
 let cachedScreenPos = null;
@@ -3940,7 +4405,7 @@ function undo() {
       for (let i = startIdx; i < state.vertices.length; i++) layer.vertexIndices.delete(i);
     }
     state.vertices.splice(startIdx, op.count);
-  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp' || op.type === 'recolor') {
+  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp' || op.type === 'bend' || op.type === 'recolor') {
     for (const entry of op.entries) {
       state.vertices[entry.index] = entry.oldVertex;
     }
@@ -3971,7 +4436,7 @@ function redo() {
     const startIdx = state.vertices.length;
     for (let i = 0; i < op.vertices.length; i++) state.vertices.push(op.vertices[i]);
     updateLayerIndicesAfterAdd(startIdx, op.count);
-  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp' || op.type === 'recolor') {
+  } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp' || op.type === 'bend' || op.type === 'recolor') {
     for (const entry of op.entries) {
       state.vertices[entry.index] = entry.newVertex;
     }
@@ -4351,6 +4816,7 @@ window.addEventListener('keydown', (e) => {
       e.preventDefault(); return;
     }
     if (scalePreviewMode) { cancelScalePreview(); e.preventDefault(); return; }
+    if (bendActive) { cancelBend(); e.preventDefault(); return; }
     if (state.previewMode) { cancelDensifyPreview(); e.preventDefault(); return; }
     // Transform tool selected but no operation started: revert to selection tool (keep selection)
     const isTransformTool = state.currentTool === 'move' || state.currentTool === 'scale' || state.currentTool === 'rotate';
@@ -4363,6 +4829,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'Enter') {
     if (moveAccumulated) { applyMove(); e.preventDefault(); return; }
     if (scalePreviewMode) { applyScalePreview(); e.preventDefault(); return; }
+    if (bendActive) { applyBend(); e.preventDefault(); return; }
     if (state.previewMode) { applyDensifyPreview(); e.preventDefault(); return; }
   }
   else if (noMod && (e.key === 'v' || e.key === 'V')) { setTool('navigate'); e.preventDefault(); }
@@ -4373,6 +4840,7 @@ window.addEventListener('keydown', (e) => {
   else if (noMod && (e.key === 'g' || e.key === 'G')) { setTool('move'); e.preventDefault(); }
   else if (noMod && (e.key === 's' || e.key === 'S')) { setTool('scale'); e.preventDefault(); }
   else if (noMod && (e.key === 't' || e.key === 'T')) { setTool('rotate'); e.preventDefault(); }
+  else if (noMod && (e.key === 'n' || e.key === 'N')) { setTool('bend'); e.preventDefault(); }
   else if (noMod && (e.key === 'm' || e.key === 'M')) { maskSelection(); e.preventDefault(); }
   else if (noMod && (e.key === 'u' || e.key === 'U')) { unmaskAll(); e.preventDefault(); }
   else if (noMod && (e.key === 'p' || e.key === 'P')) { $('btnPickColor').click(); e.preventDefault(); }
@@ -4423,17 +4891,14 @@ window.addEventListener('keydown', (e) => {
 // Usage: ply-editor.html?load=URL&filename=NAME
 // Multiple files: ?load=URL1&load=URL2&filename=NAME1&filename=NAME2
 {
-  console.log('[PLY Editor] URL params:', location.search);
   const params = new URLSearchParams(location.search);
   const loadList = params.getAll('load');
-  console.log('[PLY Editor] load list:', loadList);
   const filenameList = params.getAll('filename');
   if (loadList.length > 0) {
     (async () => {
       for (const [i, raw] of loadList.entries()) {
         const url = decodeURIComponent(raw);
         const fn = i < filenameList.length ? decodeURIComponent(filenameList[i]) : null;
-        console.log('[PLY Editor] Loading from URL:', url, 'filename:', fn);
         await loadFromURL(url, fn, i > 0);
       }
     })();
