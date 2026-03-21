@@ -590,7 +590,10 @@ let plyFireLightColorAmount = 1.0;
 let plyFireLightLumAmount = 0.5;
 let plyFireLightEmission = 0;
 let plyFireLightEmissionRadius = 5;
-let _fireGlowSprite = null;
+const MAX_FIRE_LIGHTS = 8;
+let _fireClusters = [];        // [{indices: [], centroidLocal: {x,y,z}}]
+let _fireGlowSprites = [];    // THREE.Sprite[] (one per cluster)
+let _fireGlowVisible = false;
 let _fireGlowTexture = null;
 let _fireGlowScene = null;
 let isSliderDragging = false; // カメラ位置スライダー操作中フラグ
@@ -2677,9 +2680,52 @@ function setupPlyFireEffect() {
     plyFireOrigCol = new Float32Array(origColors);
 
     console.log(`[PlyFire] ${indices.length} vertices matched (mode: ${plyFireMode})`);
+    // 空間クラスタリングで複数光源を検出
+    _fireClusters = clusterFireIndices(plyFireOrigPos, indices.length);
+    console.log(`[PlyFire] ${_fireClusters.length} light cluster(s) detected`);
   } else {
     console.log(`[PlyFire] No vertices matched (mode: ${plyFireMode})`);
+    _fireClusters = [];
   }
+}
+
+// 火源頂点を空間的にクラスタリング（距離ベース貪欲法）
+function clusterFireIndices(origPos, count) {
+  if (count === 0) return [];
+  // バウンディングボックスの対角線を算出
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const x = origPos[i * 3], y = origPos[i * 3 + 1], z = origPos[i * 3 + 2];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  const diag = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2 + (maxZ - minZ) ** 2);
+  const threshold = diag * 0.25; // 対角線の25%以内は同一クラスタ
+  if (threshold < 0.001) return [{ localIndices: Array.from({ length: count }, (_, i) => i) }];
+
+  const clusters = []; // [{localIndices: [], cx, cy, cz}]
+  for (let i = 0; i < count; i++) {
+    const x = origPos[i * 3], y = origPos[i * 3 + 1], z = origPos[i * 3 + 2];
+    let bestCluster = -1, bestDist = Infinity;
+    for (let c = 0; c < clusters.length; c++) {
+      const cl = clusters[c];
+      const n = cl.localIndices.length;
+      const dx = x - cl.cx / n, dy = y - cl.cy / n, dz = z - cl.cz / n;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d < bestDist) { bestDist = d; bestCluster = c; }
+    }
+    if (bestCluster >= 0 && (bestDist < threshold || clusters.length >= MAX_FIRE_LIGHTS)) {
+      clusters[bestCluster].localIndices.push(i);
+      clusters[bestCluster].cx += x;
+      clusters[bestCluster].cy += y;
+      clusters[bestCluster].cz += z;
+    } else {
+      clusters.push({ localIndices: [i], cx: x, cy: y, cz: z });
+    }
+  }
+  return clusters;
 }
 
 function updatePlyFireEffect() {
@@ -15146,22 +15192,24 @@ function setupPlyShaderOverride() {
             shader.uniforms.causticsScale = plyWaterUniforms.causticsScale;
             shader.uniforms.causticsTime = plyWaterUniforms.causticsTime;
 
-            // 火源照明用uniform
-            shader.uniforms.fireWorldPos = { value: new THREE.Vector3() };
+            // 火源照明用uniform（複数光源対応）
+            shader.uniforms.fireCount = { value: 0 };
+            shader.uniforms.fireWorldPos = { value: Array.from({length: MAX_FIRE_LIGHTS}, () => new THREE.Vector3()) };
             shader.uniforms.fireDistance = { value: 50.0 };
             shader.uniforms.fireIntensity = { value: 0.0 };
             shader.uniforms.fireColor = { value: new THREE.Vector3(1.0, 0.27, 0.0) };
             shader.uniforms.fireLightColorAmount = { value: 1.0 };
             shader.uniforms.fireLightLumAmount = { value: 0.5 };
             shader.uniforms.fireEmission = { value: 0.0 };
-            shader.uniforms.fireEmissionRadius = { value: 1.0 };
+            shader.uniforms.fireEmissionRadius = { value: new Float32Array(MAX_FIRE_LIGHTS).fill(1.0) };
             // 外部からuniformsにアクセスするための参照を保存
             m._fireLightShader = shader;
 
             // 頂点シェーダー: fog_vertexの後にシャドウ座標＋ワールド座標＋火源距離計算を注入
             shader.vertexShader = 'varying vec4 vPlyShadowCoord;\nuniform mat4 plyShadowMatrix;\n' +
-              'uniform vec3 fireWorldPos;\nuniform float fireDistance;\nuniform float fireIntensity;\nvarying float vFireAmount;\n' +
-              'uniform float fireEmission;\nuniform float fireEmissionRadius;\nvarying float vFireEmission;\n' +
+              '#define MAX_FIRE_LIGHTS ' + MAX_FIRE_LIGHTS + '\n' +
+              'uniform int fireCount;\nuniform vec3 fireWorldPos[MAX_FIRE_LIGHTS];\nuniform float fireDistance;\nuniform float fireIntensity;\nvarying float vFireAmount;\n' +
+              'uniform float fireEmission;\nuniform float fireEmissionRadius[MAX_FIRE_LIGHTS];\nvarying float vFireEmission;\n' +
               shader.vertexShader;
             shader.vertexShader = shader.vertexShader.replace(
               '#include <fog_vertex>',
@@ -15170,10 +15218,16 @@ function setupPlyShaderOverride() {
               'vPlyWorldPos = plyWP.xyz;\n' +
               'vPlyShadowCoord = plyShadowMatrix * plyWP;\n' +
               '{\n' +
-              '  float _fd = length(plyWP.xyz - fireWorldPos);\n' +
-              '  float _fn = _fd / max(fireDistance, 0.1);\n' +
-              '  vFireAmount = fireIntensity / (1.0 + _fn * _fn);\n' +
-              '  vFireEmission = fireEmission * (1.0 - smoothstep(0.0, fireEmissionRadius, _fd));\n' +
+              '  vFireAmount = 0.0;\n' +
+              '  vFireEmission = 0.0;\n' +
+              '  for (int _li = 0; _li < MAX_FIRE_LIGHTS; _li++) {\n' +
+              '    if (_li >= fireCount) break;\n' +
+              '    float _fd = length(plyWP.xyz - fireWorldPos[_li]);\n' +
+              '    float _fn = _fd / max(fireDistance, 0.1);\n' +
+              '    vFireAmount += fireIntensity / (1.0 + _fn * _fn);\n' +
+              '    float _em = fireEmission * (1.0 - smoothstep(0.0, fireEmissionRadius[_li], _fd));\n' +
+              '    vFireEmission = max(vFireEmission, _em);\n' +
+              '  }\n' +
               '}'
             );
 
@@ -16361,96 +16415,115 @@ function animate() {
   const useFireLight = plyFireLightEnabled && plyFireIndices && plyFireIndices.length > 0 && glbModel;
   const applyFireLight = () => {
     if (!useFireLight) {
-      // 無効時はintensityを0にしてシェーダーの照明効果をオフにする
+      // 無効時はfireCountを0にしてシェーダーの照明効果をオフにする
       if (glbModel) {
         glbModel.traverse((child) => {
           if (!child.isPoints || !child.material || !child.material._fireLightShader) return;
+          child.material._fireLightShader.uniforms.fireCount.value = 0;
           child.material._fireLightShader.uniforms.fireIntensity.value = 0;
           child.material._fireLightShader.uniforms.fireEmission.value = 0;
         });
       }
-      if (_fireGlowSprite) _fireGlowSprite.visible = false;
+      _fireGlowSprites.forEach(s => s.visible = false);
+      _fireGlowVisible = false;
       return;
     }
-    // 炎頂点の重心をワールド座標で算出
-    let cx = 0, cy = 0, cz = 0;
+    const numClusters = _fireClusters.length;
+    const clusterWorldPositions = [];
+    const clusterRadii = [];
+
+    // 各クラスタの重心とバウンディング半径を算出
     glbModel.traverse((child) => {
       if (!child.isPoints || !child.geometry) return;
       const p = child.geometry.attributes.position.array;
-      for (let j = 0; j < plyFireIndices.length; j++) {
-        const idx = plyFireIndices[j];
-        cx += p[idx * 3]; cy += p[idx * 3 + 1]; cz += p[idx * 3 + 2];
+      for (let c = 0; c < numClusters; c++) {
+        const li = _fireClusters[c].localIndices;
+        let cx = 0, cy = 0, cz = 0;
+        for (let j = 0; j < li.length; j++) {
+          const idx = plyFireIndices[li[j]];
+          cx += p[idx * 3]; cy += p[idx * 3 + 1]; cz += p[idx * 3 + 2];
+        }
+        cx /= li.length; cy /= li.length; cz /= li.length;
+        // バウンディング半径
+        let maxD2 = 0;
+        for (let j = 0; j < li.length; j++) {
+          const idx = plyFireIndices[li[j]];
+          const dx = p[idx * 3] - cx, dy = p[idx * 3 + 1] - cy, dz = p[idx * 3 + 2] - cz;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 > maxD2) maxD2 = d2;
+        }
+        const wp = new THREE.Vector3(cx, cy, cz);
+        glbModel.localToWorld(wp);
+        clusterWorldPositions[c] = wp;
+        clusterRadii[c] = Math.sqrt(maxD2) * glbModel.scale.x;
       }
     });
-    cx /= plyFireIndices.length; cy /= plyFireIndices.length; cz /= plyFireIndices.length;
-    // 火源バウンディング半径を算出（スプライトサイズの基準）
-    let maxDist2 = 0;
-    glbModel.traverse((child) => {
-      if (!child.isPoints || !child.geometry) return;
-      const p = child.geometry.attributes.position.array;
-      for (let j = 0; j < plyFireIndices.length; j++) {
-        const idx = plyFireIndices[j];
-        const dx = p[idx * 3] - cx, dy = p[idx * 3 + 1] - cy, dz = p[idx * 3 + 2] - cz;
-        const d2 = dx * dx + dy * dy + dz * dz;
-        if (d2 > maxDist2) maxDist2 = d2;
-      }
-    });
-    const fireWorldRadius = Math.sqrt(maxDist2) * glbModel.scale.x;
-    const wp = new THREE.Vector3(cx, cy, cz);
-    glbModel.localToWorld(wp);
+
     const fc = new THREE.Color(plyFireGlowColor);
-    // マテリアルのuniformsを更新
+    // マテリアルのuniformsを更新（複数光源）
     glbModel.traverse((child) => {
       if (!child.isPoints || !child.material || !child.material._fireLightShader) return;
       const u = child.material._fireLightShader.uniforms;
-      u.fireWorldPos.value.copy(wp);
+      u.fireCount.value = numClusters;
+      for (let c = 0; c < numClusters; c++) {
+        u.fireWorldPos.value[c].copy(clusterWorldPositions[c]);
+        u.fireEmissionRadius.value[c] = clusterRadii[c] * plyFireLightEmissionRadius;
+      }
       u.fireDistance.value = plyFireLightDistance;
       u.fireIntensity.value = plyFireLightIntensity;
       u.fireColor.value.set(fc.r, fc.g, fc.b);
       u.fireLightColorAmount.value = plyFireLightColorAmount;
       u.fireLightLumAmount.value = plyFireLightLumAmount;
-      u.fireEmission.value = 0; // per-vertex emissionは無効（スプライトで代替）
-      u.fireEmissionRadius.value = 0;
+      u.fireEmission.value = plyFireLightEmission > 0 ? plyFireLightEmission : 0;
     });
-    // 光源グロースプライト: 火源周囲の空間を光らせる
+    // 光源グロースプライト: クラスタごとに1つ
     if (plyFireLightEmission > 0) {
-      if (!_fireGlowSprite) {
-        // ラジアルグラデーションテクスチャを生成
-        if (!_fireGlowTexture) {
-          const sz = 256;
-          const cv = document.createElement('canvas');
-          cv.width = sz; cv.height = sz;
-          const ctx = cv.getContext('2d');
-          const grad = ctx.createRadialGradient(sz / 2, sz / 2, 0, sz / 2, sz / 2, sz / 2);
-          grad.addColorStop(0, 'rgba(255,255,255,1)');
-          grad.addColorStop(0.2, 'rgba(255,255,255,0.5)');
-          grad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
-          grad.addColorStop(1, 'rgba(255,255,255,0)');
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 0, sz, sz);
-          _fireGlowTexture = new THREE.CanvasTexture(cv);
-        }
+      // 共有テクスチャを生成
+      if (!_fireGlowTexture) {
+        const sz = 256;
+        const cv = document.createElement('canvas');
+        cv.width = sz; cv.height = sz;
+        const ctx = cv.getContext('2d');
+        const grad = ctx.createRadialGradient(sz / 2, sz / 2, 0, sz / 2, sz / 2, sz / 2);
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(0.2, 'rgba(255,255,255,0.5)');
+        grad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, sz, sz);
+        _fireGlowTexture = new THREE.CanvasTexture(cv);
+      }
+      if (!_fireGlowScene) _fireGlowScene = new THREE.Scene();
+      // 必要数のスプライトを確保
+      while (_fireGlowSprites.length < numClusters) {
         const mat = new THREE.SpriteMaterial({
           map: _fireGlowTexture,
           blending: THREE.AdditiveBlending,
-          transparent: true,
-          depthWrite: false,
-          depthTest: false,
+          transparent: true, depthWrite: false, depthTest: false,
           color: fc,
         });
-        _fireGlowSprite = new THREE.Sprite(mat);
-        if (!_fireGlowScene) _fireGlowScene = new THREE.Scene();
-        _fireGlowScene.add(_fireGlowSprite);
+        const sprite = new THREE.Sprite(mat);
+        _fireGlowScene.add(sprite);
+        _fireGlowSprites.push(sprite);
       }
-      _fireGlowSprite.material.color.copy(fc);
-      _fireGlowSprite.material.opacity = Math.min(plyFireLightEmission * 0.1, 1.0);
-      _fireGlowSprite.position.copy(wp);
-      // スプライトサイズ = 火源バウンディング半径 × スライダー倍率
-      const glowScale = Math.max(fireWorldRadius, 1) * plyFireLightEmissionRadius * 2;
-      _fireGlowSprite.scale.setScalar(glowScale);
-      _fireGlowSprite.visible = true;
-    } else if (_fireGlowSprite) {
-      _fireGlowSprite.visible = false;
+      // 各スプライトを更新
+      for (let c = 0; c < numClusters; c++) {
+        const sprite = _fireGlowSprites[c];
+        sprite.material.color.copy(fc);
+        sprite.material.opacity = Math.min(plyFireLightEmission * 0.1, 1.0);
+        sprite.position.copy(clusterWorldPositions[c]);
+        const glowScale = Math.max(clusterRadii[c], 1) * plyFireLightEmissionRadius * 2;
+        sprite.scale.setScalar(glowScale);
+        sprite.visible = true;
+      }
+      // 余剰スプライトを非表示
+      for (let c = numClusters; c < _fireGlowSprites.length; c++) {
+        _fireGlowSprites[c].visible = false;
+      }
+      _fireGlowVisible = true;
+    } else {
+      _fireGlowSprites.forEach(s => s.visible = false);
+      _fireGlowVisible = false;
     }
   };
   // シーンレンダリング前に毎フレーム更新（applyFireLightはレンダリング前に呼ぶ）
@@ -16633,7 +16706,7 @@ function animate() {
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
       if (celBeforeKuwahara) applyKuwahara();
       // グロースプライト: トゥーン後・ピクセル前（アウトライン除外、ピクセル化対象）
-      if (_fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
+      if (_fireGlowVisible && _fireGlowScene) {
         renderer.setRenderTarget(composer.writeBuffer);
         renderer.autoClear = false;
         renderer.render(_fireGlowScene, camera);
@@ -16645,7 +16718,7 @@ function animate() {
     } else {
       // ピクセル→トゥーン（除外モード: 輪郭は細いまま）or トゥーンなし
       // グロースプライト: トゥーンなしの場合はピクセル前に描画
-      if (!useToon && _fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
+      if (!useToon && _fireGlowVisible && _fireGlowScene) {
         renderer.setRenderTarget(composer.readBuffer);
         renderer.autoClear = false;
         renderer.render(_fireGlowScene, camera);
@@ -16792,7 +16865,7 @@ function animate() {
   }
 
   // 光源グロースプライト: ピクセル分岐外ではポストプロセス後に画面に直接描画
-  if (!usePixel && _fireGlowSprite && _fireGlowSprite.visible && _fireGlowScene) {
+  if (!usePixel && _fireGlowVisible && _fireGlowScene) {
     renderer.setRenderTarget(null);
     renderer.autoClear = false;
     renderer.render(_fireGlowScene, camera);
