@@ -1347,7 +1347,7 @@
         <div class="image-row">
           <div class="image-controls">
             <div class="control-row"><label>ドット絵</label><input type="range" id="glbPixelArt" min="0" max="128" step="1" value="0"><span id="glbPixelArtValue">0</span></div>
-            <div class="control-row"><label>点サイズ</label><input type="range" id="glbPointSize" min="1" max="30" step="0.5" value="2"><span id="glbPointSizeValue">2</span> <label><input type="checkbox" id="glbPointAttenuation" checked> 遠近</label> <label><input type="checkbox" id="glbSplatScale"> スケール</label></div>
+            <div class="control-row"><label>点サイズ</label><input type="range" id="glbPointSize" min="1" max="30" step="0.5" value="2"><span id="glbPointSizeValue">2</span> <label><input type="checkbox" id="glbPointAttenuation" checked> 遠近</label> <label><input type="checkbox" id="glbSplatScale"> スケール</label><input type="range" id="glbSplatScaleAmount" min="0" max="100" step="1" value="100" style="width:60px"><span id="glbSplatScaleAmountValue">100</span></div>
             <div class="control-row" style="display:none"><label>補間密度</label><input type="range" id="glbPointDensity" min="0" max="6" step="1" value="0"><span id="glbPointDensityValue">0</span></div>
             <div class="control-row"><label>トリム</label><input type="range" id="glbTrim" min="0" max="1" step="0.01" value="0"><span id="glbTrimValue">0%</span></div>
             <div class="control-row"><label>不透明度カット</label><input type="range" id="glbOpacityCut" min="0" max="1" step="0.01" value="0"><span id="glbOpacityCutValue">0</span></div>
@@ -1823,6 +1823,6 @@
 
   <script src="src/presetManager.js?v=20260320a"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260323a"></script>
+  <script type="module" src="src/main.js?v=20260323d"></script>
 </body>
 </html>

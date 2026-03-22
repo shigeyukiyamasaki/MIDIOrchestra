@@ -9271,9 +9271,17 @@ function setupEventListeners() {
     }
   });
 
-  // スケール反映切り替え（uniform切り替え、DataTexture方式）
-  document.getElementById('glbSplatScale')?.addEventListener('change', (e) => {
-    splatScaleUniforms.enabled.value = e.target.checked ? 1.0 : 0.0;
+  // スケール反映: チェックボックスON/OFF × スライダー度合い
+  function updateSplatScaleUniform() {
+    const on = document.getElementById('glbSplatScale')?.checked;
+    const amount = parseFloat(document.getElementById('glbSplatScaleAmount')?.value || '100');
+    splatScaleUniforms.enabled.value = on ? amount / 100.0 : 0.0;
+  }
+  document.getElementById('glbSplatScale')?.addEventListener('change', updateSplatScaleUniform);
+  document.getElementById('glbSplatScaleAmount')?.addEventListener('input', (e) => {
+    const valEl = document.getElementById('glbSplatScaleAmountValue');
+    if (valEl) valEl.textContent = Math.round(parseFloat(e.target.value));
+    updateSplatScaleUniform();
   });
 
   // 3DGS再構築のデバウンス（トリム・補間密度共通）
@@ -14829,7 +14837,9 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(finalCol, 3));
   // スプラットスケールをDataTextureに格納（シェーダーからgl_VertexIDで参照）
   updateSplatScaleTexture(finalScales);
-  splatScaleUniforms.enabled.value = document.getElementById('glbSplatScale')?.checked ? 1.0 : 0.0;
+  const _scaleOn = document.getElementById('glbSplatScale')?.checked;
+  const _scaleAmt = parseFloat(document.getElementById('glbSplatScaleAmount')?.value || '100');
+  splatScaleUniforms.enabled.value = _scaleOn ? _scaleAmt / 100.0 : 0.0;
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   geometry.setDrawRange(0, cumulativeCounts[Math.min(density, cumulativeCounts.length - 1)]);
@@ -15079,14 +15089,14 @@ function loadGlbModel(file) {
         group.userData.is3DGS = true;
         group.userData._gsArrayBuffer = arrayBuffer;
         setupGlbScene(group, file);
-        // 密度設定があれば非同期でWorker補間を実行（スライダーのinputイベント経由）
-        const density = getSettingVal('glbPointDensity', 0);
-        if (density > 0) {
-          setTimeout(() => {
-            const densityEl = document.getElementById('glbPointDensity');
-            if (densityEl) densityEl.dispatchEvent(new Event('input'));
-          }, 300);
-        }
+        // 初回読み込み後に必ずrebuild3DGSFromCacheを実行（スケールテクスチャの一貫性確保）
+        _gsInterpCache = null;
+        _gsDisplayState = null;
+        setTimeout(() => {
+          if (glbModel && glbModel.userData.is3DGS && glbModel.userData._gsArrayBuffer) {
+            rebuild3DGSFromCache(glbModel.userData._gsArrayBuffer, glbModel.userData.originalFile);
+          }
+        }, 100);
         return;
       }
 
@@ -15729,12 +15739,12 @@ function setupPlyShaderOverride() {
               '  }\n' +
               '}\n' +
               '// Splat scale from DataTexture (gl_VertexID lookup)\n' +
-              'if (useSplatScale > 0.5 && splatScaleTexWidth > 0.0) {\n' +
+              'if (useSplatScale > 0.0 && splatScaleTexWidth > 0.0) {\n' +
               '  float _vid = float(gl_VertexID);\n' +
               '  float _su = (mod(_vid, splatScaleTexWidth) + 0.5) / splatScaleTexWidth;\n' +
               '  float _sv = (floor(_vid / splatScaleTexWidth) + 0.5) / splatScaleTexHeight;\n' +
               '  float _splatS = texture2D(splatScaleTex, vec2(_su, _sv)).r;\n' +
-              '  gl_PointSize *= _splatS;\n' +
+              '  gl_PointSize *= mix(1.0, _splatS, useSplatScale);\n' +
               '}'
             );
 
