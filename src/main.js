@@ -543,6 +543,25 @@ let plySmokeOrigPos = null;
 let plySmokeTime = 0;
 let _plySmokeCenter = null;  // 煙vertexの重心（ローカル座標）
 
+// ====== PLY雲スクロール（プリセット方式） ======
+let plyCloudScrollEnabled = false;
+let plyCloudScrollPreset = 'none';  // 'none', 'file', or preset filename
+let plyCloudScrollSpeed = 0.5;
+let plyCloudScrollAxis = 'x';  // 'x' or 'z'
+let plyCloudScrollHeight = 10;
+let plyCloudScrollScale = 1.0;
+let _cloudScrollCopyA = null;  // THREE.Points
+let _cloudScrollCopyB = null;  // THREE.Points
+let _cloudScrollRange = 1;
+let _cloudScrollOffset = 0;
+let _cloudScrollCloudData = null;  // { positions, colors, count }
+// プリセット定義: { label: '表示名', file: 'ファイル名.ply' }
+const CLOUD_PRESETS = [
+  // 例: { label: 'もくもく雲', file: 'cloud_fluffy.ply' },
+  // 例: { label: 'うす雲', file: 'cloud_thin.ply' },
+];
+const CLOUD_ASSETS_BASE = '/midi-orchestra/assets/clouds/';
+
 let plyFireEnabled = false;
 let plyFireMode = 'color';  // 'color' or 'sphere'
 let plyFireColor = '#cc4400';
@@ -2064,6 +2083,16 @@ function syncWaterSettingsFromDOM() {
   plySmokeSpread = gv('plySmokeSpread', 0.5);
   plySmokeCohesion = gv('plySmokeCohesion', 0.0);
   plySmokeCycle = gv('plySmokeCycle', 8);
+  plyCloudScrollEnabled = gc('plyCloudScrollEnabled');
+  plyCloudScrollPreset = gs('plyCloudScrollPreset', 'none');
+  plyCloudScrollSpeed = gv('plyCloudScrollSpeed', 0.5);
+  plyCloudScrollAxis = gs('plyCloudScrollAxis', 'x');
+  plyCloudScrollHeight = gv('plyCloudScrollHeight', 10);
+  plyCloudScrollScale = gv('plyCloudScrollScale', 1.0);
+  // プリセットの読み込みは非同期で実行
+  if (plyCloudScrollEnabled && plyCloudScrollPreset !== 'none' && plyCloudScrollPreset !== 'file') {
+    loadCloudPreset(plyCloudScrollPreset);
+  }
   plyFireEnabled = gc('plyFireEnabled');
   plyFireMode = gs('plyFireMode', 'color');
   plyFireColor = gs('plyFireColor', '#cc4400');
@@ -2614,6 +2643,230 @@ function clearPlySmokeEffect() {
   });
   plySmokeIndices = null;
   plySmokeOrigPos = null;
+}
+
+// ====== PLY雲スクロール（プリセット方式） ======
+
+// 雲用PLYパーサー（3DGS形式・通常PLY両対応）
+function parseCloudPly(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  let headerEnd = 0;
+  const endHeaderStr = 'end_header';
+  for (let i = 0; i < Math.min(bytes.length, 50000); i++) {
+    let match = true;
+    for (let j = 0; j < endHeaderStr.length; j++) {
+      if (bytes[i + j] !== endHeaderStr.charCodeAt(j)) { match = false; break; }
+    }
+    if (match) {
+      headerEnd = i + endHeaderStr.length;
+      while (headerEnd < bytes.length && bytes[headerEnd] !== 0x0A) headerEnd++;
+      headerEnd++;
+      break;
+    }
+  }
+  if (headerEnd === 0) return null;
+
+  const headerStr = new TextDecoder().decode(bytes.slice(0, headerEnd));
+  const lines = headerStr.split('\n');
+  let vertexCount = 0;
+  const properties = [];
+  let inVertex = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('element vertex')) {
+      vertexCount = parseInt(trimmed.split(/\s+/)[2]);
+      inVertex = true;
+    } else if (trimmed.startsWith('element')) {
+      inVertex = false;
+    } else if (inVertex && trimmed.startsWith('property')) {
+      const parts = trimmed.split(/\s+/);
+      properties.push({ type: parts[1], name: parts[2] });
+    }
+  }
+  if (vertexCount === 0) return null;
+
+  const sizeMap = { float: 4, double: 8, uchar: 1, uint8: 1, char: 1, int: 4, uint: 4, short: 2, ushort: 2 };
+  let vertexSize = 0;
+  const offsets = {};
+  for (const prop of properties) {
+    offsets[prop.name] = { offset: vertexSize, type: prop.type };
+    vertexSize += sizeMap[prop.type] || 4;
+  }
+  if (!offsets.x || !offsets.y || !offsets.z) return null;
+
+  const dataView = new DataView(arrayBuffer, headerEnd);
+  const positions = new Float32Array(vertexCount * 3);
+  const colors = new Float32Array(vertexCount * 3);
+  const has3DGS = offsets.f_dc_0 && offsets.f_dc_1 && offsets.f_dc_2;
+  const hasRGB = offsets.red && offsets.green && offsets.blue;
+  const C0 = 0.28209479177387814;
+
+  for (let i = 0; i < vertexCount; i++) {
+    const base = i * vertexSize;
+    positions[i * 3]     = dataView.getFloat32(base + offsets.x.offset, true);
+    positions[i * 3 + 1] = dataView.getFloat32(base + offsets.y.offset, true);
+    positions[i * 3 + 2] = dataView.getFloat32(base + offsets.z.offset, true);
+    if (has3DGS) {
+      const dc0 = dataView.getFloat32(base + offsets.f_dc_0.offset, true);
+      const dc1 = dataView.getFloat32(base + offsets.f_dc_1.offset, true);
+      const dc2 = dataView.getFloat32(base + offsets.f_dc_2.offset, true);
+      colors[i * 3]     = Math.max(0, Math.min(1, 0.5 + C0 * dc0));
+      colors[i * 3 + 1] = Math.max(0, Math.min(1, 0.5 + C0 * dc1));
+      colors[i * 3 + 2] = Math.max(0, Math.min(1, 0.5 + C0 * dc2));
+    } else if (hasRGB) {
+      const rType = offsets.red.type;
+      if (rType === 'uchar' || rType === 'uint8') {
+        colors[i * 3]     = dataView.getUint8(base + offsets.red.offset) / 255;
+        colors[i * 3 + 1] = dataView.getUint8(base + offsets.green.offset) / 255;
+        colors[i * 3 + 2] = dataView.getUint8(base + offsets.blue.offset) / 255;
+      } else {
+        colors[i * 3]     = dataView.getFloat32(base + offsets.red.offset, true);
+        colors[i * 3 + 1] = dataView.getFloat32(base + offsets.green.offset, true);
+        colors[i * 3 + 2] = dataView.getFloat32(base + offsets.blue.offset, true);
+      }
+    } else {
+      colors[i * 3] = colors[i * 3 + 1] = colors[i * 3 + 2] = 0.9;
+    }
+  }
+  return { positions, colors, count: vertexCount };
+}
+
+// プリセットまたはファイルから雲データを読み込み
+async function loadCloudPreset(presetValue) {
+  clearPlyCloudScroll();
+  _cloudScrollCloudData = null;
+
+  if (presetValue === 'none') return;
+
+  if (presetValue === 'file') {
+    document.getElementById('plyCloudScrollFile')?.click();
+    return;
+  }
+
+  // サーバーからフェッチ
+  try {
+    const url = CLOUD_ASSETS_BASE + presetValue;
+    console.log(`[CloudScroll] Fetching preset: ${url}`);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const buffer = await response.arrayBuffer();
+    const data = parseCloudPly(buffer);
+    if (!data) { console.error('[CloudScroll] Failed to parse cloud PLY'); return; }
+    _cloudScrollCloudData = data;
+    console.log(`[CloudScroll] Loaded preset: ${presetValue}, ${data.count} points`);
+    if (plyCloudScrollEnabled) setupPlyCloudScroll();
+  } catch (e) {
+    console.error('[CloudScroll] Failed to load preset:', e);
+  }
+}
+
+function setupPlyCloudScroll() {
+  clearPlyCloudScroll();
+  if (!plyCloudScrollEnabled || !_cloudScrollCloudData) return;
+
+  const { positions, colors, count } = _cloudScrollCloudData;
+  const scale = plyCloudScrollScale;
+
+  // 3DGS座標系→Three.js座標系（Y,Z反転）+ スケール適用
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3]     = positions[i * 3] * scale;
+    pos[i * 3 + 1] = -positions[i * 3 + 1] * scale;
+    pos[i * 3 + 2] = -positions[i * 3 + 2] * scale;
+  }
+
+  // XZ方向のみセンタリング
+  let cx = 0, cz = 0;
+  for (let i = 0; i < count; i++) {
+    cx += pos[i * 3];
+    cz += pos[i * 3 + 2];
+  }
+  cx /= count; cz /= count;
+  for (let i = 0; i < count; i++) {
+    pos[i * 3] -= cx;
+    pos[i * 3 + 2] -= cz;
+  }
+
+  // スクロール軸のバウンディング範囲を計算
+  const ai = plyCloudScrollAxis === 'z' ? 2 : 0;
+  let minV = Infinity, maxV = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const v = pos[i * 3 + ai];
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
+  }
+  _cloudScrollRange = (maxV - minV) || 1;
+
+  // マテリアル（メインモデルのPointsMaterialがあればそれを参照、なければ独自作成）
+  let srcMaterial = null;
+  if (glbModel) {
+    glbModel.traverse((child) => {
+      if (!child.isPoints || srcMaterial) return;
+      srcMaterial = child.material;
+    });
+  }
+  const mat = srcMaterial ? srcMaterial.clone() : new THREE.PointsMaterial({
+    size: parseFloat(document.getElementById('glbPointSize')?.value || '2'),
+    vertexColors: true,
+    sizeAttenuation: document.getElementById('glbPointAttenuation')?.checked !== false,
+  });
+
+  // コピーA, B を作成（sceneに直接追加 — メインモデルから独立）
+  for (let c = 0; c < 2; c++) {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+    geom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+    geom.computeBoundingSphere();
+    const pts = new THREE.Points(geom, mat.clone());
+    pts.frustumCulled = false;
+    pts.position.y = plyCloudScrollHeight;
+    scene.add(pts);
+    if (c === 0) _cloudScrollCopyA = pts;
+    else _cloudScrollCopyB = pts;
+  }
+
+  // コピーBをスクロール方向にオフセット
+  if (plyCloudScrollAxis === 'z') {
+    _cloudScrollCopyB.position.z = _cloudScrollRange;
+  } else {
+    _cloudScrollCopyB.position.x = _cloudScrollRange;
+  }
+
+  _cloudScrollOffset = 0;
+  console.log(`[CloudScroll] Setup: ${count} pts, range=${_cloudScrollRange.toFixed(2)}, height=${plyCloudScrollHeight}, scale=${scale}`);
+}
+
+function updatePlyCloudScroll() {
+  if (!_cloudScrollCopyA || !_cloudScrollCopyB) return;
+  const dt = 0.016;
+  const speed = plyCloudScrollSpeed;
+  const range = _cloudScrollRange;
+  _cloudScrollOffset += speed * dt;
+
+  const offset = _cloudScrollOffset % range;
+  if (plyCloudScrollAxis === 'z') {
+    _cloudScrollCopyA.position.z = -offset;
+    _cloudScrollCopyB.position.z = -offset + range;
+  } else {
+    _cloudScrollCopyA.position.x = -offset;
+    _cloudScrollCopyB.position.x = -offset + range;
+  }
+}
+
+function clearPlyCloudScroll() {
+  if (_cloudScrollCopyA) {
+    scene.remove(_cloudScrollCopyA);
+    _cloudScrollCopyA.geometry.dispose();
+    _cloudScrollCopyA.material.dispose();
+    _cloudScrollCopyA = null;
+  }
+  if (_cloudScrollCopyB) {
+    scene.remove(_cloudScrollCopyB);
+    _cloudScrollCopyB.geometry.dispose();
+    _cloudScrollCopyB.material.dispose();
+    _cloudScrollCopyB = null;
+  }
+  _cloudScrollOffset = 0;
 }
 
 // ====== PLY炎エフェクト ======
@@ -6923,6 +7176,67 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('plySmokeCycleValue').textContent = v;
     plySmokeCycle = v;
+  });
+
+  // PLY雲スクロール（プリセット方式）
+  // プリセットオプションを動的追加
+  const cloudPresetSel = document.getElementById('plyCloudScrollPreset');
+  if (cloudPresetSel) {
+    const fileOpt = cloudPresetSel.querySelector('[value="file"]');
+    CLOUD_PRESETS.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.file;
+      opt.textContent = p.label;
+      cloudPresetSel.insertBefore(opt, fileOpt);
+    });
+  }
+  document.getElementById('plyCloudScrollEnabled')?.addEventListener('change', (e) => {
+    plyCloudScrollEnabled = e.target.checked;
+    if (plyCloudScrollEnabled && _cloudScrollCloudData) {
+      setupPlyCloudScroll();
+    } else {
+      clearPlyCloudScroll();
+    }
+  });
+  document.getElementById('plyCloudScrollPreset')?.addEventListener('change', (e) => {
+    plyCloudScrollPreset = e.target.value;
+    loadCloudPreset(plyCloudScrollPreset);
+  });
+  document.getElementById('plyCloudScrollFile')?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const data = parseCloudPly(reader.result);
+      if (!data) { console.error('[CloudScroll] Failed to parse cloud PLY file'); return; }
+      _cloudScrollCloudData = data;
+      console.log(`[CloudScroll] Loaded file: ${file.name}, ${data.count} points`);
+      if (plyCloudScrollEnabled) setupPlyCloudScroll();
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';  // 同じファイルを再選択可能に
+  });
+  document.getElementById('plyCloudScrollHeight')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCloudScrollHeightValue').textContent = v;
+    plyCloudScrollHeight = v;
+    if (_cloudScrollCopyA) _cloudScrollCopyA.position.y = v;
+    if (_cloudScrollCopyB) _cloudScrollCopyB.position.y = v;
+  });
+  document.getElementById('plyCloudScrollScale')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCloudScrollScaleValue').textContent = v;
+    plyCloudScrollScale = v;
+    if (plyCloudScrollEnabled && _cloudScrollCloudData) { clearPlyCloudScroll(); setupPlyCloudScroll(); }
+  });
+  document.getElementById('plyCloudScrollSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCloudScrollSpeedValue').textContent = v;
+    plyCloudScrollSpeed = v;
+  });
+  document.getElementById('plyCloudScrollAxis')?.addEventListener('change', (e) => {
+    plyCloudScrollAxis = e.target.value;
+    if (plyCloudScrollEnabled && _cloudScrollCloudData) { clearPlyCloudScroll(); setupPlyCloudScroll(); }
   });
 
   // PLY炎エフェクト — 2点ピックで範囲指定
@@ -16200,6 +16514,7 @@ function animate() {
   updatePlyWaterEffect();
   updatePlyTreeEffect();
   updatePlySmokeEffect();
+  updatePlyCloudScroll();
   updatePlyFireEffect();
   updateFireSmokeParticles();
   updateFireSparkParticles();
