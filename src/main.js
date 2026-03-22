@@ -9271,6 +9271,11 @@ function setupEventListeners() {
     }
   });
 
+  // スケール反映切り替え（uniform切り替え、DataTexture方式）
+  document.getElementById('glbSplatScale')?.addEventListener('change', (e) => {
+    splatScaleUniforms.enabled.value = e.target.checked ? 1.0 : 0.0;
+  });
+
   // 3DGS再構築のデバウンス（トリム・補間密度共通）
   let _gsRebuildTimer = null;
   function debouncedGSRebuild() {
@@ -14295,10 +14300,14 @@ function parse3DGSPly(arrayBuffer) {
   const C0 = 0.28209479177387814; // SH基底関数の第0係数
   const hasOpacity = !!offsets.opacity;
 
+  // スケールプロパティの有無
+  const hasScale = offsets.scale_0 && offsets.scale_1 && offsets.scale_2;
+
   // 全頂点をそのまま抽出（フィルタなし）
   const positions = new Float32Array(vertexCount * 3);
   const colors = new Float32Array(vertexCount * 3);
   const opacities = new Float32Array(vertexCount);
+  const splatScales = new Float32Array(vertexCount);
   for (let i = 0; i < vertexCount; i++) {
     const base = i * vertexSize;
     const dc0 = dataView.getFloat32(base + offsets.f_dc_0.offset, true);
@@ -14317,13 +14326,31 @@ function parse3DGSPly(arrayBuffer) {
     } else {
       opacities[i] = 1.0;
     }
+    // scale: log-encoded → 3軸平均
+    if (hasScale) {
+      const s0 = dataView.getFloat32(base + offsets.scale_0.offset, true);
+      const s1 = dataView.getFloat32(base + offsets.scale_1.offset, true);
+      const s2 = dataView.getFloat32(base + offsets.scale_2.offset, true);
+      splatScales[i] = (Math.exp(s0) + Math.exp(s1) + Math.exp(s2)) / 3.0;
+    } else {
+      splatScales[i] = 1.0;
+    }
   }
   const kept = vertexCount;
 
-  console.log('[PLY] 3DGS loaded:', vertexCount, 'points');
+  // スケールを正規化（中央値 = 1.0、[0.1, 10.0]にクランプ）
+  if (hasScale) {
+    const sorted = Float32Array.from(splatScales).sort();
+    const median = sorted[Math.floor(kept * 0.5)] || 1.0;
+    for (let i = 0; i < kept; i++) {
+      splatScales[i] = Math.max(0.1, Math.min(10.0, splatScales[i] / median));
+    }
+  }
+
+  console.log('[PLY] 3DGS loaded:', vertexCount, 'points', hasScale ? '(with scale)' : '(no scale)');
 
   // 生データを返す（トリム・センタリングは build3DGSGeometry で行う）
-  return { positions, colors, opacities, vertexCount: kept };
+  return { positions, colors, opacities, splatScales, vertexCount: kept };
 }
 
 // 3DGS生データからジオメトリを構築（トリム適用→センタリング→座標変換）
@@ -14492,7 +14519,7 @@ function ensure3DGSCache(arrayBuffer) {
   if (_gsCache && _gsCache.arrayBuffer === arrayBuffer) return _gsCache;
   const gsResult = parse3DGSPly(arrayBuffer);
   if (!gsResult) return null;
-  const { positions, colors, opacities, vertexCount } = gsResult;
+  const { positions, colors, opacities, splatScales, vertexCount } = gsResult;
 
   // 重心計算
   let cx = 0, cy = 0, cz = 0;
@@ -14511,7 +14538,7 @@ function ensure3DGSCache(arrayBuffer) {
   for (let i = 0; i < vertexCount; i++) sortedIndices[i] = i;
   sortedIndices.sort((a, b) => dists[a] - dists[b]);
 
-  _gsCache = { arrayBuffer, positions, colors, opacities, vertexCount, sortedIndices };
+  _gsCache = { arrayBuffer, positions, colors, opacities, splatScales, vertexCount, sortedIndices };
   console.log(`[PLY] 3DGS cache built: ${vertexCount} points, sorted by distance`);
   return _gsCache;
 }
@@ -14709,12 +14736,14 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
     const trimTarget = Math.max(1, Math.floor(cache.vertexCount * (1 - trim / 100)));
     const trimmedPos = [];
     const trimmedCol = [];
+    const trimmedScales = [];
     let kept = 0;
     for (let i = 0; i < cache.vertexCount && kept < trimTarget; i++) {
       const src = cache.sortedIndices[i];
       if (cache.opacities[src] < opacityCut) continue;
       trimmedPos.push(cache.positions[src * 3], cache.positions[src * 3 + 1], cache.positions[src * 3 + 2]);
       trimmedCol.push(cache.colors[src * 3], cache.colors[src * 3 + 1], cache.colors[src * 3 + 2]);
+      trimmedScales.push(cache.splatScales[src]);
       kept++;
     }
     const keepCount = kept;
@@ -14736,7 +14765,8 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
       basePos[i * 3 + 1] = -trimmedPosArr[i * 3 + 1];                    // rotateX(PI): Y反転のみ（センタリングなし）
       basePos[i * 3 + 2] = -(trimmedPosArr[i * 3 + 2] - bbCenterZ);      // XZセンタリング + Z反転
     }
-    _gsInterpCache = { trimKey, basePos, baseCol: trimmedColArr, baseCount: keepCount, levels: null };
+    const baseScales = new Float32Array(trimmedScales);
+    _gsInterpCache = { trimKey, basePos, baseCol: trimmedColArr, baseScales, baseCount: keepCount, levels: null };
   }
 
   const ic = _gsInterpCache;
@@ -14777,20 +14807,29 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
 
   const finalPos = new Float32Array(totalCount * 3);
   const finalCol = new Float32Array(totalCount * 3);
+  const finalScales = new Float32Array(totalCount);
   finalPos.set(ic.basePos);
   finalCol.set(ic.baseCol);
+  finalScales.set(ic.baseScales);
   if (ic.levels) {
     let off = ic.baseCount * 3;
+    let sOff = ic.baseCount;
     for (let k = 0; k < 6; k++) {
       finalPos.set(ic.levels[k].positions, off);
       finalCol.set(ic.levels[k].colors, off);
+      // 補間点のスケールはデフォルト1.0（近傍間の中間点なので）
+      for (let j = 0; j < ic.levels[k].count; j++) finalScales[sOff + j] = 1.0;
       off += ic.levels[k].count * 3;
+      sOff += ic.levels[k].count;
     }
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(finalPos, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(finalCol, 3));
+  // スプラットスケールをDataTextureに格納（シェーダーからgl_VertexIDで参照）
+  updateSplatScaleTexture(finalScales);
+  splatScaleUniforms.enabled.value = document.getElementById('glbSplatScale')?.checked ? 1.0 : 0.0;
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   geometry.setDrawRange(0, cumulativeCounts[Math.min(density, cumulativeCounts.length - 1)]);
@@ -15356,6 +15395,38 @@ function clearPlyBackground() {
   console.log('PLY background cleared');
 }
 
+// 3DGSスプラットスケール用（DataTexture方式）
+let _splatScaleTexture = null;
+const splatScaleUniforms = {
+  tex: { value: null },
+  texWidth: { value: 0.0 },
+  texHeight: { value: 0.0 },
+  enabled: { value: 0.0 },
+};
+
+function updateSplatScaleTexture(scales) {
+  if (_splatScaleTexture) {
+    _splatScaleTexture.dispose();
+    _splatScaleTexture = null;
+  }
+  if (!scales || scales.length === 0) {
+    splatScaleUniforms.tex.value = null;
+    return;
+  }
+  const count = scales.length;
+  const texWidth = Math.min(count, 4096);
+  const texHeight = Math.ceil(count / texWidth);
+  const data = new Float32Array(texWidth * texHeight);
+  data.set(scales);
+  _splatScaleTexture = new THREE.DataTexture(data, texWidth, texHeight, THREE.RedFormat, THREE.FloatType);
+  _splatScaleTexture.minFilter = THREE.NearestFilter;
+  _splatScaleTexture.magFilter = THREE.NearestFilter;
+  _splatScaleTexture.needsUpdate = true;
+  splatScaleUniforms.tex.value = _splatScaleTexture;
+  splatScaleUniforms.texWidth.value = texWidth;
+  splatScaleUniforms.texHeight.value = texHeight;
+}
+
 // 3DGS PLYシャドウ用共有uniform
 const plyShadowUniforms = {
   map: { value: null },
@@ -15626,11 +15697,18 @@ function setupPlyShaderOverride() {
             // 外部からuniformsにアクセスするための参照を保存
             m._fireLightShader = shader;
 
+            // スプラットスケール用uniform
+            shader.uniforms.splatScaleTex = splatScaleUniforms.tex;
+            shader.uniforms.splatScaleTexWidth = splatScaleUniforms.texWidth;
+            shader.uniforms.splatScaleTexHeight = splatScaleUniforms.texHeight;
+            shader.uniforms.useSplatScale = splatScaleUniforms.enabled;
+
             // 頂点シェーダー: fog_vertexの後にシャドウ座標＋ワールド座標＋火源距離計算を注入
             shader.vertexShader = 'varying vec4 vPlyShadowCoord;\nuniform mat4 plyShadowMatrix;\n' +
               '#define MAX_FIRE_LIGHTS ' + MAX_FIRE_LIGHTS + '\n' +
               'uniform int fireCount;\nuniform vec3 fireWorldPos[MAX_FIRE_LIGHTS];\nuniform float fireDistance;\nuniform float fireIntensity;\nvarying float vFireAmount;\n' +
               'uniform float fireEmission;\nuniform float fireEmissionRadius[MAX_FIRE_LIGHTS];\nvarying float vFireEmission;\n' +
+              'uniform sampler2D splatScaleTex;\nuniform float splatScaleTexWidth;\nuniform float splatScaleTexHeight;\nuniform float useSplatScale;\n' +
               shader.vertexShader;
             shader.vertexShader = shader.vertexShader.replace(
               '#include <fog_vertex>',
@@ -15649,6 +15727,14 @@ function setupPlyShaderOverride() {
               '    float _em = fireEmission * (1.0 - smoothstep(0.0, fireEmissionRadius[_li], _fd));\n' +
               '    vFireEmission = max(vFireEmission, _em);\n' +
               '  }\n' +
+              '}\n' +
+              '// Splat scale from DataTexture (gl_VertexID lookup)\n' +
+              'if (useSplatScale > 0.5 && splatScaleTexWidth > 0.0) {\n' +
+              '  float _vid = float(gl_VertexID);\n' +
+              '  float _su = (mod(_vid, splatScaleTexWidth) + 0.5) / splatScaleTexWidth;\n' +
+              '  float _sv = (floor(_vid / splatScaleTexWidth) + 0.5) / splatScaleTexHeight;\n' +
+              '  float _splatS = texture2D(splatScaleTex, vec2(_su, _sv)).r;\n' +
+              '  gl_PointSize *= _splatS;\n' +
               '}'
             );
 
