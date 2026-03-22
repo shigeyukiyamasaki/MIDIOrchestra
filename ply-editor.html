@@ -30,7 +30,7 @@ body {
 .toolbar-group:last-child { border-right: none; }
 .main {
   flex: 1; display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 1fr 520px;
   overflow: hidden;
 }
 .viewport {
@@ -41,7 +41,10 @@ body {
 .settings {
   background: #16213e; border-left: 1px solid #2a3a5c;
   padding: 16px; overflow-y: auto;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px;
+  align-content: start;
 }
+.settings-col { min-width: 0; }
 .settings h3 {
   font-size: 0.85rem; color: #7ec8e3;
   margin-bottom: 8px; margin-top: 16px;
@@ -170,44 +173,44 @@ body {
 <div class="header">
   <h1>3DGS PLY Editor</h1>
   <div class="header-buttons">
-    <button class="btn" id="btnLoad">Load PLY</button>
+    <button class="btn" id="btnLoad" title="PLYファイルを読み込む">ロード</button>
     <input type="file" id="fileInput" accept=".ply,.plyproj" style="display:none">
-    <button class="btn" id="btnSaveProj" disabled>Save Project</button>
-    <button class="btn primary" id="btnExport" disabled>Export PLY</button>
+    <button class="btn" id="btnSaveProj" disabled title="プロジェクトを保存する（レイヤー情報含む）">プロジェクト保存</button>
+    <button class="btn primary" id="btnExport" disabled title="編集済みPLYファイルをダウンロード">エクスポート</button>
   </div>
 </div>
 
 <div class="toolbar">
   <div class="toolbar-group">
-    <button class="btn active" id="toolNavigate" title="Navigate (V)">Navigate</button>
-    <button class="btn" id="toolBrush" title="Brush (B)">Brush</button>
-    <button class="btn" id="toolRect" title="Rectangle (R)">Rect</button>
-    <button class="btn" id="toolWarp" title="Warp (W)">Warp</button>
-    <button class="btn" id="toolDensifyBrush" title="Densify Brush (D)">Densify</button>
-    <button class="btn" id="toolMove" title="Move (G)">Move</button>
-    <button class="btn" id="toolScale" title="Scale (S)">Scale</button>
-    <button class="btn" id="toolRotate" title="Rotate (T)">Rotate</button>
-    <button class="btn" id="toolBend" title="Bend (N)">Bend</button>
+    <button class="btn active" id="toolNavigate" title="カメラ操作・3D空間をナビゲート (V)">ナビゲート</button>
+    <button class="btn" id="toolBrush" title="円形ブラシでポイントを選択 (B)">ブラシ</button>
+    <button class="btn" id="toolRect" title="矩形範囲でポイントを選択 (R)">矩形</button>
+    <button class="btn" id="toolWarp" title="ブラシで選択ポイントを押し出し変形 (W)">ワープ</button>
+    <button class="btn" id="toolDensifyBrush" title="ブラシで塗った範囲のポイントを増殖 (D)">デンシファイ</button>
+    <button class="btn" id="toolMove" title="選択ポイントを移動 (G)">ムーブ</button>
+    <button class="btn" id="toolScale" title="選択ポイントを拡大縮小 (S)">スケール</button>
+    <button class="btn" id="toolRotate" title="選択ポイントを回転 (T)">ローテート</button>
   </div>
   <div class="toolbar-group">
-    <button class="btn danger" id="btnDelete" title="Delete (Del)" disabled>Delete</button>
-    <button class="btn" id="btnDensify" title="Densify" disabled>Densify</button>
-    <button class="btn" id="btnThin" title="Thin (decimate dense points)" disabled>Thin</button>
-    <button class="btn primary" id="btnDensifyApply" style="display:none">Apply</button>
-    <button class="btn danger" id="btnDensifyCancel" style="display:none">Cancel</button>
+    <button class="btn danger" id="btnDelete" title="選択ポイントを削除 (Del)" disabled>デリート</button>
+    <button class="btn" id="btnDensify" title="選択ポイントを複製して密度を上げる" disabled>デンシファイ</button>
+    <button class="btn" id="btnThin" title="選択範囲の密集ポイントを間引く" disabled>シン</button>
+    <button class="btn" id="btnSubdivide" title="大きなガウシアンを小さなガウシアンに分解">サブディバイド</button>
+    <button class="btn primary" id="btnDensifyApply" style="display:none">適用</button>
+    <button class="btn danger" id="btnDensifyCancel" style="display:none">キャンセル</button>
   </div>
   <div class="toolbar-group">
-    <button class="btn" id="btnInvert" title="Invert (Ctrl+I)" disabled>Invert</button>
-    <button class="btn" id="btnSelectAll" title="Select All (Ctrl+A)" disabled>Select All</button>
-    <button class="btn" id="btnClearSel" title="Clear Selection" disabled>Clear</button>
+    <button class="btn" id="btnInvert" title="選択を反転 (Ctrl+I)" disabled>反転</button>
+    <button class="btn" id="btnSelectAll" title="全ポイントを選択 (Ctrl+A)" disabled>全選択</button>
+    <button class="btn" id="btnClearSel" title="選択を解除" disabled>クリア</button>
   </div>
   <div class="toolbar-group">
-    <button class="btn" id="btnMask" title="Mask Selection (M)" disabled>Mask</button>
-    <button class="btn" id="btnUnmask" title="Unmask All (U)" disabled>Unmask</button>
+    <button class="btn" id="btnMask" title="選択ポイントをマスク（編集対象外に） (M)" disabled>マスク</button>
+    <button class="btn" id="btnUnmask" title="全マスクを解除 (U)" disabled>マスク解除</button>
   </div>
   <div class="toolbar-group">
-    <button class="btn" id="btnUndo" title="Undo (Ctrl+Z)" disabled>Undo</button>
-    <button class="btn" id="btnRedo" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
+    <button class="btn" id="btnUndo" title="操作を元に戻す (Ctrl+Z)" disabled>元に戻す</button>
+    <button class="btn" id="btnRedo" title="操作をやり直す (Ctrl+Shift+Z)" disabled>やり直す</button>
   </div>
 </div>
 
@@ -215,165 +218,154 @@ body {
   <div class="viewport" id="viewport">
     <canvas id="canvas3d"></canvas>
     <canvas id="overlayCanvas"></canvas>
-    <div class="drop-overlay" id="dropOverlay"><p id="dropOverlayText">Drop PLY file here</p></div>
+    <div class="drop-overlay" id="dropOverlay"><p id="dropOverlayText">PLYファイルをここにドロップ</p></div>
     <div class="context-toolbar" id="contextToolbar">
-      <button class="ctx-btn" id="ctxMove" title="Move (G)">Move</button>
-      <button class="ctx-btn" id="ctxScale" title="Scale (S)">Scale</button>
-      <button class="ctx-btn" id="ctxRotate" title="Rotate (T)">Rotate</button>
-      <button class="ctx-btn ctx-delete" id="ctxDelete" title="Delete (Del)">Delete</button>
-      <button class="ctx-btn ctx-color" id="ctxAdjustColor" title="Apply color adjustment">Adjust</button>
+      <button class="ctx-btn" id="ctxMove" title="選択ポイントを移動 (G)">ムーブ</button>
+      <button class="ctx-btn" id="ctxScale" title="選択ポイントを拡大縮小 (S)">スケール</button>
+      <button class="ctx-btn" id="ctxRotate" title="選択ポイントを回転 (T)">ローテート</button>
+      <button class="ctx-btn ctx-delete" id="ctxDelete" title="選択ポイントを削除 (Del)">デリート</button>
+      <button class="ctx-btn ctx-color" id="ctxAdjustColor" title="色調整スライダーの値を選択ポイントに適用">カラー適用</button>
     </div>
     <div class="placeholder" id="placeholder">
-      <p>Drop a 3DGS PLY file here</p>
-      <p>or click "Load PLY"</p>
+      <p>3DGS PLYファイルをドロップ</p>
+      <p>または「ロード」をクリック</p>
     </div>
   </div>
   <div class="settings">
-    <h3>Display</h3>
-    <div class="setting-row">
-      <label>Background</label>
-      <input type="color" id="bgColor" value="#b4b4b4" style="width:40px; height:24px; border:1px solid #2a3a5c; border-radius:3px; background:none; cursor:pointer; padding:0;">
-    </div>
-    <div class="setting-row">
-      <label>Point Size</label>
-      <input type="range" id="pointSize" min="1" max="10" step="0.5" value="2">
-      <span class="val" id="pointSizeVal">2</span>
-    </div>
-    <div class="setting-row">
-      <label style="min-width:auto"><input type="checkbox" id="useScale" style="accent-color:#7ec8e3; vertical-align:middle; margin-right:4px">Scale反映</label>
-    </div>
-    <div class="setting-row">
-      <label>Opacity Cut</label>
-      <input type="range" id="opacityCut" min="0" max="1" step="0.01" value="0.1">
-      <span class="val" id="opacityCutVal">0.10</span>
-    </div>
-    <h3>Brush</h3>
-    <div class="setting-row">
-      <label>Size</label>
-      <input type="range" id="brushSize" min="10" max="200" step="5" value="50">
-      <span class="val" id="brushSizeVal">50</span>
-    </div>
-    <div class="setting-row">
-      <label style="min-width:auto"><input type="checkbox" id="sparseMode" style="accent-color:#7ec8e3; vertical-align:middle; margin-right:4px">Sparse</label>
-      <input type="range" id="densityThreshold" min="1" max="100" step="1" value="20" disabled>
-      <span class="val" id="densityThresholdVal">20</span>
-    </div>
-    <h3>Densify</h3>
-    <div class="setting-row">
-      <label>Count</label>
-      <input type="range" id="densifyCount" min="1" max="10" step="1" value="1">
-      <span class="val" id="densifyCountVal">1x</span>
-    </div>
-    <div class="setting-row">
-      <label>Jitter</label>
-      <input type="range" id="densifyJitter" min="0" max="0.5" step="0.01" value="0.2">
-      <span class="val" id="densifyJitterVal">0.20</span>
-    </div>
-    <h3>Thin</h3>
-    <div class="setting-row">
-      <label>Spacing</label>
-      <input type="range" id="thinSpacing" min="0.001" max="0.1" step="0.001" value="0.01">
-      <span class="val" id="thinSpacingVal">0.010</span>
-    </div>
-    <h3>Warp</h3>
-    <div class="setting-row">
-      <label>Strength</label>
-      <input type="range" id="warpStrength" min="0.1" max="5" step="0.1" value="0.5">
-      <span class="val" id="warpStrengthVal">0.5</span>
-    </div>
-    <h3>Bend</h3>
-    <div class="setting-row">
-      <label>Source</label>
-      <select id="bendSourceAxis" style="flex:1; background:#0f1a30; color:#e0e0e0; border:1px solid #2a3a5c; border-radius:3px; padding:2px 4px; font-size:0.8rem;">
-        <option value="x">X</option>
-        <option value="y">Y</option>
-        <option value="z" selected>Z</option>
-      </select>
-      <label style="min-width:auto; margin-left:4px;">Displace</label>
-      <select id="bendDisplaceAxis" style="flex:1; background:#0f1a30; color:#e0e0e0; border:1px solid #2a3a5c; border-radius:3px; padding:2px 4px; font-size:0.8rem;">
-        <option value="x">X</option>
-        <option value="y" selected>Y</option>
-        <option value="z">Z</option>
-      </select>
-    </div>
-    <div class="setting-row">
-      <label>Strength</label>
-      <input type="range" id="bendStrength" min="0.01" max="5" step="0.01" value="1">
-      <span class="val" id="bendStrengthVal">1.00</span>
-    </div>
-    <canvas id="bendCurveCanvas" width="280" height="160" style="width:100%; height:140px; background:#0d1117; border:1px solid #2a3a5c; border-radius:4px; cursor:crosshair; margin-bottom:4px;"></canvas>
-    <div class="setting-row">
-      <button class="btn primary" id="btnBendApply" style="flex:1" disabled>Apply</button>
-      <button class="btn danger" id="btnBendCancel" style="flex:1" disabled>Cancel</button>
-      <button class="btn" id="btnBendReset" style="flex:0 0 auto; padding:4px 8px; font-size:0.75rem;">Reset</button>
-    </div>
-    <h3>Scale</h3>
-    <div class="setting-row">
-      <label>Falloff</label>
-      <input type="range" id="scaleFalloff" min="0" max="5" step="0.1" value="0">
-      <span class="val" id="scaleFalloffVal">0 (uniform)</span>
-    </div>
-    <h3>Color Adjust</h3>
-    <div class="setting-row">
-      <label>Hue</label>
-      <input type="range" id="colorHue" min="-180" max="180" step="1" value="0">
-      <span class="val" id="colorHueVal">0°</span>
-    </div>
-    <div class="setting-row">
-      <label>Saturation</label>
-      <input type="range" id="colorSat" min="-100" max="100" step="1" value="0">
-      <span class="val" id="colorSatVal">0%</span>
-    </div>
-    <div class="setting-row">
-      <label>Brightness</label>
-      <input type="range" id="colorBri" min="-100" max="100" step="1" value="0">
-      <span class="val" id="colorBriVal">0%</span>
-    </div>
-    <div class="setting-row">
-      <button class="btn" id="btnApplyColor" disabled style="flex:1">Apply</button>
-      <button class="btn" id="btnResetColorSliders" style="flex:0 0 auto; padding:4px 8px; font-size:0.75rem;">Reset</button>
-    </div>
-    <h3>Select by Color</h3>
-    <div class="setting-row">
-      <label>Color</label>
-      <input type="color" id="selColor" value="#000000" style="width:40px; height:24px; border:1px solid #2a3a5c; border-radius:3px; background:none; cursor:pointer; padding:0;">
-      <button class="btn" id="btnPickColor" title="Pick color from point (P)" style="padding:4px 8px; font-size:0.75rem;">Pick</button>
-    </div>
-    <div class="setting-row">
-      <label>Threshold</label>
-      <input type="range" id="selColorThreshold" min="0.01" max="0.5" step="0.01" value="0.1">
-      <span class="val" id="selColorThresholdVal">0.1</span>
-    </div>
-    <div class="setting-row">
-      <button class="btn" id="btnSelectByColor" disabled style="flex:1">Select by Color</button>
-      <button class="btn" id="btnAddByColor" disabled style="flex:1">Add to Sel</button>
-    </div>
-    <div class="setting-row">
-      <button class="btn" id="btnSelectSimilar" disabled style="flex:1" title="選択ポイントと同系色を全体から選択">Select Similar</button>
-      <button class="btn" id="btnAddSimilar" disabled style="flex:1" title="選択ポイントと同系色を選択に追加">Add Similar</button>
-    </div>
-    <h3>Layers</h3>
-    <div id="layerPanel" style="margin-bottom:8px;">
-      <div class="layer-vis-bar">
-        <button id="btnLayerToggleAll">All Show</button>
+    <div class="settings-col">
+      <h3>ディスプレイ</h3>
+      <div class="setting-row">
+        <label title="背景色を変更">背景色</label>
+        <input type="color" id="bgColor" value="#b4b4b4" style="width:40px; height:24px; border:1px solid #2a3a5c; border-radius:3px; background:none; cursor:pointer; padding:0;">
       </div>
-      <div id="layerList"></div>
-      <div style="display:flex; gap:4px; margin-top:6px;">
-        <button class="btn" id="btnLayerAdd" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled>+ Add</button>
-        <button class="btn" id="btnLayerMovesel" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled>Move Sel →</button>
-        <button class="btn danger" id="btnLayerDel" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled>Delete</button>
-        <button class="btn" id="btnLayerMerge" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled>Merge ↓</button>
+      <div class="setting-row">
+        <label title="ポイントの描画サイズ">ポイントサイズ</label>
+        <input type="range" id="pointSize" min="1" max="10" step="0.5" value="2">
+        <span class="val" id="pointSizeVal">2</span>
+      </div>
+      <div class="setting-row">
+        <label style="min-width:auto" title="ガウシアンのスケール値をポイントサイズに反映"><input type="checkbox" id="useScale" style="accent-color:#7ec8e3; vertical-align:middle; margin-right:4px">スケール反映</label>
+      </div>
+      <div class="setting-row">
+        <label title="この値以下の不透明度のポイントを非表示にする">不透明度カット</label>
+        <input type="range" id="opacityCut" min="0" max="1" step="0.01" value="0.1">
+        <span class="val" id="opacityCutVal">0.10</span>
+      </div>
+      <h3>ブラシ</h3>
+      <div class="setting-row">
+        <label title="ブラシの半径（ピクセル）">サイズ</label>
+        <input type="range" id="brushSize" min="10" max="200" step="5" value="50">
+        <span class="val" id="brushSizeVal">50</span>
+      </div>
+      <div class="setting-row">
+        <label style="min-width:auto" title="ONにすると密集エリアのみ選択（密度が閾値以上の箇所）"><input type="checkbox" id="sparseMode" style="accent-color:#7ec8e3; vertical-align:middle; margin-right:4px">スパース</label>
+        <input type="range" id="densityThreshold" min="1" max="100" step="1" value="20" disabled>
+        <span class="val" id="densityThresholdVal">20</span>
+      </div>
+      <h3>カラー選択</h3>
+      <div class="setting-row">
+        <label title="選択基準となる色">カラー</label>
+        <input type="color" id="selColor" value="#000000" style="width:40px; height:24px; border:1px solid #2a3a5c; border-radius:3px; background:none; cursor:pointer; padding:0;">
+        <button class="btn" id="btnPickColor" title="ポイントをクリックして色を取得 (P)" style="padding:4px 8px; font-size:0.75rem;">ピック</button>
+      </div>
+      <div class="setting-row">
+        <label title="色の許容範囲（小さいほど厳密に一致する色のみ選択）">閾値</label>
+        <input type="range" id="selColorThreshold" min="0.01" max="0.5" step="0.01" value="0.1">
+        <span class="val" id="selColorThresholdVal">0.1</span>
+      </div>
+      <div class="setting-row">
+        <button class="btn" id="btnSelectByColor" disabled style="flex:1" title="指定色に近いポイントを選択">カラー選択</button>
+        <button class="btn" id="btnAddByColor" disabled style="flex:1" title="指定色に近いポイントを選択に追加">追加選択</button>
+      </div>
+      <div class="setting-row">
+        <button class="btn" id="btnSelectSimilar" disabled style="flex:1" title="選択ポイントと同系色を全体から選択">類似選択</button>
+        <button class="btn" id="btnAddSimilar" disabled style="flex:1" title="選択ポイントと同系色を選択に追加">類似追加</button>
+      </div>
+      <h3>レイヤー</h3>
+      <div id="layerPanel" style="margin-bottom:8px;">
+        <div class="layer-vis-bar">
+          <button id="btnLayerToggleAll" title="全レイヤーの表示/非表示を切り替え">全表示</button>
+        </div>
+        <div id="layerList"></div>
+        <div style="display:flex; gap:4px; margin-top:6px;">
+          <button class="btn" id="btnLayerAdd" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled title="新しいレイヤーを追加">+ 追加</button>
+          <button class="btn" id="btnLayerMovesel" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled title="選択ポイントをアクティブレイヤーに移動">選択移動</button>
+          <button class="btn danger" id="btnLayerDel" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled title="アクティブレイヤーを削除（ポイントも削除）">削除</button>
+          <button class="btn" id="btnLayerMerge" style="flex:1; padding:4px 6px; font-size:0.75rem;" disabled title="アクティブレイヤーを下のレイヤーに統合">統合</button>
+        </div>
+      </div>
+      <h3>インフォ</h3>
+      <div class="info-row"><span>合計</span><span class="info-val" id="infoTotal">-</span></div>
+      <div class="info-row"><span>選択中</span><span class="info-val" id="infoSelected">0</span></div>
+      <div class="info-row"><span>マスク中</span><span class="info-val" id="infoMasked">0</span></div>
+      <div class="info-row"><span>オリジナル</span><span class="info-val" id="infoOriginal">-</span></div>
+    </div>
+    <div class="settings-col">
+      <h3>デンシファイ</h3>
+      <div class="setting-row">
+        <label title="1ポイントあたりの複製数">複製数</label>
+        <input type="range" id="densifyCount" min="1" max="10" step="1" value="1">
+        <span class="val" id="densifyCountVal">1x</span>
+      </div>
+      <div class="setting-row">
+        <label title="複製時の位置ランダムずれ量">ジッター</label>
+        <input type="range" id="densifyJitter" min="0" max="0.5" step="0.01" value="0.2">
+        <span class="val" id="densifyJitterVal">0.20</span>
+      </div>
+      <h3>シン</h3>
+      <div class="setting-row">
+        <label title="この間隔以内のポイントを間引く（小さいほど多く残る）">間隔</label>
+        <input type="range" id="thinSpacing" min="0.001" max="0.1" step="0.001" value="0.01">
+        <span class="val" id="thinSpacingVal">0.010</span>
+      </div>
+      <h3>サブディバイド</h3>
+      <div class="setting-row">
+        <label title="中央値の何倍以上のスケールを分割対象にするか">閾値</label>
+        <input type="range" id="subdivThreshold" min="0.5" max="5" step="0.1" value="2.0">
+        <span class="val" id="subdivThresholdVal">2.0x median</span>
+      </div>
+      <div class="setting-row">
+        <label title="各軸の分割数（N → N³個に分解）">分割数</label>
+        <input type="range" id="subdivDivisions" min="2" max="5" step="1" value="2">
+        <span class="val" id="subdivDivisionsVal">2</span>
+      </div>
+      <h3>ワープ</h3>
+      <div class="setting-row">
+        <label title="ブラシ変形の強度">強度</label>
+        <input type="range" id="warpStrength" min="0.1" max="5" step="0.1" value="0.5">
+        <span class="val" id="warpStrengthVal">0.5</span>
+      </div>
+      <h3>スケール</h3>
+      <div class="setting-row">
+        <label title="中心からの距離によるスケール減衰（0で均一）">フォールオフ</label>
+        <input type="range" id="scaleFalloff" min="0" max="5" step="0.1" value="0">
+        <span class="val" id="scaleFalloffVal">0 (均一)</span>
+      </div>
+      <h3>カラー調整</h3>
+      <div class="setting-row">
+        <label title="色相を回転">色相</label>
+        <input type="range" id="colorHue" min="-180" max="180" step="1" value="0">
+        <span class="val" id="colorHueVal">0°</span>
+      </div>
+      <div class="setting-row">
+        <label title="彩度を増減">彩度</label>
+        <input type="range" id="colorSat" min="-100" max="100" step="1" value="0">
+        <span class="val" id="colorSatVal">0%</span>
+      </div>
+      <div class="setting-row">
+        <label title="明度を増減">明度</label>
+        <input type="range" id="colorBri" min="-100" max="100" step="1" value="0">
+        <span class="val" id="colorBriVal">0%</span>
+      </div>
+      <div class="setting-row">
+        <button class="btn" id="btnApplyColor" disabled style="flex:1" title="色調整を選択ポイントに適用">適用</button>
+        <button class="btn" id="btnResetColorSliders" style="flex:0 0 auto; padding:4px 8px; font-size:0.75rem;" title="スライダーを初期値に戻す">リセット</button>
       </div>
     </div>
-    <h3>Info</h3>
-    <div class="info-row"><span>Total</span><span class="info-val" id="infoTotal">-</span></div>
-    <div class="info-row"><span>Selected</span><span class="info-val" id="infoSelected">0</span></div>
-    <div class="info-row"><span>Masked</span><span class="info-val" id="infoMasked">0</span></div>
-    <div class="info-row"><span>Original</span><span class="info-val" id="infoOriginal">-</span></div>
   </div>
 </div>
 
-<div class="statusbar" id="statusbar">Ready</div>
+<div class="statusbar" id="statusbar">準備完了</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -1745,75 +1737,6 @@ function drawBendCurve() {
   ctx.fillText('−', 7, h - mg + 3);
 }
 
-// Bend curve canvas interaction
-{
-  const bc = $('bendCurveCanvas');
-  bc.addEventListener('pointerdown', (e) => {
-    // Auto-activate bend if not active
-    if (!bendActive && state.pointCloud) initBend();
-
-    const rect = bc.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * (bc.width / rect.width);
-    const my = (e.clientY - rect.top) * (bc.height / rect.height);
-    const mg = 14;
-    const pw = bc.width - mg * 2, ph = bc.height - mg * 2;
-    const cy = mg + ph / 2;
-    const cpX = [0, 1 / 3, 2 / 3, 1].map(v => mg + v * pw);
-
-    let bestDist = 18, bestIdx = -1;
-    for (let i = 0; i < 4; i++) {
-      const px = cpX[i];
-      const py = cy - bendControlPoints[i].y * (ph / 2);
-      const d = Math.sqrt((mx - px) ** 2 + (my - py) ** 2);
-      if (d < bestDist) { bestDist = d; bestIdx = i; }
-    }
-    if (bestIdx >= 0) {
-      bendDraggingPoint = bestIdx;
-      bc.setPointerCapture(e.pointerId);
-      e.preventDefault();
-    }
-  });
-  bc.addEventListener('pointermove', (e) => {
-    if (bendDraggingPoint < 0) return;
-    const rect = bc.getBoundingClientRect();
-    const my = (e.clientY - rect.top) * (bc.height / rect.height);
-    const mg = 14;
-    const ph = bc.height - mg * 2;
-    const cy = mg + ph / 2;
-    const ny = -(my - cy) / (ph / 2);
-    bendControlPoints[bendDraggingPoint].y = Math.max(-1, Math.min(1, ny));
-    drawBendCurve();
-    if (bendActive) updateBendPreview();
-    e.preventDefault();
-  });
-  bc.addEventListener('pointerup', (e) => {
-    bendDraggingPoint = -1;
-  });
-  bc.addEventListener('lostpointercapture', () => {
-    bendDraggingPoint = -1;
-  });
-}
-
-// Bend settings event listeners
-$('bendStrength').addEventListener('input', (e) => {
-  $('bendStrengthVal').textContent = parseFloat(e.target.value).toFixed(2);
-  if (!bendActive && state.pointCloud) initBend();
-  if (bendActive) updateBendPreview();
-});
-$('bendSourceAxis').addEventListener('change', () => {
-  if (!bendActive && state.pointCloud) initBend();
-  if (bendActive) { cacheBendParams(); updateBendPreview(); }
-});
-$('bendDisplaceAxis').addEventListener('change', () => {
-  if (!bendActive && state.pointCloud) initBend();
-  if (bendActive) { cacheBendParams(); updateBendPreview(); }
-});
-$('btnBendApply').addEventListener('click', applyBend);
-$('btnBendCancel').addEventListener('click', cancelBend);
-$('btnBendReset').addEventListener('click', resetBendCurve);
-
-// Draw initial curve
-drawBendCurve();
 
 // ===== Densify Brush Tool =====
 let densifyBrushActive = false;
@@ -3191,11 +3114,11 @@ let dragCounter = 0;
 function _updateDropOverlayText(shiftHeld) {
   const hasData = state.vertices.length > 0;
   if (hasData && shiftHeld) {
-    $('dropOverlayText').textContent = 'Drop to MERGE (Shift held)';
+    $('dropOverlayText').textContent = 'ドロップでマージ（Shift押下中）';
   } else if (hasData) {
-    $('dropOverlayText').textContent = 'Drop to replace / Shift+Drop to merge';
+    $('dropOverlayText').textContent = 'ドロップで置換 / Shift+ドロップでマージ';
   } else {
-    $('dropOverlayText').textContent = 'Drop PLY file here';
+    $('dropOverlayText').textContent = 'PLYファイルをここにドロップ';
   }
 }
 viewport.addEventListener('dragenter', (e) => {
@@ -3271,15 +3194,12 @@ const toolButtons = {
   move: $('toolMove'),
   scale: $('toolScale'),
   rotate: $('toolRotate'),
-  bend: $('toolBend'),
 };
 
 function setTool(tool) {
   // 未確定の変形操作を自動確定してからツール切り替え
   if (moveAccumulated && tool !== 'move') applyMoveImmediate();
   if (scalePreviewMode && tool !== 'scale') applyScaleImmediate();
-  if (bendActive && tool !== 'bend') applyBend();
-
   state.currentTool = tool;
   if (tool === 'brush' || tool === 'rect') lastSelectionTool = tool;
   controls.enabled = (tool === 'navigate');
@@ -3293,7 +3213,7 @@ function setTool(tool) {
   }
   clearOverlay();
   if (tool === 'navigate') canvas.style.cursor = 'grab';
-  else if (tool === 'move' || tool === 'scale' || tool === 'rotate' || tool === 'bend') canvas.style.cursor = 'default';
+  else if (tool === 'move' || tool === 'scale' || tool === 'rotate') canvas.style.cursor = 'default';
   else canvas.style.cursor = 'crosshair';
 
   // Show/hide gizmos
@@ -3303,7 +3223,6 @@ function setTool(tool) {
   if (tool === 'move') createMoveArrows();
   else if (tool === 'scale') createScaleHandles();
   else if (tool === 'rotate') createRotateRings();
-  else if (tool === 'bend') initBend();
 }
 
 $('toolNavigate').addEventListener('click', () => setTool('navigate'));
@@ -3314,7 +3233,6 @@ $('toolDensifyBrush').addEventListener('click', () => setTool('densifyBrush'));
 $('toolMove').addEventListener('click', () => setTool('move'));
 $('toolScale').addEventListener('click', () => setTool('scale'));
 $('toolRotate').addEventListener('click', () => setTool('rotate'));
-$('toolBend').addEventListener('click', () => setTool('bend'));
 
 // ===== Screen Projection =====
 let cachedScreenPos = null;
@@ -3810,6 +3728,165 @@ function thinSelected() {
   setStatus(`Thinned: removed ${toRemove.size.toLocaleString()} / ${targets.size.toLocaleString()} points (spacing: ${spacing})`);
 }
 
+// ===== Subdivide large Gaussians =====
+function subdivideLargeGaussians() {
+  if (!state.pointCloud || state.vertices.length === 0) return;
+  const hasScale = state.offsets.scale_0 !== undefined;
+  if (!hasScale) { setStatus('No scale properties in PLY'); return; }
+
+  const thresholdMult = parseFloat($('subdivThreshold').value);
+  const divisions = parseInt($('subdivDivisions').value);
+  const vs = state.vertexSize;
+  const s0Off = state.offsets.scale_0;
+  const s1Off = state.offsets.scale_1;
+  const s2Off = state.offsets.scale_2;
+  const hasRot = state.offsets.rot_0 !== undefined;
+  const r0Off = hasRot ? state.offsets.rot_0 : 0;
+  const r1Off = hasRot ? state.offsets.rot_1 : 0;
+  const r2Off = hasRot ? state.offsets.rot_2 : 0;
+  const r3Off = hasRot ? state.offsets.rot_3 : 0;
+  const xOff = state.offsets.x, yOff = state.offsets.y, zOff = state.offsets.z;
+
+  // Compute max axis scale for each vertex
+  const n = state.vertices.length;
+  const maxScales = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const data = getVertexDataView(i);
+    const s0 = Math.exp(data.getFloat32(s0Off, true));
+    const s1 = Math.exp(data.getFloat32(s1Off, true));
+    const s2 = Math.exp(data.getFloat32(s2Off, true));
+    maxScales[i] = Math.max(s0, s1, s2);
+  }
+
+  // Compute median of maxScales
+  const sorted = Float32Array.from(maxScales).sort();
+  const median = sorted[Math.floor(n * 0.5)] || 1.0;
+  const threshold = median * thresholdMult;
+
+  // Find vertices to subdivide
+  const toSubdivide = [];
+  for (let i = 0; i < n; i++) {
+    if (maxScales[i] > threshold) toSubdivide.push(i);
+  }
+
+  if (toSubdivide.length === 0) {
+    setStatus(`No Gaussians exceed threshold (${threshold.toFixed(4)})`);
+    return;
+  }
+
+  const totalNew = toSubdivide.length * (divisions ** 3);
+  if (!confirm(`${toSubdivide.length.toLocaleString()} 個のガウシアンを ${totalNew.toLocaleString()} 個に分割します。続行しますか？`)) return;
+
+  const logDiv = Math.log(divisions);
+  const prevSelection = new Set(state.selected);
+  const newVertices = [];
+
+  for (const idx of toSubdivide) {
+    const srcData = getVertexDataView(idx);
+    const ox = srcData.getFloat32(xOff, true);
+    const oy = srcData.getFloat32(yOff, true);
+    const oz = srcData.getFloat32(zOff, true);
+    const ls0 = srcData.getFloat32(s0Off, true);
+    const ls1 = srcData.getFloat32(s1Off, true);
+    const ls2 = srcData.getFloat32(s2Off, true);
+    const sigma0 = Math.exp(ls0);
+    const sigma1 = Math.exp(ls1);
+    const sigma2 = Math.exp(ls2);
+
+    // Rotation quaternion (w, x, y, z convention in 3DGS)
+    let qw = 1, qx = 0, qy = 0, qz = 0;
+    if (hasRot) {
+      qw = srcData.getFloat32(r0Off, true);
+      qx = srcData.getFloat32(r1Off, true);
+      qy = srcData.getFloat32(r2Off, true);
+      qz = srcData.getFloat32(r3Off, true);
+      // Normalize
+      const qlen = Math.sqrt(qw*qw + qx*qx + qy*qy + qz*qz);
+      if (qlen > 0.0001) { qw /= qlen; qx /= qlen; qy /= qlen; qz /= qlen; }
+    }
+
+    // New log-scales
+    const newLS0 = ls0 - logDiv;
+    const newLS1 = ls1 - logDiv;
+    const newLS2 = ls2 - logDiv;
+
+    // Generate grid positions in local frame
+    for (let gi = 0; gi < divisions; gi++) {
+      for (let gj = 0; gj < divisions; gj++) {
+        for (let gk = 0; gk < divisions; gk++) {
+          // Local offset: spans from -sigma*(1-1/N) to +sigma*(1-1/N)
+          const lx = sigma0 * 2 * ((gi + 0.5) / divisions - 0.5);
+          const ly = sigma1 * 2 * ((gj + 0.5) / divisions - 0.5);
+          const lz = sigma2 * 2 * ((gk + 0.5) / divisions - 0.5);
+
+          // Rotate local offset by quaternion: q * v * q^-1
+          const wx = qw * lx + qy * lz - qz * ly;
+          const wy = qw * ly + qz * lx - qx * lz;
+          const wz = qw * lz + qx * ly - qy * lx;
+          const ww = -qx * lx - qy * ly - qz * lz;
+          const rx = ww * -qx + wx * qw - wy * qz + wz * qy;
+          const ry = ww * -qy + wy * qw - wz * qx + wx * qz;
+          const rz = ww * -qz + wz * qw - wx * qy + wy * qx;
+
+          // Clone vertex data and modify position + scale
+          const data = cloneVertexData(idx);
+          const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+          dv.setFloat32(xOff, ox + rx, true);
+          dv.setFloat32(yOff, oy + ry, true);
+          dv.setFloat32(zOff, oz + rz, true);
+          dv.setFloat32(s0Off, newLS0, true);
+          dv.setFloat32(s1Off, newLS1, true);
+          dv.setFloat32(s2Off, newLS2, true);
+
+          newVertices.push({ data });
+        }
+      }
+    }
+  }
+
+  // Remove original vertices and add new ones
+  const toRemoveSet = new Set(toSubdivide);
+  const removedEntries = toSubdivide.map(idx => ({ index: idx, vertex: state.vertices[idx] }));
+  const prevLayerMap = new Map();
+  for (const idx of toSubdivide) {
+    const layer = getLayerForVertex(idx);
+    if (layer) prevLayerMap.set(idx, layer.id);
+  }
+
+  state.vertices = state.vertices.filter((_, i) => !toRemoveSet.has(i));
+  updateLayerIndicesAfterDelete(toRemoveSet);
+
+  const startIdx = state.vertices.length;
+  for (const v of newVertices) state.vertices.push(v);
+  updateLayerIndicesAfterAdd(startIdx, newVertices.length);
+
+  state.undoStack.push({
+    type: 'subdivide',
+    removedEntries,
+    prevLayerMap,
+    addedCount: newVertices.length,
+    addedVertices: newVertices,
+    prevSelection,
+  });
+  state.redoStack = [];
+
+  state.selected.clear();
+  state.rawSelected.clear();
+  rebuildGeometry();
+  updateSelectionDisplay();
+  setStatus(`Subdivided: ${toSubdivide.length.toLocaleString()} → ${newVertices.length.toLocaleString()} Gaussians (÷${divisions})`);
+}
+
+// Helper: get DataView for vertex data (srcIndex or data)
+function getVertexDataView(idx) {
+  const v = state.vertices[idx];
+  if ('srcIndex' in v) {
+    const base = v.srcIndex * state.vertexSize;
+    return new DataView(state.rawBuffer, base, state.vertexSize);
+  }
+  return new DataView(v.data.buffer, v.data.byteOffset, v.data.byteLength);
+}
+
 // ===== Recolor =====
 // ===== RGB ↔ HSL helpers =====
 function rgbToHsl(r, g, b) {
@@ -4194,6 +4271,7 @@ $('btnDensify').addEventListener('click', startDensifyPreview);
 $('btnDensifyApply').addEventListener('click', applyDensifyPreview);
 $('btnDensifyCancel').addEventListener('click', cancelDensifyPreview);
 $('btnThin').addEventListener('click', thinSelected);
+$('btnSubdivide').addEventListener('click', subdivideLargeGaussians);
 
 $('btnInvert').addEventListener('click', () => {
   if (!state.pointCloud) return;
@@ -4405,6 +4483,27 @@ function undo() {
       for (let i = startIdx; i < state.vertices.length; i++) layer.vertexIndices.delete(i);
     }
     state.vertices.splice(startIdx, op.count);
+  } else if (op.type === 'subdivide') {
+    // Remove added vertices
+    const addStart = state.vertices.length - op.addedCount;
+    for (const layer of state.layers) {
+      for (let i = addStart; i < state.vertices.length; i++) layer.vertexIndices.delete(i);
+    }
+    state.vertices.splice(addStart, op.addedCount);
+    // Re-insert removed originals
+    const newLen = state.vertices.length + op.removedEntries.length;
+    const newVerts = new Array(newLen);
+    let si = 0, ei = 0;
+    for (let i = 0; i < newLen; i++) {
+      if (ei < op.removedEntries.length && op.removedEntries[ei].index === i) {
+        newVerts[i] = op.removedEntries[ei].vertex;
+        ei++;
+      } else {
+        newVerts[i] = state.vertices[si++];
+      }
+    }
+    state.vertices = newVerts;
+    rebuildLayerIndicesForUndelete(op.removedEntries, op.prevLayerMap);
   } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp' || op.type === 'bend' || op.type === 'recolor') {
     for (const entry of op.entries) {
       state.vertices[entry.index] = entry.oldVertex;
@@ -4436,6 +4535,15 @@ function redo() {
     const startIdx = state.vertices.length;
     for (let i = 0; i < op.vertices.length; i++) state.vertices.push(op.vertices[i]);
     updateLayerIndicesAfterAdd(startIdx, op.count);
+  } else if (op.type === 'subdivide') {
+    // Re-remove originals
+    const deletedSet = new Set(op.removedEntries.map(e => e.index));
+    state.vertices = state.vertices.filter((_, i) => !deletedSet.has(i));
+    updateLayerIndicesAfterDelete(deletedSet);
+    // Re-add subdivided vertices
+    const startIdx = state.vertices.length;
+    for (const v of op.addedVertices) state.vertices.push(v);
+    updateLayerIndicesAfterAdd(startIdx, op.addedCount);
   } else if (op.type === 'move' || op.type === 'scale' || op.type === 'rotate' || op.type === 'warp' || op.type === 'bend' || op.type === 'recolor') {
     for (const entry of op.entries) {
       state.vertices[entry.index] = entry.newVertex;
@@ -4667,6 +4775,7 @@ function updateButtons() {
   $('btnDelete').disabled = !hasSel;
   $('btnDensify').disabled = !hasSel;
   $('btnThin').disabled = !hasSel;
+  $('btnSubdivide').disabled = !hasData;
   $('btnInvert').disabled = !hasData;
   $('btnSelectAll').disabled = !hasData;
   $('btnClearSel').disabled = !hasSel;
@@ -4744,13 +4853,20 @@ $('thinSpacing').addEventListener('input', () => {
   $('thinSpacingVal').textContent = parseFloat($('thinSpacing').value).toFixed(3);
 });
 
+$('subdivThreshold').addEventListener('input', () => {
+  $('subdivThresholdVal').textContent = parseFloat($('subdivThreshold').value).toFixed(1) + 'x median';
+});
+$('subdivDivisions').addEventListener('input', () => {
+  $('subdivDivisionsVal').textContent = $('subdivDivisions').value;
+});
+
 $('warpStrength').addEventListener('input', () => {
   $('warpStrengthVal').textContent = parseFloat($('warpStrength').value).toFixed(1);
 });
 
 $('scaleFalloff').addEventListener('input', () => {
   const v = parseFloat($('scaleFalloff').value);
-  $('scaleFalloffVal').textContent = v === 0 ? '0 (uniform)' : v.toFixed(1);
+  $('scaleFalloffVal').textContent = v === 0 ? '0 (均一)' : v.toFixed(1);
   if (scaleActive) regenerateScalePreview();
 });
 
@@ -4816,7 +4932,6 @@ window.addEventListener('keydown', (e) => {
       e.preventDefault(); return;
     }
     if (scalePreviewMode) { cancelScalePreview(); e.preventDefault(); return; }
-    if (bendActive) { cancelBend(); e.preventDefault(); return; }
     if (state.previewMode) { cancelDensifyPreview(); e.preventDefault(); return; }
     // Transform tool selected but no operation started: revert to selection tool (keep selection)
     const isTransformTool = state.currentTool === 'move' || state.currentTool === 'scale' || state.currentTool === 'rotate';
@@ -4829,7 +4944,6 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'Enter') {
     if (moveAccumulated) { applyMove(); e.preventDefault(); return; }
     if (scalePreviewMode) { applyScalePreview(); e.preventDefault(); return; }
-    if (bendActive) { applyBend(); e.preventDefault(); return; }
     if (state.previewMode) { applyDensifyPreview(); e.preventDefault(); return; }
   }
   else if (noMod && (e.key === 'v' || e.key === 'V')) { setTool('navigate'); e.preventDefault(); }
@@ -4840,7 +4954,6 @@ window.addEventListener('keydown', (e) => {
   else if (noMod && (e.key === 'g' || e.key === 'G')) { setTool('move'); e.preventDefault(); }
   else if (noMod && (e.key === 's' || e.key === 'S')) { setTool('scale'); e.preventDefault(); }
   else if (noMod && (e.key === 't' || e.key === 'T')) { setTool('rotate'); e.preventDefault(); }
-  else if (noMod && (e.key === 'n' || e.key === 'N')) { setTool('bend'); e.preventDefault(); }
   else if (noMod && (e.key === 'm' || e.key === 'M')) { maskSelection(); e.preventDefault(); }
   else if (noMod && (e.key === 'u' || e.key === 'U')) { unmaskAll(); e.preventDefault(); }
   else if (noMod && (e.key === 'p' || e.key === 'P')) { $('btnPickColor').click(); e.preventDefault(); }

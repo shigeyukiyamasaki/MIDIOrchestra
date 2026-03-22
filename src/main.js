@@ -537,9 +537,11 @@ let plySmokeRiseSpeed = 0.3;
 let plySmokeSwirl = 0.5;
 let plySmokeSpread = 0.5;
 let plySmokeCycle = 8;
+let plySmokeCohesion = 0.0;
 let plySmokeIndices = null;
 let plySmokeOrigPos = null;
 let plySmokeTime = 0;
+let _plySmokeCenter = null;  // 煙vertexの重心（ローカル座標）
 
 let plyFireEnabled = false;
 let plyFireMode = 'color';  // 'color' or 'sphere'
@@ -567,6 +569,7 @@ let plyFireSmokeColor = '#888888';
 let plyFireSmokeSpread = 0.5;
 let plyFireSmokeOpacity = 0.4;
 let plyFireSmokeDensity = 0.4;
+let plyFireSmokeCohesion = 0.0;
 const PLY_FIRE_SMOKE_MAX = 200;
 let plyFireSmokeTexture = null;
 let plyFireSparkEnabled = false;
@@ -2059,6 +2062,7 @@ function syncWaterSettingsFromDOM() {
   plySmokeRiseSpeed = gv('plySmokeRiseSpeed', 0.3);
   plySmokeSwirl = gv('plySmokeSwirl', 0.5);
   plySmokeSpread = gv('plySmokeSpread', 0.5);
+  plySmokeCohesion = gv('plySmokeCohesion', 0.0);
   plySmokeCycle = gv('plySmokeCycle', 8);
   plyFireEnabled = gc('plyFireEnabled');
   plyFireMode = gs('plyFireMode', 'color');
@@ -2093,6 +2097,7 @@ function syncWaterSettingsFromDOM() {
   plyFireSmokeSpread = gv('plyFireSmokeSpread', 0.5);
   plyFireSmokeOpacity = gv('plyFireSmokeOpacity', 0.4);
   plyFireSmokeDensity = gv('plyFireSmokeDensity', 0.4);
+  plyFireSmokeCohesion = gv('plyFireSmokeCohesion', 0.0);
   plyFireSparkEnabled = gc('plyFireSparkEnabled', false);
   plyFireSparkRiseSpeed = gv('plyFireSparkRiseSpeed', 3.0);
   plyFireSparkSize = gv('plyFireSparkSize', 0.3);
@@ -2484,8 +2489,17 @@ function setupPlySmokeEffect() {
   if (indices.length > 0) {
     plySmokeIndices = new Uint32Array(indices);
     plySmokeOrigPos = new Float32Array(origPositions);
+    // 煙vertexの重心を計算（水平面のみ: localRight/localForward方向）
+    let cx = 0, cy = 0, cz = 0;
+    for (let j = 0; j < indices.length; j++) {
+      cx += origPositions[j * 3];
+      cy += origPositions[j * 3 + 1];
+      cz += origPositions[j * 3 + 2];
+    }
+    _plySmokeCenter = { x: cx / indices.length, y: cy / indices.length, z: cz / indices.length };
     console.log(`[PlySmoke] ${indices.length} vertices matched`);
   } else {
+    _plySmokeCenter = null;
     console.log('[PlySmoke] No vertices matched');
   }
 }
@@ -2532,6 +2546,12 @@ function updatePlySmokeEffect() {
     const indices = plySmokeIndices;
     const orig = plySmokeOrigPos;
 
+    const cohesion = plySmokeCohesion;
+    const hasCent = _plySmokeCenter !== null && cohesion > 0;
+    const centX = hasCent ? _plySmokeCenter.x : 0;
+    const centY = hasCent ? _plySmokeCenter.y : 0;
+    const centZ = hasCent ? _plySmokeCenter.z : 0;
+
     for (let j = 0; j < indices.length; j++) {
       const i = indices[j];
       const ox = orig[j * 3], oy = orig[j * 3 + 1], oz = orig[j * 3 + 2];
@@ -2544,22 +2564,34 @@ function updatePlySmokeEffect() {
       // 上昇（ワールド上方向）
       const riseAmount = progress * rise * cycle * 0.5;
 
+      // cohesion: 横方向の効果を抑制
+      const lateralScale = 1 - cohesion * 0.9;
+
       // 横方向の揺らぎ（上に行くほど大きく）— ワールド水平面上
-      const swirlR = swirl * progress * Math.sin(t * 1.3 + ox * 5.1 + progress * 4.0);
-      const swirlF = swirl * progress * Math.cos(t * 0.9 + oz * 4.7 + progress * 3.5);
+      const swirlR = swirl * progress * Math.sin(t * 1.3 + ox * 5.1 + progress * 4.0) * lateralScale;
+      const swirlF = swirl * progress * Math.cos(t * 0.9 + oz * 4.7 + progress * 3.5) * lateralScale;
 
       // 拡散（上に行くほど外側に広がる）— ワールド水平面上
-      const spreadR = spread * progress * progress * Math.sin(ox * 11.3 + oz * 7.1);
-      const spreadF = spread * progress * progress * Math.cos(ox * 8.7 + oz * 12.3);
+      const spreadR = spread * progress * progress * Math.sin(ox * 11.3 + oz * 7.1) * lateralScale;
+      const spreadF = spread * progress * progress * Math.cos(ox * 8.7 + oz * 12.3) * lateralScale;
+
+      // cohesion: 元のスポーン位置を重心に引き寄せ（水平面のみ）
+      let baseX = ox, baseZ = oz;
+      if (hasCent) {
+        // 重心方向にlerpし、上昇するほど強く引き寄せる
+        const pull = cohesion * (0.5 + progress * 0.5);
+        baseX = ox + (centX - ox) * pull;
+        baseZ = oz + (centZ - oz) * pull;
+      }
 
       // ローカル座標での変位を合成
       const dx = localUp.x * riseAmount + localRight.x * (swirlR + spreadR) + localForward.x * (swirlF + spreadF);
       const dy = localUp.y * riseAmount + localRight.y * (swirlR + spreadR) + localForward.y * (swirlF + spreadF);
       const dz = localUp.z * riseAmount + localRight.z * (swirlR + spreadR) + localForward.z * (swirlF + spreadF);
 
-      pos[i * 3]     = ox + dx;
+      pos[i * 3]     = baseX + dx;
       pos[i * 3 + 1] = oy + dy;
-      pos[i * 3 + 2] = oz + dz;
+      pos[i * 3 + 2] = baseZ + dz;
     }
     posAttr.needsUpdate = true;
   });
@@ -2874,6 +2906,7 @@ let _smokeGeometry = null;     // BufferGeometry
 let _smokeMaterial = null;     // PointsMaterial
 let _smokeParticleData = [];   // 各パーティクルの状態 [{x,y,z,vx,vy,vz,age,lifetime,initSize}]
 let _smokeTexOpacity = -1;
+let _smokeCentroid = null;     // 火の上部重心（cohesion用）
 
 function _getSmokePointTexture() {
   if (plyFireSmokeTexture && _smokeTexOpacity === plyFireSmokeOpacity) return plyFireSmokeTexture;
@@ -2980,7 +3013,30 @@ function updateFireSmokeParticles() {
     });
 
     if (currentPositions) {
+      // 火の上部の重心を計算（cohesion用）
+      let cxSum = 0, cySum = 0, czSum = 0, cCount = 0;
+      for (let j = 0; j < plyFireIndices.length; j++) {
+        const h = (orig[j * 3 + 1] - minH) / hRange;
+        if (h >= 0.6) {
+          const fi = plyFireIndices[j];
+          const wp = new THREE.Vector3(
+            currentPositions[fi * 3],
+            currentPositions[fi * 3 + 1],
+            currentPositions[fi * 3 + 2]
+          );
+          glbModel.localToWorld(wp);
+          cxSum += wp.x; cySum += wp.y; czSum += wp.z;
+          cCount++;
+        }
+      }
+      const hasCentroid = cCount > 0;
+      const centX = hasCentroid ? cxSum / cCount : 0;
+      const centY = hasCentroid ? cySum / cCount : 0;
+      const centZ = hasCentroid ? czSum / cCount : 0;
+      _smokeCentroid = hasCentroid ? { x: centX, y: centY, z: centZ } : null;
+
       const spawnCount = Math.min(3, maxCount - _smokeParticleData.length);
+      const cohesion = plyFireSmokeCohesion;
       for (let s = 0; s < spawnCount; s++) {
         let attempts = 0;
         while (attempts < 10) {
@@ -2994,11 +3050,18 @@ function updateFireSmokeParticles() {
               currentPositions[i * 3 + 2]
             );
             glbModel.localToWorld(wp);
+            // cohesion: スポーン位置を重心に引き寄せ
+            let sx = wp.x, sy = wp.y, sz = wp.z;
+            if (hasCentroid && cohesion > 0) {
+              sx = wp.x + (centX - wp.x) * cohesion;
+              sz = wp.z + (centZ - wp.z) * cohesion;
+              // Y は重心ではなく元の高さを維持（煙の発生点）
+            }
             _smokeParticleData.push({
-              x: wp.x, y: wp.y, z: wp.z,
-              vx: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0,
+              x: sx, y: sy, z: sz,
+              vx: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0 * (1 - cohesion * 0.7),
               vy: plyFireSmokeRiseSpeed,
-              vz: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0,
+              vz: (Math.random() - 0.5) * plyFireSmokeSpread * 2.0 * (1 - cohesion * 0.7),
               age: 0,
               lifetime: 2.0 + Math.random() * 2.0,
               initSize: plyFireSmokeSize,
@@ -3014,6 +3077,12 @@ function updateFireSmokeParticles() {
 
   // 更新
   const spread = plyFireSmokeSpread;
+  const cohesion = plyFireSmokeCohesion;
+  const hasCent = _smokeCentroid !== null && cohesion > 0;
+  const centX = hasCent ? _smokeCentroid.x : 0;
+  const centZ = hasCent ? _smokeCentroid.z : 0;
+  // cohesionが高いほど強く中心軸に引き寄せ（XZ平面のみ）
+  const pullStrength = cohesion * 3.0;
   for (let i = _smokeParticleData.length - 1; i >= 0; i--) {
     const d = _smokeParticleData[i];
     d.age += dt;
@@ -3021,11 +3090,22 @@ function updateFireSmokeParticles() {
       _smokeParticleData.splice(i, 1);
       continue;
     }
-    const swirlX = Math.sin(d.age * 2.0 + d.seed * 7.3) * spread * dt;
-    const swirlZ = Math.cos(d.age * 1.5 + d.seed * 11.1) * spread * dt;
+    const swirlScale = 1 - cohesion * 0.8; // cohesionが高いほど渦巻き抑制
+    const swirlX = Math.sin(d.age * 2.0 + d.seed * 7.3) * spread * dt * swirlScale;
+    const swirlZ = Math.cos(d.age * 1.5 + d.seed * 11.1) * spread * dt * swirlScale;
     d.x += d.vx * dt + swirlX;
     d.y += d.vy * dt;
     d.z += d.vz * dt + swirlZ;
+    // cohesion: 中心軸に引き寄せる力（XZ平面）
+    if (hasCent) {
+      const dx = centX - d.x;
+      const dz = centZ - d.z;
+      d.x += dx * pullStrength * dt;
+      d.z += dz * pullStrength * dt;
+      // 水平速度も減衰させる
+      d.vx *= 1 - cohesion * 0.05;
+      d.vz *= 1 - cohesion * 0.05;
+    }
     d.vy *= 0.998;
   }
 
@@ -6834,6 +6914,11 @@ function setupEventListeners() {
     document.getElementById('plySmokeSpreadValue').textContent = v;
     plySmokeSpread = v;
   });
+  document.getElementById('plySmokeCohesion')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plySmokeCohesionValue').textContent = v;
+    plySmokeCohesion = v;
+  });
   document.getElementById('plySmokeCycle')?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('plySmokeCycleValue').textContent = v;
@@ -7120,6 +7205,11 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('plyFireSmokeDensityValue').textContent = v;
     plyFireSmokeDensity = v;
+  });
+  document.getElementById('plyFireSmokeCohesion')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyFireSmokeCohesionValue').textContent = v;
+    plyFireSmokeCohesion = v;
   });
 
   // 火の粉イベントリスナー
