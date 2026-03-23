@@ -4031,6 +4031,7 @@ function setupThreeJS() {
       cameraNear: { value: camera.near },
       cameraFar: { value: camera.far },
       outlineAutoColor: { value: 0.0 },
+      outlineAutoDarkness: { value: 0.5 },
       toonShades: { value: 0.0 },
       toonDarkness: { value: 0.0 },
       toonSmoothness: { value: 1.0 }
@@ -4055,6 +4056,7 @@ function setupThreeJS() {
       uniform float cameraNear;
       uniform float cameraFar;
       uniform float outlineAutoColor;
+      uniform float outlineAutoDarkness;
       uniform float toonShades;
       uniform float toonDarkness;
       uniform float toonSmoothness;
@@ -4184,7 +4186,10 @@ function setupThreeJS() {
             if (outlineAutoColor > 0.5) {
               vec2 objUV = nearestObjectUV(vUv, outlineWidth + 2.0);
               vec3 objColor = texture2D(tDiffuse, objUV).rgb;
-              oCol = pow(objColor, vec3(2.5)) * 0.8;
+              { float _lum = dot(objColor, vec3(0.299, 0.587, 0.114));
+              vec3 _chroma = objColor - _lum;
+              float _satBoost = 1.0 + (1.0 - outlineAutoDarkness) * 0.8;
+              oCol = clamp(_chroma * _satBoost + _lum * outlineAutoDarkness, 0.0, 1.0) * outlineAutoDarkness; }
             } else {
               oCol = outlineColor;
             }
@@ -4229,7 +4234,10 @@ function setupThreeJS() {
           if (outlineAutoColor > 0.5) {
             vec2 objUV2 = nearestObjectUV(vUv, outlineWidth);
             vec3 objColor2 = texture2D(tDiffuse, objUV2).rgb;
-            oCol2 = pow(objColor2, vec3(2.5)) * 0.8;
+            { float _lum2 = dot(objColor2, vec3(0.299, 0.587, 0.114));
+              vec3 _chroma2 = objColor2 - _lum2;
+              float _satBoost2 = 1.0 + (1.0 - outlineAutoDarkness) * 0.8;
+              oCol2 = clamp(_chroma2 * _satBoost2 + _lum2 * outlineAutoDarkness, 0.0, 1.0) * outlineAutoDarkness; }
           } else {
             oCol2 = outlineColor;
           }
@@ -6388,6 +6396,11 @@ function setupEventListeners() {
   });
   document.getElementById('toonOutlineAutoColor')?.addEventListener('change', (e) => {
     if (toonPass) toonPass.uniforms.outlineAutoColor.value = e.target.checked ? 1.0 : 0.0;
+  });
+  document.getElementById('toonOutlineAutoDarkness')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('toonOutlineAutoDarknessValue').textContent = v.toFixed(2);
+    if (toonPass) toonPass.uniforms.outlineAutoDarkness.value = v;
   });
   document.getElementById('toonOutlineOuterOnly')?.addEventListener('change', (e) => {
     if (toonPass) toonPass.uniforms.outlineOuterOnly.value = e.target.checked ? 1.0 : 0.0;
