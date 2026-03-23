@@ -4030,6 +4030,7 @@ function setupThreeJS() {
       outlineOuterOnly: { value: 1.0 },
       cameraNear: { value: camera.near },
       cameraFar: { value: camera.far },
+      outlineAutoColor: { value: 0.0 },
       toonShades: { value: 0.0 },
       toonDarkness: { value: 0.0 },
       toonSmoothness: { value: 1.0 }
@@ -4053,6 +4054,7 @@ function setupThreeJS() {
       uniform float outlineOuterOnly;
       uniform float cameraNear;
       uniform float cameraFar;
+      uniform float outlineAutoColor;
       uniform float toonShades;
       uniform float toonDarkness;
       uniform float toonSmoothness;
@@ -4119,6 +4121,24 @@ function setupThreeJS() {
         return cd - minD;
       }
 
+      // 最もカメラに近い近傍ピクセルのUVを返す（オブジェクト側の色取得用）
+      vec2 nearestObjectUV(vec2 center, float w) {
+        vec2 ps = 1.0 / resolution;
+        float minD = linearizeDepth(texture2D(tDepth, center).r);
+        vec2 bestUV = center;
+        vec2 dirs[8];
+        dirs[0] = vec2(-1.0, 1.0); dirs[1] = vec2(0.0, 1.0);
+        dirs[2] = vec2(1.0, 1.0);  dirs[3] = vec2(-1.0, 0.0);
+        dirs[4] = vec2(1.0, 0.0);  dirs[5] = vec2(-1.0, -1.0);
+        dirs[6] = vec2(0.0, -1.0); dirs[7] = vec2(1.0, -1.0);
+        for (int i = 0; i < 8; i++) {
+          vec2 uv = center + dirs[i] * w * ps;
+          float d = linearizeDepth(texture2D(tDepth, uv).r);
+          if (d < minD) { minD = d; bestUV = uv; }
+        }
+        return bestUV;
+      }
+
       void main() {
         vec3 color = texture2D(tDiffuse, vUv).rgb;
 
@@ -4160,7 +4180,15 @@ function setupThreeJS() {
             // 色エッジ × 外側マスク
             float edge2 = colorEdge * outerMask;
             float em = smoothstep(outlineThreshold * 0.3, outlineThreshold, edge2);
-            color = mix(color, outlineColor, em * outlineStrength);
+            vec3 oCol;
+            if (outlineAutoColor > 0.5) {
+              vec2 objUV = nearestObjectUV(vUv, outlineWidth + 2.0);
+              vec3 objColor = texture2D(tDiffuse, objUV).rgb;
+              oCol = pow(objColor, vec3(2.5)) * 0.8;
+            } else {
+              oCol = outlineColor;
+            }
+            color = mix(color, oCol, em * outlineStrength);
             gl_FragColor = vec4(color, 1.0);
             return;
           } else if (outlineMode == 0) {
@@ -4197,7 +4225,15 @@ function setupThreeJS() {
             return;
           }
           float edgeMask = smoothstep(outlineThreshold * 0.5, outlineThreshold, edge);
-          color = mix(color, outlineColor, edgeMask * outlineStrength);
+          vec3 oCol2;
+          if (outlineAutoColor > 0.5) {
+            vec2 objUV2 = nearestObjectUV(vUv, outlineWidth);
+            vec3 objColor2 = texture2D(tDiffuse, objUV2).rgb;
+            oCol2 = pow(objColor2, vec3(2.5)) * 0.8;
+          } else {
+            oCol2 = outlineColor;
+          }
+          color = mix(color, oCol2, edgeMask * outlineStrength);
         }
 
         gl_FragColor = vec4(color, 1.0);
@@ -6349,6 +6385,9 @@ function setupEventListeners() {
   });
   document.getElementById('toonOutlineColor')?.addEventListener('input', (e) => {
     if (toonPass) toonPass.uniforms.outlineColor.value.set(e.target.value);
+  });
+  document.getElementById('toonOutlineAutoColor')?.addEventListener('change', (e) => {
+    if (toonPass) toonPass.uniforms.outlineAutoColor.value = e.target.checked ? 1.0 : 0.0;
   });
   document.getElementById('toonOutlineOuterOnly')?.addEventListener('change', (e) => {
     if (toonPass) toonPass.uniforms.outlineOuterOnly.value = e.target.checked ? 1.0 : 0.0;
@@ -15748,14 +15787,27 @@ function setupPlyShaderOverride() {
               '}'
             );
 
-            // フラグメントシェーダー: packing + シャドウuniform宣言 + 水面uniform宣言 + 火源照明
+            // クロマキー用uniform
+            shader.uniforms.glbChromaKeyColor = glbColorUniforms.chromaKeyColor;
+            shader.uniforms.glbChromaKeyThreshold = glbColorUniforms.chromaKeyThreshold;
+
+            // フラグメントシェーダー: packing + シャドウuniform宣言 + 水面uniform宣言 + 火源照明 + クロマキー
             shader.fragmentShader =
               '#include <packing>\nvarying vec4 vPlyShadowCoord;\nuniform sampler2D plyShadowMap;\nuniform float plyShadowEnabled;\n' +
               'uniform float waterEnabled;\nuniform float waterOpacity;\nuniform vec3 waterColor;\nuniform float waterThreshold;\n' +
               'uniform float causticsIntensity;\nuniform float causticsScale;\nuniform float causticsTime;\n' +
               'uniform vec3 fireColor;\nuniform float fireLightColorAmount;\nuniform float fireLightLumAmount;\nvarying float vFireAmount;\n' +
               'uniform float fireEmission;\nvarying float vFireEmission;\n' +
+              'uniform vec3 glbChromaKeyColor;\nuniform float glbChromaKeyThreshold;\n' +
               shader.fragmentShader;
+
+            const chromaKeyCode = [
+              '// Chroma key for 3DGS PLY',
+              'if (glbChromaKeyThreshold > 0.0) {',
+              '  float chromaDist = distance(gl_FragColor.rgb, glbChromaKeyColor);',
+              '  if (chromaDist < glbChromaKeyThreshold) discard;',
+              '}',
+            ].join('\n');
 
             const waterTransparencyCode = [
               '// Water transparency for 3DGS PLY',
@@ -15770,6 +15822,7 @@ function setupPlyShaderOverride() {
             ].join('\n');
 
             const shadowCloudAndLightCode = [
+              chromaKeyCode,
               waterTransparencyCode,
               '// Shadow mapping for 3DGS PLY',
               'if (plyShadowEnabled > 0.5) {',
