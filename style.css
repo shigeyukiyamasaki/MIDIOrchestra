@@ -146,6 +146,42 @@ body {
 .gbar-dropdown-wide {
   min-width: 360px;
 }
+.gbar-dropdown-camera {
+  min-width: 280px;
+}
+.gbar-dropdown-camera .setting-item {
+  padding: 2px 0;
+}
+.gbar-dropdown-camera .dual-range-container {
+  padding: 4px 0;
+}
+.gbar-dropdown-camera .range-values {
+  font-size: 10px;
+}
+.gbar-section-title {
+  color: #4fc3f7;
+  font-size: 11px;
+  margin: 8px 0 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #444;
+}
+.gbar-section-title:first-child {
+  margin-top: 0;
+}
+.gbar-btn-small {
+  background: none;
+  border: 1px solid #666;
+  color: #ccc;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gbar-btn-small:hover {
+  background: rgba(79, 195, 247, 0.15);
+  color: #fff;
+}
 
 .gbar-inline-check {
   display: flex;

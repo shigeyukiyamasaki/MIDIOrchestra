@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Orchestra Visualizer</title>
-  <link rel="stylesheet" href="style.css?v=20260323i">
+  <link rel="stylesheet" href="style.css?v=20260323j">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
@@ -181,20 +181,13 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <!-- 設定パネルコンテナ（2列） -->
-  <div id="settings-container">
-    <!-- 左列: シーン設定 -->
-    <div class="settings-single-column">
-    <h3 id="scene-container-title">シーン設定</h3>
-    <div id="scene-nav" class="property-nav"></div>
-    <div id="scene-content" class="property-content">
-    <div id="camera-panel" class="settings-column">
-      <h3>カメラ設定</h3>
-      <button id="cameraResetBtn" class="clear-btn-small" style="margin-bottom:8px;">カメラ位置リセット</button>
-      <div id="camera-list">
-        <h4 class="setting-category">カメラ位置</h4>
+    <!-- カメラ -->
+    <div class="gbar-group">
+      <button class="gbar-toggle" data-target="gbar-camera-dropdown">カメラ <i class="fa-solid fa-caret-down"></i></button>
+      <label class="gbar-inline-check"><input type="checkbox" id="autoCameraEnabled"> 自動</label>
+      <button id="cameraResetBtn" class="gbar-btn-small">リセット</button>
+      <div id="gbar-camera-dropdown" class="gbar-dropdown gbar-dropdown-camera">
+        <h4 class="gbar-section-title">カメラ位置</h4>
         <!-- X軸（左右） -->
         <div class="setting-item dual-range-container">
           <label>X (左右) <span id="cameraPosXValue" class="pos-value">-150</span></label>
@@ -210,7 +203,6 @@
             <span id="cameraRangeXMaxVal">200</span>
           </div>
         </div>
-
         <!-- Y軸（高さ） -->
         <div class="setting-item dual-range-container">
           <label>Y (高さ) <span id="cameraPosYValue" class="pos-value">150</span></label>
@@ -226,7 +218,6 @@
             <span id="cameraRangeYMaxVal">300</span>
           </div>
         </div>
-
         <!-- Z軸（前後） -->
         <div class="setting-item dual-range-container">
           <label>Z (前後) <span id="cameraPosZValue" class="pos-value">200</span></label>
@@ -242,73 +233,69 @@
             <span id="cameraRangeZMaxVal">300</span>
           </div>
         </div>
-
         <!-- 中心点 -->
-        <h4 class="setting-category">中心点</h4>
-        <div class="setting-item">
+        <h4 class="gbar-section-title">中心点</h4>
+        <div class="gbar-dropdown-item">
           <label>X</label>
           <input type="range" id="cameraTargetX" min="-500" max="500" step="5" value="0">
           <span id="cameraTargetXValue">0</span>
         </div>
-        <div class="setting-item">
+        <div class="gbar-dropdown-item">
           <label>Y</label>
           <input type="range" id="cameraTargetY" min="-100" max="300" step="5" value="0">
           <span id="cameraTargetYValue">0</span>
         </div>
-        <div class="setting-item">
+        <div class="gbar-dropdown-item">
           <label>Z</label>
           <input type="range" id="cameraTargetZ" min="-500" max="500" step="5" value="0">
           <span id="cameraTargetZValue">0</span>
         </div>
-
-        <!-- 下限角度 -->
-        <div class="setting-item">
+        <!-- 下限角度・ズーム -->
+        <div class="gbar-dropdown-item">
           <label>下限角度</label>
           <input type="range" id="cameraFloorLimit" min="0" max="100" step="1" value="100">
           <span id="cameraFloorLimitValue">100</span>
         </div>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="disableZoom">
-            ズーム無効
-          </label>
+        <div class="gbar-dropdown-item">
+          <label><input type="checkbox" id="disableZoom"> ズーム無効</label>
         </div>
-
         <!-- 自動切替 -->
-        <h4 class="setting-category">自動切替</h4>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="autoCameraEnabled">
-            自動カメラ切替
-          </label>
-        </div>
-        <div class="setting-item">
+        <h4 class="gbar-section-title">自動切替</h4>
+        <div class="gbar-dropdown-item">
           <label>切替間隔(秒)</label>
           <input type="range" id="autoCameraInterval" min="2" max="20" step="1" value="5">
           <span id="autoCameraIntervalValue">5</span>
         </div>
-
         <!-- トランジション -->
-        <h4 class="setting-category">トランジション</h4>
-        <div class="setting-item">
+        <h4 class="gbar-section-title">トランジション</h4>
+        <div class="gbar-dropdown-item">
           <label>モード</label>
           <select id="autoCameraMode">
             <option value="continuous">連続（カメラ移動）</option>
             <option value="cut">カット（クロスフェード）</option>
           </select>
         </div>
-        <div class="setting-item" id="continuousModeParams">
+        <div class="gbar-dropdown-item" id="continuousModeParams">
           <label>移動時間(%)</label>
           <input type="range" id="autoCameraMovePercent" min="10" max="100" step="5" value="50">
           <span id="autoCameraMovePercentValue">50</span>
         </div>
-        <div class="setting-item" id="cutModeParams" style="display: none;">
+        <div class="gbar-dropdown-item" id="cutModeParams" style="display: none;">
           <label>クロスフェード(秒)</label>
           <input type="range" id="autoCameraCrossfade" min="0.5" max="5" step="0.5" value="1.5">
           <span id="autoCameraCrossfadeValue">1.5</span>
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- 設定パネルコンテナ（2列） -->
+  <div id="settings-container">
+    <!-- 左列: 演出設定 -->
+    <div class="settings-single-column">
+    <h3 id="scene-container-title">演出設定</h3>
+    <div id="scene-nav" class="property-nav"></div>
+    <div id="scene-content" class="property-content">
 
     <!-- ライティングパネル -->
     <div id="lighting-panel" class="settings-column">
@@ -366,15 +353,6 @@
         </div>
       </div>
     </div>
-
-    </div><!-- /scene-content -->
-    </div><!-- /settings-single-column (シーン) -->
-
-    <!-- 右列: エフェクト設定 -->
-    <div class="settings-single-column">
-    <h3 id="settings-container-title">エフェクト設定</h3>
-    <div id="property-nav" class="property-nav"></div>
-    <div id="property-content" class="property-content">
 
     <!-- エフェクトパネル -->
     <div id="effects-panel" class="settings-column">
@@ -488,7 +466,16 @@
 
       </div>
     </div>
-    <!-- 天候エフェクトパネル -->
+
+    </div><!-- /scene-content -->
+    </div><!-- /settings-single-column (演出) -->
+
+    <!-- 右列: エフェクト設定 -->
+    <div class="settings-single-column">
+    <h3 id="settings-container-title">エフェクト設定</h3>
+    <div id="property-nav" class="property-nav"></div>
+    <div id="property-content" class="property-content">
+
     <!-- 光エフェクトパネル -->
     <div id="light-panel" class="settings-column">
       <h3>光エフェクト</h3>
@@ -1828,6 +1815,6 @@
 
   <script src="src/presetManager.js?v=20260320a"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260323o"></script>
+  <script type="module" src="src/main.js?v=20260323p"></script>
 </body>
 </html>

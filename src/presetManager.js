@@ -422,7 +422,7 @@ function collectCurrentSettings() {
   s._imageSizeMode = 'width';
 
   // 自動収集: 各パネル内のid付きinput/selectで未収集のものを自動追加
-  ['controls', 'settings-container', 'image-panel', 'display-settings-panel', 'sunlight-panel'].forEach(containerId => {
+  ['controls', 'settings-container', 'image-panel', 'display-settings-panel', 'sunlight-panel', 'global-bar'].forEach(containerId => {
     const container = document.getElementById(containerId);
     if (!container) return;
     container.querySelectorAll('input[id], select[id]').forEach(el => {
