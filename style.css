@@ -69,6 +69,133 @@ body {
   border-bottom: 1px solid #555;
 }
 
+#global-bar {
+  position: fixed;
+  top: 100px;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.85);
+  border-bottom: 1px solid #555;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  gap: 20px;
+}
+
+.gbar-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gbar-toggle {
+  background: none;
+  border: 1px solid #666;
+  color: #ccc;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gbar-toggle:hover {
+  background: rgba(79, 195, 247, 0.15);
+  color: #fff;
+}
+.gbar-toggle.active {
+  background: rgba(79, 195, 247, 0.2);
+  border-color: #4fc3f7;
+  color: #4fc3f7;
+}
+
+.gbar-color {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #666;
+  border-radius: 3px;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+}
+
+.gbar-slider {
+  width: 80px;
+  height: 4px;
+}
+
+.gbar-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 10px;
+  min-width: 220px;
+  z-index: 200;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.gbar-dropdown.open {
+  display: block;
+}
+.gbar-dropdown-wide {
+  min-width: 360px;
+}
+
+.gbar-inline-check {
+  display: flex;
+  align-items: center;
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.gbar-dropdown-item select {
+  flex: 1;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.gbar-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #ccc;
+}
+.gbar-dropdown-item label {
+  min-width: 60px;
+  white-space: nowrap;
+  color: #aaa;
+}
+.gbar-dropdown-item input[type="range"] {
+  flex: 1;
+}
+.gbar-dropdown-item input[type="color"] {
+  width: 30px;
+  height: 24px;
+  border: 1px solid #666;
+  border-radius: 3px;
+  padding: 0;
+  cursor: pointer;
+}
+.gbar-dropdown-item .credits-input {
+  flex: 1;
+}
+.gbar-dropdown-item .credits-size-input {
+  width: 50px;
+}
+
 .control-group {
   display: flex;
   align-items: center;
@@ -369,7 +496,7 @@ button:disabled {
 /* 設定パネルコンテナ（2列） */
 #settings-container {
   position: fixed;
-  top: 100px;
+  top: 140px;
   right: 0;
   width: 560px;
   bottom: 0;
@@ -737,7 +864,7 @@ button:disabled {
 /* オーケストラ配置エリア */
 #orchestra-area {
   position: fixed;
-  top: 100px;
+  top: 140px;
   left: 200px;
   right: 280px;
   height: 180px;
@@ -823,7 +950,7 @@ button:disabled {
 /* キャンバスコンテナ */
 #canvas-container {
   position: fixed;
-  top: 100px;
+  top: 140px;
   left: 530px;
   right: 560px;
   bottom: 330px; /* JS syncImagePanelHeight で自動更新 */
@@ -897,7 +1024,7 @@ button:disabled {
 /* 表示設定パネル（トラック情報の右隣・縦並び） */
 #display-settings-panel {
   position: fixed;
-  top: 100px;
+  top: 140px;
   left: 250px;
   width: 280px;
   bottom: 0;
@@ -925,7 +1052,7 @@ button:disabled {
 /* トラックパネル（左） */
 #track-panel {
   position: fixed;
-  top: 100px;
+  top: 140px;
   left: 0;
   width: 250px;
   bottom: 0;

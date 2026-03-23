@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Orchestra Visualizer</title>
-  <link rel="stylesheet" href="style.css?v=20260323f">
+  <link rel="stylesheet" href="style.css?v=20260323i">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
@@ -77,6 +77,109 @@
       </div>
       <a href="https://www.notion.so/309e1fdacbe780b9a55ffe34ce04f291" target="_blank" title="Notion 作品リスト" style="color:#999;font-size:16px;margin-left:4px;text-decoration:none;"><i class="fa-solid fa-database"></i></a>
       <button id="copyListBtn" title="作品リストをコピー" style="background:none;border:none;color:#999;font-size:16px;cursor:pointer;padding:2px 4px;"><i class="fa-solid fa-clipboard-list"></i></button>
+    </div>
+  </div>
+
+  <!-- グローバル設定バー -->
+  <div id="global-bar">
+    <!-- 背景 -->
+    <div class="gbar-group">
+      <button class="gbar-toggle" data-target="gbar-bg-dropdown">背景 <i class="fa-solid fa-caret-down"></i></button>
+      <input type="color" id="bgColorTop" value="#1a1a2e" class="gbar-color" title="上">
+      <input type="color" id="bgColorBottom" value="#0a0a15" class="gbar-color" title="下">
+      <div id="gbar-bg-dropdown" class="gbar-dropdown">
+        <div class="gbar-dropdown-item">
+          <label>中間点</label>
+          <input type="range" id="bgGradientMidpoint" min="0" max="100" step="1" value="50">
+          <span id="bgGradientMidpointValue">50</span>
+        </div>
+        <div class="gbar-dropdown-item">
+          <button id="bgColorSwap" style="padding:4px 8px;font-size:11px;"><i class="fa-solid fa-arrows-up-down"></i> 上下入替</button>
+        </div>
+      </div>
+    </div>
+    <!-- グリッド -->
+    <div class="gbar-group">
+      <button class="gbar-toggle" data-target="gbar-grid-dropdown">グリッド <i class="fa-solid fa-caret-down"></i></button>
+      <input type="range" id="gridOpacity" min="0" max="1" step="0.1" value="0.5" class="gbar-slider" title="透明度">
+      <div id="gbar-grid-dropdown" class="gbar-dropdown">
+        <div class="gbar-dropdown-item">
+          <label>大きさ</label>
+          <input type="range" id="gridSize" min="100" max="2000" step="100" value="500">
+          <span id="gridSizeValue">500</span>
+        </div>
+        <div class="gbar-dropdown-item">
+          <label>色</label>
+          <input type="color" id="gridColor" value="#444444">
+        </div>
+      </div>
+    </div>
+    <!-- クレジット -->
+    <div class="gbar-group">
+      <button class="gbar-toggle" data-target="gbar-credits-dropdown">クレジット <i class="fa-solid fa-caret-down"></i></button>
+      <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8" class="gbar-slider" title="クレジット透明度">
+      <div id="gbar-credits-dropdown" class="gbar-dropdown gbar-dropdown-wide">
+        <div class="gbar-dropdown-item credits-row"><label>1行目</label><input type="text" id="creditsLine1" class="credits-input" placeholder="曲名"><input type="number" id="creditsSize1" class="credits-size-input" min="8" max="72" value="22"></div>
+        <div class="gbar-dropdown-item credits-row"><label>2行目</label><input type="text" id="creditsLine2" class="credits-input" placeholder="作曲"><input type="number" id="creditsSize2" class="credits-size-input" min="8" max="72" value="30"></div>
+        <div class="gbar-dropdown-item credits-row"><label>3行目</label><input type="text" id="creditsLine3" class="credits-input" placeholder="編曲"><input type="number" id="creditsSize3" class="credits-size-input" min="8" max="72" value="16"></div>
+        <div class="gbar-dropdown-item credits-row"><label>4行目</label><span style="color:#888;font-size:11px;">Arr. Romashige（固定）</span><input type="number" id="creditsSize4" class="credits-size-input" min="8" max="72" value="16"></div>
+        <div class="gbar-dropdown-item">
+          <label>色</label>
+          <input type="color" id="creditsColor" value="#ffffff">
+        </div>
+      </div>
+    </div>
+    <!-- タイムライン -->
+    <div class="gbar-group">
+      <button class="gbar-toggle" data-target="gbar-timeline-dropdown">タイムライン <i class="fa-solid fa-caret-down"></i></button>
+      <input type="range" id="timelineOpacity" min="0" max="0.5" step="0.05" value="0" class="gbar-slider" title="幕の透明度">
+      <div id="gbar-timeline-dropdown" class="gbar-dropdown">
+        <div class="gbar-dropdown-item">
+          <label>X位置</label>
+          <input type="range" id="timelineX" min="-500" max="500" step="5" value="0">
+          <span id="timelineXValue">0</span>
+        </div>
+        <div class="gbar-dropdown-item">
+          <label>幕の色</label>
+          <input type="color" id="timelineColor" value="#ff4444">
+        </div>
+      </div>
+    </div>
+    <!-- スペクトラム -->
+    <div class="gbar-group">
+      <button class="gbar-toggle" data-target="gbar-spectrum-dropdown">スペクトラム <i class="fa-solid fa-caret-down"></i></button>
+      <label class="gbar-inline-check"><input type="checkbox" id="audioVisualizerEnabled"></label>
+      <div id="gbar-spectrum-dropdown" class="gbar-dropdown">
+        <div class="gbar-dropdown-item">
+          <label>スタイル</label>
+          <select id="audioVisualizerStyle">
+            <option value="bar">バー</option>
+            <option value="wave">ウェーブ</option>
+            <option value="dot">ドット</option>
+            <option value="mirror">ミラー</option>
+          </select>
+        </div>
+        <div class="gbar-dropdown-item">
+          <label>スケール</label>
+          <input type="range" id="audioVisualizerScale" min="0.1" max="3" step="0.1" value="1">
+          <span id="audioVisualizerScaleValue">1</span>
+        </div>
+        <div class="gbar-dropdown-item">
+          <label>半径</label>
+          <input type="range" id="audioVisualizerRadius" min="10" max="200" step="1" value="18">
+          <span id="audioVisualizerRadiusValue">18</span>
+        </div>
+        <div class="gbar-dropdown-item">
+          <label>本数</label>
+          <input type="range" id="audioVisualizerBars" min="16" max="128" step="1" value="64">
+          <span id="audioVisualizerBarsValue">64</span>
+        </div>
+        <div class="gbar-dropdown-item">
+          <label>透明度</label>
+          <input type="range" id="audioVisualizerOpacity" min="0" max="1" step="0.05" value="0.9">
+          <span id="audioVisualizerOpacityValue">0.9</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -930,7 +1033,7 @@
         </div>
         <div class="setting-item">
           <label>許容範囲</label>
-          <input type="range" id="plySmokeThreshold" min="0.05" max="1" step="0.05" value="0.3">
+          <input type="range" id="plySmokeThreshold" min="0.01" max="1" step="0.01" value="0.3">
           <span id="plySmokeThresholdValue">0.3</span>
         </div>
         <div class="setting-item">
@@ -1393,63 +1496,6 @@
     <div id="display-nav" class="property-nav"></div>
     <div id="display-content" class="property-content">
 
-    <!-- グローバルタブ -->
-    <div class="settings-column">
-      <h3>グローバル</h3>
-      <div class="display-section">
-        <h4 class="setting-category">背景</h4>
-        <div class="setting-item">
-          <label>背景色（上）</label>
-          <input type="color" id="bgColorTop" value="#1a1a2e">
-        </div>
-        <div class="setting-item">
-          <label>背景色（下）</label>
-          <input type="color" id="bgColorBottom" value="#0a0a15">
-        </div>
-        <div class="setting-item">
-          <label>中間点</label>
-          <input type="range" id="bgGradientMidpoint" min="0" max="100" step="1" value="50">
-          <span id="bgGradientMidpointValue">50</span>
-        </div>
-        <div class="setting-item">
-          <button id="bgColorSwap" style="padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-arrows-up-down"></i> 上下入替</button>
-        </div>
-      </div>
-      <div class="display-section">
-        <h4 class="setting-category">グリッド</h4>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="gridOpacity" min="0" max="1" step="0.1" value="0.5">
-          <span id="gridOpacityValue">0.5</span>
-        </div>
-        <div class="setting-item">
-          <label>大きさ</label>
-          <input type="range" id="gridSize" min="100" max="2000" step="100" value="500">
-          <span id="gridSizeValue">500</span>
-        </div>
-        <div class="setting-item">
-          <label>色</label>
-          <input type="color" id="gridColor" value="#444444">
-        </div>
-      </div>
-      <div class="display-section">
-        <h4 class="setting-category">クレジット</h4>
-        <div class="setting-item credits-row"><label>1行目</label><input type="text" id="creditsLine1" class="credits-input" placeholder="曲名"><input type="number" id="creditsSize1" class="credits-size-input" min="8" max="72" value="22"></div>
-        <div class="setting-item credits-row"><label>2行目</label><input type="text" id="creditsLine2" class="credits-input" placeholder="作曲"><input type="number" id="creditsSize2" class="credits-size-input" min="8" max="72" value="30"></div>
-        <div class="setting-item credits-row"><label>3行目</label><input type="text" id="creditsLine3" class="credits-input" placeholder="編曲"><input type="number" id="creditsSize3" class="credits-size-input" min="8" max="72" value="16"></div>
-        <div class="setting-item credits-row"><label>4行目</label><span style="color:#888;font-size:11px;">Arr. Romashige（固定）</span><input type="number" id="creditsSize4" class="credits-size-input" min="8" max="72" value="16"></div>
-        <div class="setting-item">
-          <label>色</label>
-          <input type="color" id="creditsColor" value="#ffffff">
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="creditsOpacity" min="0" max="1" step="0.05" value="0.8">
-          <span id="creditsOpacityValue">0.8</span>
-        </div>
-      </div>
-    </div>
-
     <!-- 描画スタイルタブ -->
     <div class="settings-column">
       <h3>描画スタイル</h3>
@@ -1667,66 +1713,6 @@
       </div>
     </div>
 
-    <!-- タイムラインタブ -->
-    <div class="settings-column">
-      <h3>タイムライン</h3>
-      <div class="display-section">
-        <h4 class="setting-category">タイムライン</h4>
-        <div class="setting-item">
-          <label>幕の透明度</label>
-          <input type="range" id="timelineOpacity" min="0" max="0.5" step="0.05" value="0">
-          <span id="timelineOpacityValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>X位置</label>
-          <input type="range" id="timelineX" min="-500" max="500" step="5" value="0">
-          <span id="timelineXValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>幕の色</label>
-          <input type="color" id="timelineColor" value="#ff4444">
-        </div>
-      </div>
-      <div class="display-section">
-        <h4 class="setting-category">スペクトラム</h4>
-        <div class="setting-item">
-          <label>
-            <input type="checkbox" id="audioVisualizerEnabled">
-            ON/OFF
-          </label>
-        </div>
-        <div class="setting-item">
-          <label>スタイル</label>
-          <select id="audioVisualizerStyle">
-            <option value="bar">バー</option>
-            <option value="wave">ウェーブ</option>
-            <option value="dot">ドット</option>
-            <option value="mirror">ミラー</option>
-          </select>
-        </div>
-        <div class="setting-item">
-          <label>スケール</label>
-          <input type="range" id="audioVisualizerScale" min="0.1" max="3" step="0.1" value="1">
-          <span id="audioVisualizerScaleValue">1</span>
-        </div>
-        <div class="setting-item">
-          <label>半径</label>
-          <input type="range" id="audioVisualizerRadius" min="10" max="200" step="1" value="18">
-          <span id="audioVisualizerRadiusValue">18</span>
-        </div>
-        <div class="setting-item">
-          <label>本数</label>
-          <input type="range" id="audioVisualizerBars" min="16" max="128" step="1" value="64">
-          <span id="audioVisualizerBarsValue">64</span>
-        </div>
-        <div class="setting-item">
-          <label>透明度</label>
-          <input type="range" id="audioVisualizerOpacity" min="0" max="1" step="0.05" value="0.9">
-          <span id="audioVisualizerOpacityValue">0.9</span>
-        </div>
-      </div>
-    </div>
-
     </div>
   </div>
 
@@ -1842,6 +1828,6 @@
 
   <script src="src/presetManager.js?v=20260320a"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260323n"></script>
+  <script type="module" src="src/main.js?v=20260323o"></script>
 </body>
 </html>

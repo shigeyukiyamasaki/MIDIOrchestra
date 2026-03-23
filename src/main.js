@@ -5438,7 +5438,38 @@ function setupTabbedPanel(navId, contentId) {
   if (firstNavItem) firstNavItem.click();
 }
 
+function setupGlobalBar() {
+  document.querySelectorAll('.gbar-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const targetId = btn.dataset.target;
+      const dropdown = document.getElementById(targetId);
+      if (!dropdown) return;
+      const isOpen = dropdown.classList.contains('open');
+      // 全ドロップダウンを閉じる
+      document.querySelectorAll('.gbar-dropdown.open').forEach(d => d.classList.remove('open'));
+      document.querySelectorAll('.gbar-toggle.active').forEach(b => b.classList.remove('active'));
+      if (!isOpen) {
+        dropdown.classList.add('open');
+        btn.classList.add('active');
+      }
+    });
+  });
+  // バー外クリックで閉じる
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.gbar-group')) {
+      document.querySelectorAll('.gbar-dropdown.open').forEach(d => d.classList.remove('open'));
+      document.querySelectorAll('.gbar-toggle.active').forEach(b => b.classList.remove('active'));
+    }
+  });
+  // ドロップダウン内クリックで閉じない
+  document.querySelectorAll('.gbar-dropdown').forEach(d => {
+    d.addEventListener('click', (e) => e.stopPropagation());
+  });
+}
+
 function setupPropertyPanel() {
+  setupGlobalBar();
   setupTabbedPanel('scene-nav', 'scene-content');
   setupTabbedPanel('property-nav', 'property-content');
   setupTabbedPanel('display-nav', 'display-content');
@@ -5865,7 +5896,7 @@ function setupEventListeners() {
   const timelineOpacityValue = document.getElementById('timelineOpacityValue');
   timelineOpacityInput.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
-    timelineOpacityValue.textContent = value;
+    if (timelineOpacityValue) timelineOpacityValue.textContent = value;
     if (timelinePlane) {
       timelinePlane.material.opacity = value;
     }
@@ -5933,7 +5964,7 @@ function setupEventListeners() {
   const gridOpacityValue = document.getElementById('gridOpacityValue');
   gridOpacityInput.addEventListener('input', (e) => {
     settings.gridOpacity = parseFloat(e.target.value);
-    gridOpacityValue.textContent = settings.gridOpacity.toFixed(1);
+    if (gridOpacityValue) gridOpacityValue.textContent = settings.gridOpacity.toFixed(1);
     if (gridHelper) {
       const mats = Array.isArray(gridHelper.material) ? gridHelper.material : [gridHelper.material];
       mats.forEach(mat => { mat.opacity = settings.gridOpacity; });
@@ -5957,7 +5988,7 @@ function setupEventListeners() {
   const gridSizeValue = document.getElementById('gridSizeValue');
   gridSizeInput.addEventListener('input', (e) => {
     settings.gridSize = parseInt(e.target.value);
-    gridSizeValue.textContent = settings.gridSize;
+    if (gridSizeValue) gridSizeValue.textContent = settings.gridSize;
     if (gridHelper) {
       const oldY = gridHelper.position.y;
       scene.remove(gridHelper);
@@ -5999,7 +6030,8 @@ function setupEventListeners() {
     });
     document.getElementById('creditsOpacity')?.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
-      document.getElementById('creditsOpacityValue').textContent = v;
+      const creditsOpacityValue = document.getElementById('creditsOpacityValue');
+      if (creditsOpacityValue) creditsOpacityValue.textContent = v;
       creditsOverlay.querySelectorAll('.credits-line').forEach(el => { el.style.opacity = v; });
     });
   }
