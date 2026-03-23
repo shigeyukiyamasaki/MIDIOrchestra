@@ -3569,6 +3569,72 @@ function createNoteShadowDepthMaterial(opacity) {
   });
 }
 
+// 3DGS PLY用シャドウデプスマテリアル
+// Points (gl_PointSize) + splatScale + chromaKey 対応
+function create3DGSShadowDepthMaterial(size, sizeAttenuation) {
+  const shadowMapHeight = isMobileDevice ? 1024 : 2048;
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      size: { value: size },
+      scale: { value: shadowMapHeight / 2 },
+      useSizeAttenuation: { value: sizeAttenuation ? 1.0 : 0.0 },
+      splatScaleTex: splatScaleUniforms.tex,
+      splatScaleTexWidth: splatScaleUniforms.texWidth,
+      splatScaleTexHeight: splatScaleUniforms.texHeight,
+      useSplatScale: splatScaleUniforms.enabled,
+      glbChromaKeyColor: glbColorUniforms.chromaKeyColor,
+      glbChromaKeyThreshold: glbColorUniforms.chromaKeyThreshold,
+    },
+    vertexShader: [
+      'uniform float size;',
+      'uniform float scale;',
+      'uniform float useSizeAttenuation;',
+      'uniform sampler2D splatScaleTex;',
+      'uniform float splatScaleTexWidth;',
+      'uniform float splatScaleTexHeight;',
+      'uniform float useSplatScale;',
+      'attribute vec3 color;',
+      'varying vec3 vColor;',
+      'void main() {',
+      '  vColor = color;',
+      '  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);',
+      '  gl_Position = projectionMatrix * mvPosition;',
+      '  gl_PointSize = size;',
+      '  if (useSizeAttenuation > 0.5) {',
+      '    bool isPerspective = (projectionMatrix[2][3] == -1.0);',
+      '    if (isPerspective) {',
+      '      gl_PointSize *= scale / -mvPosition.z;',
+      '    } else {',
+      '      gl_PointSize *= projectionMatrix[1][1] * scale;',
+      '    }',
+      '  }',
+      '  if (useSplatScale > 0.0 && splatScaleTexWidth > 0.0) {',
+      '    float _vid = float(gl_VertexID);',
+      '    float _su = (mod(_vid, splatScaleTexWidth) + 0.5) / splatScaleTexWidth;',
+      '    float _sv = (floor(_vid / splatScaleTexWidth) + 0.5) / splatScaleTexHeight;',
+      '    float _splatS = texture2D(splatScaleTex, vec2(_su, _sv)).r;',
+      '    gl_PointSize *= mix(1.0, _splatS, useSplatScale);',
+      '  }',
+      '}',
+    ].join('\n'),
+    fragmentShader: [
+      '#include <packing>',
+      'uniform vec3 glbChromaKeyColor;',
+      'uniform float glbChromaKeyThreshold;',
+      'varying vec3 vColor;',
+      'void main() {',
+      '  vec2 cxy = 2.0 * gl_PointCoord - 1.0;',
+      '  if (dot(cxy, cxy) > 1.0) discard;',
+      '  if (glbChromaKeyThreshold > 0.0) {',
+      '    float chromaDist = distance(vColor, glbChromaKeyColor);',
+      '    if (chromaDist < glbChromaKeyThreshold) discard;',
+      '  }',
+      '  gl_FragColor = packDepthToRGBA(gl_FragCoord.z);',
+      '}',
+    ].join('\n'),
+  });
+}
+
 function createChromaKeyDepthMaterial() {
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -3766,6 +3832,7 @@ function setupThreeJS() {
   renderer.setPixelRatio(isMobileDevice ? Math.min(window.devicePixelRatio, 2) : window.devicePixelRatio);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false; // 手動制御: ブルーム除外パスでの上書き防止
   container.appendChild(renderer.domElement);
 
   // EffectComposer（ブルーム用） - ステンシルバッファ付きレンダーターゲット
@@ -9306,6 +9373,10 @@ function setupEventListeners() {
           } else {
             child.material.size = val;
           }
+          // シャドウデプスマテリアルも同期
+          if (child.customDepthMaterial && child.customDepthMaterial.uniforms.size) {
+            child.customDepthMaterial.uniforms.size.value = val;
+          }
         }
       });
     }
@@ -9318,6 +9389,10 @@ function setupEventListeners() {
         if (child.isPoints && child.material) {
           child.material.sizeAttenuation = e.target.checked;
           child.material.needsUpdate = true;
+          // シャドウデプスマテリアルも同期
+          if (child.customDepthMaterial && child.customDepthMaterial.uniforms.useSizeAttenuation) {
+            child.customDepthMaterial.uniforms.useSizeAttenuation.value = e.target.checked ? 1.0 : 0.0;
+          }
         }
       });
     }
@@ -15063,6 +15138,14 @@ function setupGlbScene(sceneGroup, file) {
         }
       }
     }
+    // 3DGS PLY Points: カスタムデプスマテリアルで影を落とす
+    if (child.isPoints && glbModel.userData.is3DGS) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      const pointSize = parseFloat(document.getElementById('glbPointSize')?.value || '2');
+      const attenuation = document.getElementById('glbPointAttenuation')?.checked !== false;
+      child.customDepthMaterial = create3DGSShadowDepthMaterial(pointSize, attenuation);
+    }
   });
 
   // 色調整（GLB・PLY共通）
@@ -15843,7 +15926,7 @@ function setupPlyShaderOverride() {
               '  shadowCoord = shadowCoord * 0.5 + 0.5;',
               '  if (shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 && shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0 && shadowCoord.z <= 1.0) {',
               '    float closestDepth = unpackRGBAToDepth(texture2D(plyShadowMap, shadowCoord.xy));',
-              '    if (shadowCoord.z > closestDepth + 0.003) gl_FragColor.rgb *= 0.4;',
+              '    if (shadowCoord.z > closestDepth + 0.05) gl_FragColor.rgb *= 0.4;',
               '  }',
               '}',
               'gl_FragColor.rgb *= plyLightColor;',
@@ -16753,6 +16836,9 @@ function animate() {
 
   // スペクトラム更新
   updateAudioVisualizer();
+
+  // シャドウマップ: フレーム先頭で1回だけ更新（autoUpdate=falseのため手動制御）
+  renderer.shadowMap.needsUpdate = true;
 
   // 3DGS PLYシャドウ: 共有uniformを毎フレーム更新
   if (sunLight && sunLight.shadow && sunLight.shadow.map) {
