@@ -17374,7 +17374,14 @@ function animate() {
       toonPass.renderToScreen = false;
       syncToonDepth();
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
-      if (celBeforeKuwahara) applyKuwahara();
+      if (celBeforeKuwahara) {
+        // toon結果(writeBuffer)をreadBufferにコピーしてからKuwahara適用
+        if (_pixelCopyPass) {
+          _pixelCopyPass.renderToScreen = false;
+          _pixelCopyPass.render(renderer, composer.readBuffer, composer.writeBuffer);
+        }
+        applyKuwahara();
+      }
       // グロースプライト: トゥーン後・ピクセル前（アウトライン除外、ピクセル化対象）
       if (_fireGlowVisible && _fireGlowScene) {
         renderer.setRenderTarget(composer.writeBuffer);
