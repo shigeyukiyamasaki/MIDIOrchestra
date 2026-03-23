@@ -5439,6 +5439,7 @@ function setupTabbedPanel(navId, contentId) {
 }
 
 function setupPropertyPanel() {
+  setupTabbedPanel('scene-nav', 'scene-content');
   setupTabbedPanel('property-nav', 'property-content');
   setupTabbedPanel('display-nav', 'display-content');
   setupTabbedPanel('image-nav', 'image-content');

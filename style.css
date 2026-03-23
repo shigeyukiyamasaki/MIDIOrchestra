@@ -366,22 +366,36 @@ button:disabled {
   background: #d32f2f;
 }
 
-/* 設定パネルコンテナ（3列） */
+/* 設定パネルコンテナ（2列） */
 #settings-container {
   position: fixed;
   top: 100px;
   right: 0;
-  width: 280px;
+  width: 560px;
   bottom: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   z-index: 50;
   background: rgba(0, 0, 0, 0.8);
   border-left: 1px solid #555;
   padding: 0;
 }
 
-#settings-container-title {
+.settings-single-column {
+  width: 280px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-single-column:first-child {
+  border-right: 1px solid #555;
+}
+
+#settings-container-title,
+#scene-container-title {
   padding: 15px 15px 0;
 }
 
@@ -432,7 +446,7 @@ button:disabled {
 .property-content {
   flex: 1;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -446,7 +460,8 @@ button:disabled {
 }
 
 .property-content .settings-column.prop-active {
-  display: block;
+  display: flex;
+  flex-direction: column;
 }
 
 .property-content .settings-column h3 {
@@ -507,7 +522,8 @@ button:disabled {
 #image-panel h3,
 #display-settings-panel h3,
 #track-panel h3,
-#settings-container-title {
+#settings-container-title,
+#scene-container-title {
   font-size: 16px;
   color: #fff;
   margin: 0;
@@ -809,7 +825,7 @@ button:disabled {
   position: fixed;
   top: 100px;
   left: 530px;
-  right: 280px;
+  right: 560px;
   bottom: 330px; /* JS syncImagePanelHeight で自動更新 */
   display: flex;
   align-items: center;
