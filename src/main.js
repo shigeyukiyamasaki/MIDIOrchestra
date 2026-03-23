@@ -4726,7 +4726,7 @@ function setupThreeJS() {
   directionalLight.position.set(50, 100, 50);
   scene.add(directionalLight);
   sunLight = directionalLight;
-  sunLight.castShadow = true;
+  sunLight.castShadow = document.getElementById('shadowEnabled')?.checked ?? false;
   sunLight.shadow.mapSize.width = isMobileDevice ? 1024 : 2048;
   sunLight.shadow.mapSize.height = isMobileDevice ? 1024 : 2048;
   sunLight.shadow.camera.left = -500;
@@ -4735,6 +4735,7 @@ function setupThreeJS() {
   sunLight.shadow.camera.bottom = -500;
   sunLight.shadow.camera.near = 0.1;
   sunLight.shadow.camera.far = 2000;
+  sunLight.shadow.intensity = parseFloat(document.getElementById('shadowOpacity')?.value || '0.5');
 
   // レンズフレア（カスタムスクリーン空間実装）
   // dist: 0=光源, 0.5=画面中心, 1.0=反対側（ミラー）
@@ -6772,17 +6773,26 @@ function setupEventListeners() {
     if (sunLight) sunLight.intensity = v;
     syncLightToMaterials();
   });
-  // 影ON/OFF
+  // 影ON/OFF（光源チェックボックス）
   document.getElementById('shadowEnabled')?.addEventListener('change', (e) => {
     shadowEnabled = e.target.checked;
+    if (sunLight) sunLight.castShadow = e.target.checked;
     updateShadowPlaneVisibility();
   });
   // 影の環境（屋内/屋外）
   document.querySelectorAll('input[name="shadowEnvironment"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
-      const rgb = e.target.value === 'outdoor' ? [20 / 255, 30 / 255, 70 / 255] : [0, 0, 0];
+      let rgb;
+      if (e.target.value === 'outdoor') {
+        const v = parseFloat(document.getElementById('shadowOpacity')?.value || '0.5');
+        const base = [20 / 255, 30 / 255, 70 / 255];
+        rgb = base.map(c => c * (1 - v * 0.7));
+      } else {
+        rgb = [0, 0, 0];
+      }
       if (shadowPlane) shadowPlane.material.color.setRGB(...rgb);
       if (waterShadowPlane) waterShadowPlane.material.color.setRGB(...rgb);
+      plyShadowUniforms.color.value.setRGB(...rgb);
     });
   });
   // 影の濃さ
@@ -6791,6 +6801,18 @@ function setupEventListeners() {
     document.getElementById('shadowOpacityValue').textContent = v;
     if (shadowPlane) shadowPlane.material.opacity = v;
     if (waterShadowPlane) waterShadowPlane.material.opacity = v;
+    // PLYカスタムシャドウ + GLBシャドウにも反映
+    plyShadowUniforms.opacity.value = v;
+    if (sunLight) sunLight.shadow.intensity = v;
+    // 屋外: 濃くするほど彩度を落とす（影プレーンの色も連動）
+    const env = document.querySelector('input[name="shadowEnvironment"]:checked')?.value;
+    if (env === 'outdoor') {
+      const base = [20 / 255, 30 / 255, 70 / 255];
+      const adj = base.map(c => c * (1 - v * 0.7));
+      if (shadowPlane) shadowPlane.material.color.setRGB(...adj);
+      if (waterShadowPlane) waterShadowPlane.material.color.setRGB(...adj);
+      plyShadowUniforms.color.value.setRGB(...adj);
+    }
   });
   // ノートの影
   document.getElementById('noteShadowEnabled')?.addEventListener('change', (e) => {
@@ -15577,6 +15599,8 @@ const plyShadowUniforms = {
   map: { value: null },
   matrix: { value: new THREE.Matrix4() },
   enabled: { value: 0.0 },
+  opacity: { value: 0.5 },
+  color: { value: new THREE.Color(0, 0, 0) },
 };
 
 // PLY水面エフェクト用共有uniform
@@ -15821,6 +15845,8 @@ function setupPlyShaderOverride() {
             shader.uniforms.plyShadowMap = plyShadowUniforms.map;
             shader.uniforms.plyShadowMatrix = plyShadowUniforms.matrix;
             shader.uniforms.plyShadowEnabled = plyShadowUniforms.enabled;
+            shader.uniforms.plyShadowOpacity = plyShadowUniforms.opacity;
+            shader.uniforms.plyShadowColor = plyShadowUniforms.color;
             shader.uniforms.waterEnabled = plyWaterUniforms.enabled;
             shader.uniforms.waterOpacity = plyWaterUniforms.opacity;
             shader.uniforms.waterColor = plyWaterUniforms.color;
@@ -15889,7 +15915,7 @@ function setupPlyShaderOverride() {
 
             // フラグメントシェーダー: packing + シャドウuniform宣言 + 水面uniform宣言 + 火源照明 + クロマキー
             shader.fragmentShader =
-              '#include <packing>\nvarying vec4 vPlyShadowCoord;\nuniform sampler2D plyShadowMap;\nuniform float plyShadowEnabled;\n' +
+              '#include <packing>\nvarying vec4 vPlyShadowCoord;\nuniform sampler2D plyShadowMap;\nuniform float plyShadowEnabled;\nuniform float plyShadowOpacity;\nuniform vec3 plyShadowColor;\n' +
               'uniform float waterEnabled;\nuniform float waterOpacity;\nuniform vec3 waterColor;\nuniform float waterThreshold;\n' +
               'uniform float causticsIntensity;\nuniform float causticsScale;\nuniform float causticsTime;\n' +
               'uniform vec3 fireColor;\nuniform float fireLightColorAmount;\nuniform float fireLightLumAmount;\nvarying float vFireAmount;\n' +
@@ -15926,7 +15952,11 @@ function setupPlyShaderOverride() {
               '  shadowCoord = shadowCoord * 0.5 + 0.5;',
               '  if (shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 && shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0 && shadowCoord.z <= 1.0) {',
               '    float closestDepth = unpackRGBAToDepth(texture2D(plyShadowMap, shadowCoord.xy));',
-              '    if (shadowCoord.z > closestDepth + 0.05) gl_FragColor.rgb *= 0.4;',
+              '    if (shadowCoord.z > closestDepth + 0.05) {',
+              '      float _satReduce = plyShadowOpacity * 0.7;',
+              '      vec3 _adjShadow = mix(plyShadowColor, vec3(0.0), _satReduce);',
+              '      gl_FragColor.rgb = mix(gl_FragColor.rgb, _adjShadow, plyShadowOpacity);',
+              '    }',
               '  }',
               '}',
               'gl_FragColor.rgb *= plyLightColor;',
@@ -16838,10 +16868,10 @@ function animate() {
   updateAudioVisualizer();
 
   // シャドウマップ: フレーム先頭で1回だけ更新（autoUpdate=falseのため手動制御）
-  renderer.shadowMap.needsUpdate = true;
+  if (shadowEnabled) renderer.shadowMap.needsUpdate = true;
 
   // 3DGS PLYシャドウ: 共有uniformを毎フレーム更新
-  if (sunLight && sunLight.shadow && sunLight.shadow.map) {
+  if (shadowEnabled && sunLight && sunLight.shadow && sunLight.shadow.map) {
     plyShadowUniforms.map.value = sunLight.shadow.map.texture;
     plyShadowUniforms.enabled.value = 1.0;
     plyShadowUniforms.matrix.value.copy(sunLight.shadow.camera.projectionMatrix);

@@ -351,56 +351,6 @@
             <span id="bloomThresholdMaxVal">0.8</span>
           </div>
         </div>
-        <h4 class="setting-category"><span>光源</span></h4>
-        <div class="setting-item">
-          <label>X</label>
-          <input type="range" id="sunPosX" min="-200" max="200" step="5" value="50">
-          <span id="sunPosXValue">50</span>
-        </div>
-        <div class="setting-item">
-          <label>Y</label>
-          <input type="range" id="sunPosY" min="0" max="300" step="5" value="100">
-          <span id="sunPosYValue">100</span>
-        </div>
-        <div class="setting-item">
-          <label>Z</label>
-          <input type="range" id="sunPosZ" min="-200" max="200" step="5" value="50">
-          <span id="sunPosZValue">50</span>
-        </div>
-        <div class="setting-item">
-          <label><input type="checkbox" id="sunLightColorEnabled"> 色</label>
-          <input type="color" id="sunLightColor" value="#ffffff">
-        </div>
-        <div class="setting-item">
-          <label>強度</label>
-          <input type="range" id="sunLightIntensity" min="0" max="3" step="0.05" value="1">
-          <span id="sunLightIntensityValue">1</span>
-        </div>
-        <h4 class="setting-category"><span>影</span><input type="checkbox" id="shadowEnabled"></h4>
-        <div class="setting-item">
-          <label>環境</label>
-          <label><input type="radio" name="shadowEnvironment" value="indoor" checked> 屋内</label>
-          <label><input type="radio" name="shadowEnvironment" value="outdoor"> 屋外</label>
-        </div>
-        <div class="setting-item">
-          <label>濃さ</label>
-          <input type="range" id="shadowOpacity" min="0" max="1" step="0.05" value="0.3">
-          <span id="shadowOpacityValue">0.3</span>
-        </div>
-        <div class="setting-item">
-          <label><input type="checkbox" id="noteShadowEnabled"> ノートの影</label>
-        </div>
-        <h4 class="setting-category"><span>レンズフレア</span><input type="checkbox" id="flareEnabled" checked></h4>
-        <div class="setting-item">
-          <label>強度</label>
-          <input type="range" id="lensFlareIntensity" min="0" max="3" step="0.05" value="0">
-          <span id="lensFlareIntensityValue">0</span>
-        </div>
-        <div class="setting-item">
-          <label>にじみ</label>
-          <input type="range" id="lensFlareBlur" min="0" max="3" step="0.05" value="0">
-          <span id="lensFlareBlurValue">0</span>
-        </div>
         <h4 class="setting-category"><span>雲の影</span><input type="checkbox" id="cloudShadowEnabled" checked></h4>
         <div class="setting-item">
           <label>濃さ</label>
@@ -426,6 +376,62 @@
           <label>日向コントラスト</label>
           <input type="range" id="cloudShadowContrast" min="0" max="3" step="0.05" value="0">
           <span id="cloudShadowContrastValue">0</span>
+        </div>
+      </div>
+    </div>
+    <!-- ライティングパネル -->
+    <div id="lighting-panel" class="settings-column">
+      <h3>ライティング</h3>
+      <div id="lighting-list">
+        <h4 class="setting-category"><span>光源</span><input type="checkbox" id="shadowEnabled"></h4>
+        <div class="setting-item">
+          <label>X</label>
+          <input type="range" id="sunPosX" min="-200" max="200" step="5" value="50">
+          <span id="sunPosXValue">50</span>
+        </div>
+        <div class="setting-item">
+          <label>Y</label>
+          <input type="range" id="sunPosY" min="0" max="300" step="5" value="100">
+          <span id="sunPosYValue">100</span>
+        </div>
+        <div class="setting-item">
+          <label>Z</label>
+          <input type="range" id="sunPosZ" min="-200" max="200" step="5" value="50">
+          <span id="sunPosZValue">50</span>
+        </div>
+        <div class="setting-item">
+          <label><input type="checkbox" id="sunLightColorEnabled"> 色</label>
+          <input type="color" id="sunLightColor" value="#ffffff">
+        </div>
+        <div class="setting-item">
+          <label>強度</label>
+          <input type="range" id="sunLightIntensity" min="0" max="3" step="0.05" value="1">
+          <span id="sunLightIntensityValue">1</span>
+        </div>
+        <h4 class="setting-category"><span>影</span></h4>
+        <div class="setting-item">
+          <label>環境</label>
+          <label><input type="radio" name="shadowEnvironment" value="indoor" checked> 屋内</label>
+          <label><input type="radio" name="shadowEnvironment" value="outdoor"> 屋外</label>
+        </div>
+        <div class="setting-item">
+          <label>濃さ</label>
+          <input type="range" id="shadowOpacity" min="0" max="1" step="0.05" value="0.5">
+          <span id="shadowOpacityValue">0.5</span>
+        </div>
+        <div class="setting-item">
+          <label><input type="checkbox" id="noteShadowEnabled"> ノートの影</label>
+        </div>
+        <h4 class="setting-category"><span>レンズフレア</span><input type="checkbox" id="flareEnabled" checked></h4>
+        <div class="setting-item">
+          <label>強度</label>
+          <input type="range" id="lensFlareIntensity" min="0" max="3" step="0.05" value="0">
+          <span id="lensFlareIntensityValue">0</span>
+        </div>
+        <div class="setting-item">
+          <label>にじみ</label>
+          <input type="range" id="lensFlareBlur" min="0" max="3" step="0.05" value="0">
+          <span id="lensFlareBlurValue">0</span>
         </div>
       </div>
     </div>
@@ -1825,6 +1831,6 @@
 
   <script src="src/presetManager.js?v=20260320a"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260323k"></script>
+  <script type="module" src="src/main.js?v=20260323l"></script>
 </body>
 </html>
