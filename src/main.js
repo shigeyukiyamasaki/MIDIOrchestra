@@ -5883,6 +5883,13 @@ function setupEventListeners() {
     debouncedRebuildNotes();
   });
 
+  // Zオフセット
+  document.getElementById('noteZOffset')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('noteZOffsetValue').textContent = value;
+    if (noteGroup) noteGroup.position.z = value;
+  });
+
   // ノート回転
   document.getElementById('noteFlowAngle')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
@@ -17922,6 +17929,10 @@ async function loadViewerData() {
     if (s.noteFlowAngle !== undefined) {
       noteFlowAngle = parseInt(s.noteFlowAngle);
       if (noteGroup) noteGroup.rotation.y = noteFlowAngle * Math.PI / 180;
+    }
+    // ノートZオフセットを直接同期
+    if (s.noteZOffset !== undefined) {
+      if (noteGroup) noteGroup.position.z = parseFloat(s.noteZOffset);
     }
   }
 
