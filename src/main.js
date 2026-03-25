@@ -4726,7 +4726,7 @@ function setupThreeJS() {
   directionalLight.position.set(50, 100, 50);
   scene.add(directionalLight);
   sunLight = directionalLight;
-  sunLight.castShadow = document.getElementById('shadowEnabled')?.checked ?? false;
+  sunLight.castShadow = true; // 常にtrue: falseにするとThree.jsの内部シャドウuniformが無効化されtoArrayエラーが発生する
   sunLight.shadow.mapSize.width = isMobileDevice ? 1024 : 2048;
   sunLight.shadow.mapSize.height = isMobileDevice ? 1024 : 2048;
   sunLight.shadow.camera.left = -500;
@@ -6816,7 +6816,8 @@ function setupEventListeners() {
   // 影ON/OFF（光源チェックボックス）
   document.getElementById('shadowEnabled')?.addEventListener('change', (e) => {
     shadowEnabled = e.target.checked;
-    if (sunLight) sunLight.castShadow = e.target.checked;
+    // sunLight.castShadowは常にtrue: falseにするとThree.js内部のシャドウuniformが無効化され
+    // toArrayエラー→描画フリーズが発生する。影の表示はneedsUpdate制御+プレーン非表示で行う。
     updateShadowPlaneVisibility();
   });
   // 影の環境（屋内/屋外）
@@ -17386,9 +17387,12 @@ function animate() {
       renderer.clearDepth();
       camera.layers.set(0);
       camera.layers.enable(1);
-      gl.colorMask(false, false, false, false);
-      renderer.render(scene, camera);
-      gl.colorMask(true, true, true, true);
+      try {
+        gl.colorMask(false, false, false, false);
+        renderer.render(scene, camera);
+      } finally {
+        gl.colorMask(true, true, true, true);
+      }
       // 火の粉を深度テスト付きで描画
       camera.layers.set(2);
       renderer.render(scene, camera);
@@ -17428,8 +17432,8 @@ function animate() {
 
     // 平塗りフィルタ（常にピクセル化・トゥーンの前）
     applyFlatColor();
-    // Kuwaharaフィルタ: celBeforeKuwaharaならトゥーン後に適用
-    if (!celBeforeKuwahara) applyKuwahara();
+    // Kuwaharaフィルタ: チェックON時はトゥーン前に適用（Kuwahara→セル順）
+    if (celBeforeKuwahara) applyKuwahara();
 
     // ピクセルパスを手動適用
     pixelPass.enabled = true;
@@ -17444,7 +17448,7 @@ function animate() {
       toonPass.renderToScreen = false;
       syncToonDepth();
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
-      if (celBeforeKuwahara) {
+      if (!celBeforeKuwahara) {
         // toon結果(writeBuffer)をreadBufferにコピーしてからKuwahara適用
         if (_pixelCopyPass) {
           _pixelCopyPass.renderToScreen = false;
@@ -17478,7 +17482,7 @@ function animate() {
         toonPass.renderToScreen = false;
         syncToonDepth();
         toonPass.render(renderer, composer.readBuffer, composer.writeBuffer);
-        if (celBeforeKuwahara) applyKuwahara();
+        if (!celBeforeKuwahara) applyKuwahara();
       }
       finalBuffer = useToon ? composer.readBuffer : composer.writeBuffer;
     }
@@ -17523,13 +17527,13 @@ function animate() {
 
     // 平塗りフィルタ（トゥーンの前に適用）
     applyFlatColor();
-    if (!celBeforeKuwahara) applyKuwahara();
+    if (celBeforeKuwahara) applyKuwahara();
 
     // トゥーンパスを手動適用
     toonPass.enabled = true;
     syncToonDepth();
-    if (celBeforeKuwahara && useKuwahara) {
-      // セル→Kuwahara順: トゥーンをバッファに描画→Kuwahara→画面出力
+    if (!celBeforeKuwahara && useKuwahara) {
+      // デフォルト順（セル→Kuwahara）: トゥーンをバッファに描画→Kuwahara→画面出力
       toonPass.renderToScreen = false;
       toonPass.render(renderer, composer.writeBuffer, composer.readBuffer);
       // writeBufferの結果をreadBufferにコピー
@@ -17541,7 +17545,7 @@ function animate() {
       _pixelCopyPass.renderToScreen = true;
       _pixelCopyPass.render(renderer, null, composer.readBuffer);
     } else {
-      // デフォルト順（Kuwahara→セル）: トゥーンを画面に出力
+      // チェックON時（Kuwahara→セル）またはKuwaharaなし: トゥーンを画面に出力
       toonPass.renderToScreen = true;
       toonPass.render(renderer, null, composer.readBuffer);
     }
@@ -17621,6 +17625,7 @@ function animate() {
 
   // 色数モニター（ピクセルアートON時のみ）
   updateColorMonitor();
+
 }
 
 function updateTimeDisplay() {
