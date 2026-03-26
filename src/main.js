@@ -17405,6 +17405,16 @@ function animate() {
     camera.layers.enable(2);
   }
 
+  // ピクセルアート除外: ノート・スペクトラムをピクセル化しない
+  const _pixelExcludeNotes = (pixelHoldSkip || usePixel) &&
+    (document.getElementById('pixelExcludeNotes')?.checked ?? false);
+  let _savedVizVisible;
+  if (_pixelExcludeNotes) {
+    camera.layers.disable(1); // ノート・アイコンはレイヤー1
+    _savedVizVisible = vizBarsGroup ? vizBarsGroup.visible : false;
+    if (vizBarsGroup) vizBarsGroup.visible = false;
+  }
+
   if (pixelHoldSkip) {
     // ホールド中: 前回キャプチャした画面をそのまま表示
     _pixelCopyPass.renderToScreen = true;
@@ -17613,6 +17623,35 @@ function animate() {
       renderer.render(flareScene, flareCamera);
       renderer.autoClear = true;
     }
+  }
+
+  // ピクセルアート除外: ノート・スペクトラムをピクセル化せず画面に直接描画
+  if (_pixelExcludeNotes) {
+    camera.layers.enable(1);
+    renderer.setRenderTarget(null);
+    const _savedBg = scene.background;
+    scene.background = null;
+    renderer.autoClear = false;
+
+    // ノート・アイコン（レイヤー1）
+    camera.layers.set(1);
+    renderer.clearDepth();
+    renderer.render(scene, camera);
+
+    // スペクトラム（レイヤー0 → 一時的にレイヤー3で分離描画）
+    if (vizBarsGroup && _savedVizVisible) {
+      vizBarsGroup.visible = true;
+      vizBarsGroup.traverse(child => { if (child.isMesh) child.layers.set(3); });
+      camera.layers.set(3);
+      renderer.render(scene, camera);
+      vizBarsGroup.traverse(child => { if (child.isMesh) child.layers.set(0); });
+    }
+
+    renderer.autoClear = true;
+    scene.background = _savedBg;
+    camera.layers.set(0);
+    camera.layers.enable(1);
+    camera.layers.enable(2);
   }
 
   // 光源グロースプライト: ピクセル分岐外ではポストプロセス後に画面に直接描画
