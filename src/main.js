@@ -5930,6 +5930,11 @@ function setupEventListeners() {
     updateAndStoreBackground();
   });
 
+  // UI背景色切り替え（黒↔グレー）
+  document.getElementById('uiBgToggle')?.addEventListener('click', () => {
+    document.body.classList.toggle('ui-bg-gray');
+  });
+
   // 幕の色
   const timelineColorInput = document.getElementById('timelineColor');
   timelineColorInput.addEventListener('input', (e) => {
@@ -17590,6 +17595,14 @@ function animate() {
     _pixelCopyPass.render(renderer, null, composer.readBuffer);
   } else if (useKuwahara) {
     // Kuwaharaのみ: バッファに描画 → Kuwahara適用 → 画面出力
+    const _kuwaharaExcludeNotes = document.getElementById('kuwaharaExcludeNotes')?.checked ?? false;
+    let _savedVizVisK;
+    if (_kuwaharaExcludeNotes) {
+      camera.layers.disable(1);
+      _savedVizVisK = vizBarsGroup ? vizBarsGroup.visible : false;
+      if (vizBarsGroup) vizBarsGroup.visible = false;
+    }
+
     composer.renderToScreen = false;
     if (useBloom) {
       _composerRenderWithExclusions();
@@ -17609,6 +17622,33 @@ function animate() {
 
     _pixelCopyPass.renderToScreen = true;
     _pixelCopyPass.render(renderer, null, composer.readBuffer);
+
+    // 除外オブジェクトをKuwahara無しで画面に直接描画
+    if (_kuwaharaExcludeNotes) {
+      camera.layers.enable(1);
+      renderer.setRenderTarget(null);
+      const _savedBgK = scene.background;
+      scene.background = null;
+      renderer.autoClear = false;
+
+      camera.layers.set(1);
+      renderer.clearDepth();
+      renderer.render(scene, camera);
+
+      if (vizBarsGroup && _savedVizVisK) {
+        vizBarsGroup.visible = true;
+        vizBarsGroup.traverse(child => { if (child.isMesh) child.layers.set(3); });
+        camera.layers.set(3);
+        renderer.render(scene, camera);
+        vizBarsGroup.traverse(child => { if (child.isMesh) child.layers.set(0); });
+      }
+
+      renderer.autoClear = true;
+      scene.background = _savedBgK;
+      camera.layers.set(0);
+      camera.layers.enable(1);
+      camera.layers.enable(2);
+    }
   } else {
     // ピクセルアートOFF・トゥーンOFF・平塗りOFF・KuwaharaOFF: 通常描画
     composer.renderToScreen = true;

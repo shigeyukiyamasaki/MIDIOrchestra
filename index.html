@@ -49,6 +49,7 @@
           <option value="9:16">9:16</option>
           <option value="free">フリー</option>
         </select>
+        <button id="uiBgToggle" title="UI背景色切り替え" style="margin-left:4px;padding:2px 6px;font-size:11px;"><i class="fa-solid fa-circle-half-stroke"></i></button>
       </div>
       <div class="control-group seek-group">
         <label><span id="currentTime">0:00</span> <span id="editorDuration">/ 0:00</span></label>
@@ -1621,6 +1622,9 @@
           <input type="range" id="kuwaharaStrength" min="0" max="1" step="0.05" value="1">
           <span id="kuwaharaStrengthValue">1</span>
         </div>
+        <div class="setting-item">
+          <label><input type="checkbox" id="kuwaharaExcludeNotes"> ノート・スペクトラムを除外</label>
+        </div>
       </div>
       <div class="display-section">
         <div class="setting-item">
@@ -1824,6 +1828,6 @@
 
   <script src="src/presetManager.js?v=20260320a"></script>
   <script src="src/viewerExport.js?v=20260310a"></script>
-  <script type="module" src="src/main.js?v=20260326b"></script>
+  <script type="module" src="src/main.js?v=20260326e"></script>
 </body>
 </html>
