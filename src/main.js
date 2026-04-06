@@ -548,6 +548,20 @@ let plyTreeIndices = null;
 let plyTreeOrigPos = null;
 let plyTreeTime = 0;
 
+let plyCherryEnabled = false;
+let plyCherryColor = '#e8a0b0';
+let plyCherryThreshold = 0.3;
+let plyCherryFallSpeed = 0.3;
+let plyCherryFlutter = 1.0;
+let plyCherryFlutterFreq = 2.0;
+let plyCherrySpread = 0.5;
+let plyCherryCycle = 10;
+let plyCherrySize = 1.0;
+let plyCherryIndices = null;
+let plyCherryOrigPos = null;
+let plyCherryOrigScales = null;
+let plyCherryTime = 0;
+
 let plySmokeEnabled = false;
 let plySmokeDirection = 'world';
 let plySmokeColor = '#888888';
@@ -2094,6 +2108,15 @@ function syncWaterSettingsFromDOM() {
   plyTreeAmplitude = gv('plyTreeAmplitude', 0.3);
   plyTreeSpeed = gv('plyTreeSpeed', 1.0);
   plyTreeWavelength = gv('plyTreeWavelength', 15);
+  plyCherryEnabled = gc('plyCherryEnabled');
+  plyCherryColor = gs('plyCherryColor', '#e8a0b0');
+  plyCherryThreshold = gv('plyCherryThreshold', 0.3);
+  plyCherryFallSpeed = gv('plyCherryFallSpeed', 0.3);
+  plyCherryFlutter = gv('plyCherryFlutter', 1.0);
+  plyCherryFlutterFreq = gv('plyCherryFlutterFreq', 2.0);
+  plyCherrySpread = gv('plyCherrySpread', 0.5);
+  plyCherryCycle = gv('plyCherryCycle', 10);
+  plyCherrySize = gv('plyCherrySize', 1.0);
   plySmokeEnabled = gc('plySmokeEnabled');
   plySmokeDirection = gs('plySmokeDirection', 'world');
   plySmokeDownward = gc('plySmokeDownward');
@@ -2503,6 +2526,166 @@ function clearPlyTreeEffect() {
   });
   plyTreeIndices = null;
   plyTreeOrigPos = null;
+}
+
+// ====== PLY桜エフェクト ======
+function setupPlyCherryEffect() {
+  plyCherryIndices = null;
+  plyCherryOrigPos = null;
+  plyCherryOrigScales = null;
+  if (!plyCherryEnabled || !glbModel || !glbModel.userData.is3DGS) return;
+
+  const target = new THREE.Color(plyCherryColor);
+  const threshold = plyCherryThreshold;
+  const indices = [];
+  const origPositions = [];
+
+  glbModel.traverse((child) => {
+    if (!child.isPoints || !child.geometry) return;
+    const colAttr = child.geometry.attributes.color;
+    const posAttr = child.geometry.attributes.position;
+    if (!colAttr || !posAttr) return;
+    const col = colAttr.array;
+    const pos = posAttr.array;
+    const count = posAttr.count;
+
+    for (let i = 0; i < count; i++) {
+      const r = col[i * 3], g = col[i * 3 + 1], b = col[i * 3 + 2];
+      const dr = r - target.r, dg = g - target.g, db = b - target.b;
+      const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+      if (dist < threshold) {
+        indices.push(i);
+        origPositions.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+      }
+    }
+  });
+
+  if (indices.length > 0) {
+    plyCherryIndices = new Uint32Array(indices);
+    plyCherryOrigPos = new Float32Array(origPositions);
+    // splatScaleテクスチャの元の値を保存し、桜サイズを適用
+    if (_splatScaleTexture && _splatScaleTexture.image && _splatScaleTexture.image.data) {
+      const data = _splatScaleTexture.image.data;
+      plyCherryOrigScales = new Float32Array(indices.length);
+      for (let j = 0; j < indices.length; j++) {
+        plyCherryOrigScales[j] = data[indices[j]];
+        data[indices[j]] = plyCherryOrigScales[j] * plyCherrySize;
+      }
+      _splatScaleTexture.needsUpdate = true;
+    }
+    console.log(`[PlyCherry] ${indices.length} vertices matched`);
+  } else {
+    console.log('[PlyCherry] No vertices matched');
+  }
+}
+
+function updatePlyCherryEffect() {
+  if (!plyCherryIndices || !glbModel || !glbModel.userData.is3DGS) return;
+
+  plyCherryTime += 0.016;
+  const t = plyCherryTime;
+  const cycle = plyCherryCycle;
+  const fall = plyCherryFallSpeed;
+  const flutter = plyCherryFlutter;
+  const spread = plyCherrySpread;
+
+  // 落下方向の決定（ワールド下方向をローカル座標に変換）
+  const localDown = new THREE.Vector3();
+  const localRight = new THREE.Vector3();
+  const localForward = new THREE.Vector3();
+
+  const worldDown = new THREE.Vector3(0, -1, 0);
+  const invMatrix = new THREE.Matrix4().copy(glbModel.matrixWorld).invert();
+  localDown.copy(worldDown).transformDirection(invMatrix).normalize();
+
+  if (Math.abs(localDown.x) < 0.9) {
+    localRight.crossVectors(localDown, new THREE.Vector3(1, 0, 0)).normalize();
+  } else {
+    localRight.crossVectors(localDown, new THREE.Vector3(0, 0, 1)).normalize();
+  }
+  localForward.crossVectors(localRight, localDown).normalize();
+
+  glbModel.traverse((child) => {
+    if (!child.isPoints || !child.geometry) return;
+    const posAttr = child.geometry.attributes.position;
+    if (!posAttr) return;
+    const pos = posAttr.array;
+    const indices = plyCherryIndices;
+    const orig = plyCherryOrigPos;
+
+    for (let j = 0; j < indices.length; j++) {
+      const i = indices[j];
+      const ox = orig[j * 3], oy = orig[j * 3 + 1], oz = orig[j * 3 + 2];
+
+      // 各花びらにユニークなフェーズ（位置ベース）
+      const phase = (ox * 11.3 + oy * 7.7 + oz * 13.1) % cycle;
+      const elapsed = (t * fall + phase) % cycle;
+      const progress = elapsed / cycle; // 0〜1
+
+      // 落下量
+      const fallAmount = progress * fall * cycle * 0.5;
+
+      // ひらひら：三角波で直線的にカクッと方向転換（周波数を花びらごとに変える）
+      const ff = plyCherryFlutterFreq;
+      const freqR = ff + Math.sin(ox * 3.1 + oz * 5.3) * (ff * 0.4);
+      const freqF = ff * 0.75 + Math.cos(oy * 4.7 + ox * 2.9) * (ff * 0.3);
+      const triR = Math.asin(Math.sin(t * freqR + ox * 7.1 + progress * 6.0)) * (2 / Math.PI);
+      const triF = Math.asin(Math.sin(t * freqF + oz * 5.3 + progress * 5.0)) * (2 / Math.PI);
+      const flutterR = flutter * triR * (0.5 + progress * 0.5);
+      const flutterF = flutter * triF * (0.3 + progress * 0.7);
+
+      // 拡散：落ちるにつれ外側にドリフト
+      const spreadR = spread * progress * Math.sin(ox * 9.3 + oz * 6.1) * progress;
+      const spreadF = spread * progress * Math.cos(ox * 7.7 + oz * 11.3) * progress;
+
+      // ローカル座標での変位を合成
+      const dx = localDown.x * fallAmount + localRight.x * (flutterR + spreadR) + localForward.x * (flutterF + spreadF);
+      const dy = localDown.y * fallAmount + localRight.y * (flutterR + spreadR) + localForward.y * (flutterF + spreadF);
+      const dz = localDown.z * fallAmount + localRight.z * (flutterR + spreadR) + localForward.z * (flutterF + spreadF);
+
+      pos[i * 3]     = ox + dx;
+      pos[i * 3 + 1] = oy + dy;
+      pos[i * 3 + 2] = oz + dz;
+    }
+    posAttr.needsUpdate = true;
+  });
+}
+
+function clearPlyCherryEffect() {
+  if (!plyCherryIndices || !glbModel) return;
+  glbModel.traverse((child) => {
+    if (!child.isPoints || !child.geometry) return;
+    const posAttr = child.geometry.attributes.position;
+    if (!posAttr) return;
+    const pos = posAttr.array;
+    for (let j = 0; j < plyCherryIndices.length; j++) {
+      const i = plyCherryIndices[j];
+      pos[i * 3]     = plyCherryOrigPos[j * 3];
+      pos[i * 3 + 1] = plyCherryOrigPos[j * 3 + 1];
+      pos[i * 3 + 2] = plyCherryOrigPos[j * 3 + 2];
+    }
+    posAttr.needsUpdate = true;
+  });
+  // splatScaleを元に戻す
+  if (plyCherryOrigScales && _splatScaleTexture && _splatScaleTexture.image && _splatScaleTexture.image.data) {
+    const data = _splatScaleTexture.image.data;
+    for (let j = 0; j < plyCherryIndices.length; j++) {
+      data[plyCherryIndices[j]] = plyCherryOrigScales[j];
+    }
+    _splatScaleTexture.needsUpdate = true;
+  }
+  plyCherryIndices = null;
+  plyCherryOrigPos = null;
+  plyCherryOrigScales = null;
+}
+
+function applyPlyCherrySize() {
+  if (!plyCherryIndices || !plyCherryOrigScales || !_splatScaleTexture || !_splatScaleTexture.image) return;
+  const data = _splatScaleTexture.image.data;
+  for (let j = 0; j < plyCherryIndices.length; j++) {
+    data[plyCherryIndices[j]] = plyCherryOrigScales[j] * plyCherrySize;
+  }
+  _splatScaleTexture.needsUpdate = true;
 }
 
 // ====== PLY煙エフェクト ======
@@ -7342,6 +7525,57 @@ function setupEventListeners() {
     const v = parseFloat(e.target.value);
     document.getElementById('plyTreeWavelengthValue').textContent = v;
     plyTreeWavelength = v;
+  });
+
+  // PLY桜エフェクト
+  document.getElementById('plyCherryEnabled')?.addEventListener('change', (e) => {
+    plyCherryEnabled = e.target.checked;
+    if (plyCherryEnabled) {
+      setupPlyCherryEffect();
+    } else {
+      clearPlyCherryEffect();
+    }
+  });
+  document.getElementById('plyCherryColor')?.addEventListener('input', (e) => {
+    plyCherryColor = e.target.value;
+    if (plyCherryEnabled) { clearPlyCherryEffect(); setupPlyCherryEffect(); }
+  });
+  document.getElementById('plyCherryThreshold')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCherryThresholdValue').textContent = v;
+    plyCherryThreshold = v;
+    if (plyCherryEnabled) { clearPlyCherryEffect(); setupPlyCherryEffect(); }
+  });
+  document.getElementById('plyCherryFallSpeed')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCherryFallSpeedValue').textContent = v;
+    plyCherryFallSpeed = v;
+  });
+  document.getElementById('plyCherryFlutter')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCherryFlutterValue').textContent = v;
+    plyCherryFlutter = v;
+  });
+  document.getElementById('plyCherryFlutterFreq')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCherryFlutterFreqValue').textContent = v;
+    plyCherryFlutterFreq = v;
+  });
+  document.getElementById('plyCherrySpread')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCherrySpreadValue').textContent = v;
+    plyCherrySpread = v;
+  });
+  document.getElementById('plyCherryCycle')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCherryCycleValue').textContent = v;
+    plyCherryCycle = v;
+  });
+  document.getElementById('plyCherrySize')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('plyCherrySizeValue').textContent = v;
+    plyCherrySize = v;
+    applyPlyCherrySize();
   });
 
   // PLY煙エフェクト
@@ -14959,6 +15193,7 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
         if (plyWaterEnabled) setupPlyWaterEffect();
         if (plyTreeEnabled) setupPlyTreeEffect();
         if (plySmokeEnabled) setupPlySmokeEffect();
+        if (plyCherryEnabled) setupPlyCherryEffect();
         if (plyFireEnabled) setupPlyFireEffect();
         return;
       }
@@ -15096,6 +15331,9 @@ async function rebuild3DGSFromCache(arrayBuffer, file) {
       }
       if (plySmokeEnabled) {
         setupPlySmokeEffect();
+      }
+      if (plyCherryEnabled) {
+        setupPlyCherryEffect();
       }
       if (plyFireEnabled) {
         setupPlyFireEffect();
@@ -15284,6 +15522,7 @@ function setupGlbScene(sceneGroup, file) {
     if (plyWaterEnabled) setupPlyWaterEffect();
     if (plyTreeEnabled) setupPlyTreeEffect();
     if (plySmokeEnabled) setupPlySmokeEffect();
+    if (plyCherryEnabled) setupPlyCherryEffect();
     if (plyFireEnabled) setupPlyFireEffect();
   }
 
@@ -16957,6 +17196,7 @@ function animate() {
   updatePlyWaterEffect();
   updatePlyTreeEffect();
   updatePlySmokeEffect();
+  updatePlyCherryEffect();
   updatePlyCloudScroll();
   updatePlyFireEffect();
   updateFireSmokeParticles();
