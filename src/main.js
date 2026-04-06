@@ -138,6 +138,7 @@ let gsBaseCanvasWidth = 0; // 3DGSポイントサイズ補正の基準幅
 // PLY背景
 let plyBackground = null;        // THREE.Group（PLYメッシュ3層を格納）
 let plyBackgroundFiles = [];     // 読み込んだPLYファイル名リスト
+let plyBackgroundBlobs = {};     // スロット名→元Blobの保持（エクスポートフォールバック用）
 let plyParallaxStrength = 0.05;  // パララックス強度（キャッシュ）
 let plyBgOffsetY = 0;            // PLY背景Y軸オフセット（キャッシュ）
 
@@ -205,6 +206,24 @@ window.getLoadedMediaBlob = async function(slot) {
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
       return { blob, name: 'heightmap3.png', mimeType: 'image/png' };
     } catch(e) { console.error('[Fallback] heightmap3: canvas failed', e); return null; }
+  }
+
+  // PLY背景: メモリに保持したblobを返す
+  if (slot.startsWith('plyBg') && plyBackgroundBlobs[slot]) {
+    const stored = plyBackgroundBlobs[slot];
+    console.log(`[Fallback] ${slot}: returning stored blob, name=${stored.name}, size=${stored.blob.size}`);
+    return stored;
+  }
+  // PLY背景: blobがない場合、メッシュに保存されたArrayBufferから復元
+  if (slot.startsWith('plyBg') && plyBackground) {
+    const mesh = plyBackground.children.find(c => c.userData.plySlotName === slot);
+    if (mesh && mesh.userData.originalPlyBuffer) {
+      const buf = mesh.userData.originalPlyBuffer;
+      const name = mesh.userData.originalPlyFileName || slot + '.ply';
+      console.log(`[Fallback] ${slot}: reconstructing from mesh userData, size=${buf.byteLength}`);
+      return { blob: new Blob([buf], { type: 'application/octet-stream' }), name, mimeType: 'application/octet-stream' };
+    }
+    console.log(`[Fallback] ${slot}: no mesh with matching slotName found in plyBackground`);
   }
 
   const info = slotMap[slot];
@@ -533,6 +552,7 @@ let plySmokeEnabled = false;
 let plySmokeDirection = 'world';
 let plySmokeColor = '#888888';
 let plySmokeThreshold = 0.3;
+let plySmokeDownward = false;
 let plySmokeRiseSpeed = 0.3;
 let plySmokeSwirl = 0.5;
 let plySmokeSpread = 0.5;
@@ -2076,6 +2096,7 @@ function syncWaterSettingsFromDOM() {
   plyTreeWavelength = gv('plyTreeWavelength', 15);
   plySmokeEnabled = gc('plySmokeEnabled');
   plySmokeDirection = gs('plySmokeDirection', 'world');
+  plySmokeDownward = gc('plySmokeDownward');
   plySmokeColor = gs('plySmokeColor', '#888888');
   plySmokeThreshold = gv('plySmokeThreshold', 0.3);
   plySmokeRiseSpeed = gv('plySmokeRiseSpeed', 0.3);
@@ -2543,19 +2564,20 @@ function updatePlySmokeEffect() {
   const swirl = plySmokeSwirl;
   const spread = plySmokeSpread;
 
-  // 上昇方向の決定
+  // 上昇方向の決定（下方向チェック時は反転）
+  const dirSign = plySmokeDownward ? -1 : 1;
   const localUp = new THREE.Vector3();
   const localRight = new THREE.Vector3();
   const localForward = new THREE.Vector3();
 
   if (plySmokeDirection === 'local') {
     // ローカルY軸をそのまま使用
-    localUp.set(0, 1, 0);
+    localUp.set(0, dirSign, 0);
     localRight.set(1, 0, 0);
     localForward.set(0, 0, 1);
   } else {
     // ワールド空間の上方向(0,1,0)をローカル座標に変換
-    const worldUp = new THREE.Vector3(0, 1, 0);
+    const worldUp = new THREE.Vector3(0, dirSign, 0);
     const invMatrix = new THREE.Matrix4().copy(glbModel.matrixWorld).invert();
     localUp.copy(worldUp).transformDirection(invMatrix).normalize();
 
@@ -3816,6 +3838,7 @@ function setupThreeJS() {
 
   // シーン
   scene = new THREE.Scene();
+  window._scene = scene; // debug
   scene.background = new THREE.Color(0x1a1a2e);
 
   // カメラ（斜め上から見下ろす視点）
@@ -6311,6 +6334,7 @@ function setupEventListeners() {
       pixelPass.uniforms.paletteSize.value = 0.0;
     }
   }
+  window.setPalette = setPalette;
 
   function syncPixelPassEnabled() {
     if (!pixelPass) return;
@@ -7328,6 +7352,9 @@ function setupEventListeners() {
     } else {
       clearPlySmokeEffect();
     }
+  });
+  document.getElementById('plySmokeDownward')?.addEventListener('change', (e) => {
+    plySmokeDownward = e.target.checked;
   });
   document.getElementById('plySmokeColor')?.addEventListener('input', (e) => {
     plySmokeColor = e.target.value;
@@ -9600,10 +9627,19 @@ function setupEventListeners() {
       plyBackground.traverse((child) => {
         if (child.material) {
           child.material.opacity = value;
-          child.material.depthWrite = value >= 1;
+          child.material.transparent = true;
           child.material.needsUpdate = true;
         }
       });
+    }
+  });
+
+  // PLY背景Y回転
+  document.getElementById('plyBgRotationY')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('plyBgRotationYValue').textContent = value;
+    if (plyBackground) {
+      plyBackground.rotation.y = value * Math.PI / 180;
     }
   });
 
@@ -9658,10 +9694,10 @@ function setupEventListeners() {
     panel5Wall: loadPanel5WallImage,
     panel6Wall: loadPanel6WallImage,
     glb: loadGlbModel,
-    plyBg0: (file) => loadPlyBackground([file]),
-    plyBg1: (file) => loadPlyBackground([file]),
-    plyBg2: (file) => loadPlyBackground([file]),
-    plyBg3: (file) => loadPlyBackground([file]),
+    plyBg0: (file) => loadPlyBackground([file], 'plyBg0'),
+    plyBg1: (file) => loadPlyBackground([file], 'plyBg1'),
+    plyBg2: (file) => loadPlyBackground([file], 'plyBg2'),
+    plyBg3: (file) => loadPlyBackground([file], 'plyBg3'),
   };
 
   const slotMediaTypes = {
@@ -9677,6 +9713,10 @@ function setupEventListeners() {
     panel5Wall: ['image', 'video'],
     panel6Wall: ['image', 'video'],
     glb: ['model'],
+    plyBg0: ['model'],
+    plyBg1: ['model'],
+    plyBg2: ['model'],
+    plyBg3: ['model'],
   };
 
   function cleanupMediaLibraryURLs() {
@@ -9701,7 +9741,7 @@ function setupEventListeners() {
         cleanupMediaLibraryURLs();
         exitMediaSelectMode();
         mediaLibraryGrid.innerHTML = '';
-        const isListMode = mediaLibraryTargetSlot === 'midi' || mediaLibraryTargetSlot === 'audio' || mediaLibraryTargetSlot === 'glb';
+        const isListMode = mediaLibraryTargetSlot === 'midi' || mediaLibraryTargetSlot === 'audio' || mediaLibraryTargetSlot === 'glb' || mediaLibraryTargetSlot?.startsWith('plyBg');
         mediaLibraryGrid.classList.toggle('media-list', isListMode);
 
         if (allMedia.length === 0) {
@@ -10212,10 +10252,9 @@ function setupAudioVisualizer() {
   // モバイル: createMediaElementSourceテスト中（popIcon無効化で音声安定化済み）
   // if (isMobileDevice) return;
 
-  // AudioContext接続（audioElementが差し替わったら再接続）
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
+  // AudioContextはユーザージェスチャー内で生成する必要がある（autoplay policy）
+  // ここでは既に生成済みの場合のみ接続処理を行う
+  if (!audioContext) return;
   if (!analyser) {
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 4096;
@@ -15480,7 +15519,7 @@ function clearGlbModel() {
 // PLY背景
 // ============================================
 
-function loadPlyBackground(files) {
+function loadPlyBackground(files, slotName) {
   if (!THREE.PLYLoader) {
     console.error('THREE.PLYLoader is not available. Check CDN script loading.');
     return Promise.resolve();
@@ -15489,13 +15528,15 @@ function loadPlyBackground(files) {
   // グループがなければ新規作成（追加読み込み対応）
   if (!plyBackground) {
     plyBackground = new THREE.Group();
-    plyBackground.renderOrder = -998;
     plyBackgroundFiles = [];
 
     const vs = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
     const scaleEl = document.getElementById('plyBgScale');
     const scaleValue = scaleEl ? parseFloat(scaleEl.value) : (vs && vs.plyBgScale !== undefined ? parseFloat(vs.plyBgScale) : 200);
     plyBackground.scale.setScalar(scaleValue);
+    const rotYEl = document.getElementById('plyBgRotationY');
+    const rotYDeg = rotYEl ? parseFloat(rotYEl.value) : (vs && vs.plyBgRotationY !== undefined ? parseFloat(vs.plyBgRotationY) : -90);
+    plyBackground.rotation.y = rotYDeg * Math.PI / 180;
     scene.add(plyBackground);
   }
 
@@ -15507,11 +15548,16 @@ function loadPlyBackground(files) {
 
   // ファイル名でソート（layer0, layer1, layer2の順）
   const sortedFiles = Array.from(files).sort((a, b) => a.name.localeCompare(b.name));
+  const existingCountForBlob = plyBackground ? plyBackground.children.length : 0;
 
   // 各ファイルを順次読み込み（Promiseチェーン）
-  const filePromises = sortedFiles.map((file) => {
+  const filePromises = sortedFiles.map((file, fileIdx) => {
     return new Promise((resolve, reject) => {
       plyBackgroundFiles.push(file.name);
+      // スロット名の決定: 明示的に指定された場合はそれを使用、なければ連番
+      const effectiveSlotName = slotName ? slotName : 'plyBg' + (existingCountForBlob + fileIdx);
+      // エクスポートフォールバック用にblobを保持
+      plyBackgroundBlobs[effectiveSlotName] = { blob: file, name: file.name, mimeType: 'application/octet-stream' };
       const reader = new FileReader();
       reader.onload = (e) => {
         const arrayBuffer = e.target.result;
@@ -15525,26 +15571,33 @@ function loadPlyBackground(files) {
           'faces:', geometry.index ? geometry.index.count / 3 : 0,
           'hasColors:', hasColor);
 
+        const layerMatch = file.name.match(/layer(\d+)/i);
+        const layerIndex = layerMatch ? parseInt(layerMatch[1]) : sortedFiles.indexOf(file);
+
         const material = new THREE.MeshBasicMaterial({
           vertexColors: hasColor,
           color: hasColor ? 0xffffff : 0xaaaaaa,
           side: THREE.DoubleSide,
-          transparent: opacityValue < 1,
+          transparent: true,
           opacity: opacityValue,
-          depthWrite: opacityValue >= 1,
+          depthWrite: true,
+          depthTest: true,
         });
 
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.frustumCulled = false; // パノラマメッシュ：カメラが内部にあるためカリング無効化
+        // painter's algorithm: 外側レイヤー（高layerIndex=sky）を先に描画、内側（低layerIndex=前景）が後で上書き
+        mesh.renderOrder = -1000 - layerIndex;
 
         mesh.rotateX(-Math.PI / 2);
-        mesh.rotateZ(-Math.PI / 2);
 
-        const layerMatch = file.name.match(/layer(\d+)/i);
-        const layerIndex = layerMatch ? parseInt(layerMatch[1]) : sortedFiles.indexOf(file);
         mesh.userData.plyLayerDepth = layerIndex;
+        mesh.userData.plySlotName = effectiveSlotName;
+        mesh.userData.originalPlyBuffer = arrayBuffer;
+        mesh.userData.originalPlyFileName = file.name;
 
         plyBackground.add(mesh);
-        console.log(`PLY mesh added: ${file.name}`);
+        console.log(`PLY mesh added: ${file.name}, slot=${effectiveSlotName}, layerDepth=${layerIndex}, renderOrder=${mesh.renderOrder}`);
         resolve();
       };
       reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
@@ -15559,6 +15612,70 @@ function loadPlyBackground(files) {
     }
     console.log(`PLY background loaded: ${plyBackgroundFiles.length} total meshes`);
   });
+}
+
+// URL参照時のPLY背景読み込み（ArrayBuffer直接パース、メモリコピーを削減）
+function loadPlyBackgroundFromBuffer(arrayBuffer, fileName, slotName) {
+  if (!THREE.PLYLoader) {
+    console.error('THREE.PLYLoader is not available.');
+    return;
+  }
+
+  if (!plyBackground) {
+    plyBackground = new THREE.Group();
+    plyBackgroundFiles = [];
+    const vs = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
+    const scaleEl = document.getElementById('plyBgScale');
+    const scaleValue = scaleEl ? parseFloat(scaleEl.value) : (vs && vs.plyBgScale !== undefined ? parseFloat(vs.plyBgScale) : 200);
+    plyBackground.scale.setScalar(scaleValue);
+    const rotYEl = document.getElementById('plyBgRotationY');
+    const rotYDeg = rotYEl ? parseFloat(rotYEl.value) : (vs && vs.plyBgRotationY !== undefined ? parseFloat(vs.plyBgRotationY) : -90);
+    plyBackground.rotation.y = rotYDeg * Math.PI / 180;
+    scene.add(plyBackground);
+  }
+
+  const loader = new THREE.PLYLoader();
+  const opacityEl = document.getElementById('plyBgOpacity');
+  const vsData = window.VIEWER_DATA && window.VIEWER_DATA.settings ? window.VIEWER_DATA.settings : null;
+  const opacityValue = opacityEl ? parseFloat(opacityEl.value) : (vsData && vsData.plyBgOpacity !== undefined ? parseFloat(vsData.plyBgOpacity) : 1);
+
+  plyBackgroundFiles.push(fileName);
+
+  console.log(`PLY file buffer: ${fileName}, size: ${arrayBuffer.byteLength}`);
+  const geometry = loader.parse(arrayBuffer);
+
+  const hasColor = !!geometry.attributes.color;
+  console.log('[PLY]', fileName,
+    '- vertices:', geometry.attributes.position?.count,
+    'faces:', geometry.index ? geometry.index.count / 3 : 0,
+    'hasColors:', hasColor);
+
+  const layerMatch = fileName.match(/layer(\d+)/i);
+  const layerIndex = layerMatch ? parseInt(layerMatch[1]) : plyBackground.children.length;
+
+  const material = new THREE.MeshBasicMaterial({
+    vertexColors: hasColor,
+    color: hasColor ? 0xffffff : 0xaaaaaa,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: opacityValue,
+    depthWrite: true,
+    depthTest: true,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false; // パノラマメッシュ：カメラが内部にあるためカリング無効化
+  // painter's algorithm: 外側レイヤー（高layerIndex=sky）を先に描画、内側（低layerIndex=前景）が後で上書き
+  mesh.renderOrder = -1000 - layerIndex;
+  mesh.rotateX(-Math.PI / 2);
+
+  mesh.userData.plyLayerDepth = layerIndex;
+  mesh.userData.plySlotName = slotName || null;
+  mesh.userData.originalPlyBuffer = arrayBuffer;
+  mesh.userData.originalPlyFileName = fileName;
+
+  plyBackground.add(mesh);
+  console.log(`PLY mesh added: ${fileName}, slot=${slotName || '?'}, layerDepth=${layerIndex}, renderOrder=${mesh.renderOrder}`);
 }
 
 async function savePlyToLibrary(files) {
@@ -15591,6 +15708,7 @@ function clearPlyBackground() {
     plyBackground = null;
   }
   plyBackgroundFiles = [];
+  plyBackgroundBlobs = {};
 
   window.currentMediaRefs.plyBg0 = null;
   window.currentMediaRefs.plyBg1 = null;
@@ -16137,7 +16255,11 @@ function play() {
   document.getElementById('playBtn').innerHTML = '<i class="fa-solid fa-pause"></i>';
   const vp = document.getElementById('viewerPlayBtn');
   if (vp) vp.innerHTML = '<i class="fa-solid fa-pause"></i>';
-  // AudioContext resume（ブラウザのユーザージェスチャー要件）
+  // AudioContextをユーザージェスチャー内で生成（autoplay policy対策）
+  if (!audioContext && audioElement) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    setupAudioVisualizer();
+  }
   if (audioContext && audioContext.state === 'suspended') {
     audioContext.resume();
   }
@@ -16928,6 +17050,11 @@ function animate() {
 
   // 色数モニター更新関数
   function updateColorMonitor() {
+    // ビューワーではモニター非表示
+    if (window.VIEWER_MODE) {
+      if (_colorMonitor.el) _colorMonitor.el.style.display = 'none';
+      return;
+    }
     if (!pixelPass || !pixelPass.enabled) {
       if (_colorMonitor.el) _colorMonitor.el.style.display = 'none';
       return;
@@ -17808,8 +17935,8 @@ function loadVideoFromURL(slotName, url, loadFn) {
     // モバイル: _mobile版があれば使う（4K動画はモバイルでは再生困難）
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     const originalUrl = url;
-    if (isMobile && url.match(/\.\w+$/)) {
-      url = url.replace(/(\.\w+)$/, '_mobile$1');
+    if (isMobile && url.match(/\.\w+(\?|$)/)) {
+      url = url.replace(/(\.\w+)(\?|$)/, '_mobile$1$2');
       console.log(`[Viewer] Mobile detected, trying: ${url}`);
     }
     console.log(`[Viewer] Streaming video ${slotName} from URL: ${url}`);
@@ -18022,11 +18149,14 @@ async function loadViewerData() {
 
   // メディアを読み込み
   const m = data.media || {};
+  const cacheBuster = '_cb=' + Date.now();
+  const noCacheUrl = (url) => url + (url.includes('?') ? '&' : '?') + cacheBuster;
 
   if (m.midi) {
     let blob;
     if (m.midi.url) {
-      const resp = await fetch(m.midi.url);
+      const resp = await fetch(noCacheUrl(m.midi.url));
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       blob = await resp.blob();
     } else if (m.midi.data) {
       blob = base64ToBlob(m.midi.data, m.midi.mimeType);
@@ -18043,7 +18173,8 @@ async function loadViewerData() {
   if (m.audio) {
     let blob;
     if (m.audio.url) {
-      const resp = await fetch(m.audio.url);
+      const resp = await fetch(noCacheUrl(m.audio.url));
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       blob = await resp.blob();
     } else if (m.audio.data) {
       blob = base64ToBlob(m.audio.data, m.audio.mimeType);
@@ -18070,10 +18201,14 @@ async function loadViewerData() {
     { key: 'panel5Wall', loadFn: loadPanel5WallImage },
     { key: 'panel6Wall', loadFn: loadPanel6WallImage },
     { key: 'glb', loadFn: loadGlbModel },
-    { key: 'plyBg0', loadFn: (file) => loadPlyBackground([file]) },
-    { key: 'plyBg1', loadFn: (file) => loadPlyBackground([file]) },
-    { key: 'plyBg2', loadFn: (file) => loadPlyBackground([file]) },
-    { key: 'plyBg3', loadFn: (file) => loadPlyBackground([file]) },
+  ];
+
+  // PLY背景スロット（大容量ファイルのため順次読み込み）
+  const plyBgSlots = [
+    { key: 'plyBg0', loadFn: (file) => loadPlyBackground([file], 'plyBg0') },
+    { key: 'plyBg1', loadFn: (file) => loadPlyBackground([file], 'plyBg1') },
+    { key: 'plyBg2', loadFn: (file) => loadPlyBackground([file], 'plyBg2') },
+    { key: 'plyBg3', loadFn: (file) => loadPlyBackground([file], 'plyBg3') },
   ];
 
   // メディア読み込み（URL参照の動画はストリーミング、それ以外はblob変換）
@@ -18082,14 +18217,15 @@ async function loadViewerData() {
     if (m[key]) {
       if (m[key].url && m[key].mimeType && m[key].mimeType.startsWith('video/')) {
         // 動画のURL参照: blobに変換せず直接URLをストリーミング
-        const p = loadVideoFromURL(key, m[key].url, loadFn);
+        const p = loadVideoFromURL(key, noCacheUrl(m[key].url), loadFn);
         mediaLoadPromises.push(p);
       } else if (m[key].url) {
         // 画像のURL参照: fetchしてblob変換
         const p = (async () => {
           try {
             console.log(`[Viewer] Fetching ${key} from URL: ${m[key].url}`);
-            const resp = await fetch(m[key].url);
+            const resp = await fetch(noCacheUrl(m[key].url));
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const blob = await resp.blob();
             const file = new File([blob], m[key].name, { type: m[key].mimeType });
             loadFn(file);
@@ -18108,12 +18244,36 @@ async function loadViewerData() {
     }
   }
 
+  // PLY背景: 大容量ファイルを順次読み込み + ArrayBuffer直接パースでメモリ節約
+  for (const { key } of plyBgSlots) {
+    if (m[key]) {
+      if (m[key].url) {
+        try {
+          console.log(`[Viewer] Fetching ${key} from URL: ${m[key].url} (sequential)`);
+          const resp = await fetch(noCacheUrl(m[key].url));
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const arrayBuffer = await resp.arrayBuffer();
+          console.log(`[Viewer] ${key} fetched: ${(arrayBuffer.byteLength / 1024 / 1024).toFixed(1)}MB`);
+          loadPlyBackgroundFromBuffer(arrayBuffer, m[key].name, key);
+          console.log(`[Viewer] ${key} loaded from URL`);
+        } catch (e) {
+          console.error(`[Viewer] Failed to fetch ${key}:`, e);
+        }
+      } else if (m[key].data) {
+        const blob = base64ToBlob(m[key].data, m[key].mimeType);
+        const file = new File([blob], m[key].name, { type: m[key].mimeType });
+        loadPlyBackground([file], key);
+      }
+    }
+  }
+
   // ハイトマップを読み込み
   if (m.heightmap) {
     try {
       let blob;
       if (m.heightmap.url) {
-        const resp = await fetch(m.heightmap.url);
+        const resp = await fetch(noCacheUrl(m.heightmap.url));
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         blob = await resp.blob();
       } else if (m.heightmap.data) {
         blob = base64ToBlob(m.heightmap.data, m.heightmap.mimeType);
@@ -18132,7 +18292,8 @@ async function loadViewerData() {
     try {
       let blob;
       if (m.heightmap2.url) {
-        const resp = await fetch(m.heightmap2.url);
+        const resp = await fetch(noCacheUrl(m.heightmap2.url));
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         blob = await resp.blob();
       } else if (m.heightmap2.data) {
         blob = base64ToBlob(m.heightmap2.data, m.heightmap2.mimeType);
@@ -18151,7 +18312,8 @@ async function loadViewerData() {
     try {
       let blob;
       if (m.heightmap3.url) {
-        const resp = await fetch(m.heightmap3.url);
+        const resp = await fetch(noCacheUrl(m.heightmap3.url));
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         blob = await resp.blob();
       } else if (m.heightmap3.data) {
         blob = base64ToBlob(m.heightmap3.data, m.heightmap3.mimeType);
@@ -18173,7 +18335,8 @@ async function loadViewerData() {
   // メディア読み込み後に設定を再適用（画像のロードは非同期なので遅延）
   if (data.settings && window.presetManager) {
     setTimeout(() => {
-      window.presetManager.applySettings(data.settings);
+      const s = data.settings;
+      window.presetManager.applySettings(s);
       // ビューワーではimage-panelガード内のイベントリスナーが存在しないため、
       // DOM値を直接3Dオブジェクトに反映する
       syncWallSettingsFromDOM();
@@ -18220,7 +18383,7 @@ async function loadViewerData() {
           const fpsEnabled = s.pixelFpsEnabled === true || s.pixelFpsEnabled === 'true';
           pixelFpsLimit = fpsEnabled ? fpsVal : 0;
         }
-        if (s.pixelPalette !== undefined) setPalette(s.pixelPalette);
+        if (s.pixelPalette !== undefined && window.setPalette) window.setPalette(s.pixelPalette);
       }
     }, 500);
   }

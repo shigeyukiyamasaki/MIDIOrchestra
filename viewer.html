@@ -645,6 +645,11 @@
         <span id="noteYOffsetValue">0</span>
       </div>
       <div class="setting-item">
+        <label>Zオフセット</label>
+        <input type="range" id="noteZOffset" min="-500" max="500" step="1" value="0">
+        <span id="noteZOffsetValue">0</span>
+      </div>
+      <div class="setting-item">
         <label>ノート回転</label>
         <input type="range" id="noteFlowAngle" min="0" max="360" step="1" value="0">
         <span id="noteFlowAngleValue">0</span>
@@ -843,6 +848,7 @@
     <!-- PLY煙 -->
     <input type="checkbox" id="plySmokeEnabled">
     <select id="plySmokeDirection"><option value="world">ワールド</option><option value="local">ローカル</option></select>
+    <input type="checkbox" id="plySmokeDownward">
     <input type="color" id="plySmokeColor" value="#888888">
     <input type="range" id="plySmokeThreshold" min="0.05" max="1" step="0.05" value="0.3"><span id="plySmokeThresholdValue">0.3</span>
     <input type="range" id="plySmokeRiseSpeed" min="0.01" max="3" step="0.01" value="0.3"><span id="plySmokeRiseSpeedValue">0.3</span>
@@ -883,6 +889,53 @@
     <input type="range" id="plyFireSparkSwirl" min="0" max="50" step="0.5" value="1"><span id="plyFireSparkSwirlValue">1</span>
     <input type="range" id="plyFireSparkDensity" min="0" max="1" step="0.05" value="0.8"><span id="plyFireSparkDensityValue">0.8</span>
     <input type="color" id="plyFireSparkColor" value="#ffaa33">
+    <!-- PLY火光 -->
+    <input type="checkbox" id="plyFireLightEnabled">
+    <input type="range" id="plyFireLightIntensity" min="0" max="5" step="0.1" value="1"><span id="plyFireLightIntensityValue">1</span>
+    <input type="range" id="plyFireLightDistance" min="0" max="500" step="1" value="100"><span id="plyFireLightDistanceValue">100</span>
+    <input type="range" id="plyFireLightColorAmount" min="0" max="1" step="0.05" value="0.5"><span id="plyFireLightColorAmountValue">0.5</span>
+    <input type="range" id="plyFireLightLumAmount" min="0" max="1" step="0.05" value="0.5"><span id="plyFireLightLumAmountValue">0.5</span>
+    <input type="range" id="plyFireLightEmission" min="0" max="3" step="0.1" value="1"><span id="plyFireLightEmissionValue">1</span>
+    <input type="range" id="plyFireLightEmissionRadius" min="0" max="200" step="1" value="50"><span id="plyFireLightEmissionRadiusValue">50</span>
+    <!-- PLY煙コヒージョン -->
+    <input type="range" id="plySmokeCohesion" min="0" max="1" step="0.05" value="0.5"><span id="plySmokeCohesionValue">0.5</span>
+    <input type="range" id="plyFireSmokeCohesion" min="0" max="1" step="0.05" value="0.5"><span id="plyFireSmokeCohesionValue">0.5</span>
+    <!-- PLY背景 -->
+    <input type="range" id="plyBgScale" min="1" max="1000" step="1" value="200"><span id="plyBgScaleValue">200</span>
+    <input type="range" id="plyBgOpacity" min="0" max="1" step="0.05" value="1"><span id="plyBgOpacityValue">1</span>
+    <input type="range" id="plyBgRotationY" min="-180" max="180" step="1" value="-90"><span id="plyBgRotationYValue">-90</span>
+    <input type="range" id="plyBgOffsetY" min="-1000" max="1000" step="1" value="0"><span id="plyBgOffsetYValue">0</span>
+    <input type="range" id="plyBgParallax" min="0" max="0.2" step="0.005" value="0.05"><span id="plyBgParallaxValue">0.05</span>
+    <!-- PLYクラウドスクロール -->
+    <input type="checkbox" id="plyCloudScrollEnabled">
+    <select id="plyCloudScrollPreset"><option value="">カスタム</option></select>
+    <input type="range" id="plyCloudScrollSpeed" min="0" max="10" step="0.1" value="1"><span id="plyCloudScrollSpeedValue">1</span>
+    <input type="range" id="plyCloudScrollScale" min="0.1" max="5" step="0.1" value="1"><span id="plyCloudScrollScaleValue">1</span>
+    <input type="range" id="plyCloudScrollHeight" min="-500" max="500" step="1" value="0"><span id="plyCloudScrollHeightValue">0</span>
+    <select id="plyCloudScrollAxis"><option value="x">X軸</option><option value="z">Z軸</option></select>
+    <!-- GLB/3DGS -->
+    <input type="range" id="glbPosX" min="-1000" max="1000" step="5" value="0"><span id="glbPosXValue">0</span>
+    <input type="range" id="glbPosY" min="-1000" max="1000" step="5" value="0"><span id="glbPosYValue">0</span>
+    <input type="range" id="glbPosZ" min="-1000" max="1000" step="5" value="0"><span id="glbPosZValue">0</span>
+    <input type="range" id="glbScale" min="1" max="150000" step="1" value="100"><span id="glbScaleValue">100</span>
+    <input type="range" id="glbRotX" min="0" max="360" step="1" value="0"><span id="glbRotXValue">0</span>
+    <input type="range" id="glbRotY" min="0" max="360" step="1" value="0"><span id="glbRotYValue">0</span>
+    <input type="range" id="glbRotZ" min="0" max="360" step="1" value="0"><span id="glbRotZValue">0</span>
+    <input type="range" id="glbHue" min="0" max="360" step="1" value="0"><span id="glbHueValue">0</span>
+    <input type="range" id="glbBrightness" min="-100" max="100" step="1" value="0"><span id="glbBrightnessValue">0</span>
+    <input type="range" id="glbContrast" min="-100" max="100" step="1" value="0"><span id="glbContrastValue">0</span>
+    <input type="checkbox" id="glbFlatEnabled">
+    <input type="range" id="glbPosterize" min="0" max="1" step="0.01" value="0.5"><span id="glbPosterizeValue">0.5</span>
+    <input type="range" id="glbPixelArt" min="0" max="128" step="1" value="0"><span id="glbPixelArtValue">0</span>
+    <input type="range" id="glbPointSize" min="1" max="30" step="0.5" value="2"><span id="glbPointSizeValue">2</span>
+    <input type="checkbox" id="glbPointAttenuation" checked>
+    <input type="checkbox" id="glbSplatScale">
+    <input type="range" id="glbSplatScaleAmount" min="0" max="100" step="1" value="100"><span id="glbSplatScaleAmountValue">100</span>
+    <input type="range" id="glbPointDensity" min="0" max="6" step="1" value="0"><span id="glbPointDensityValue">0</span>
+    <input type="range" id="glbTrim" min="0" max="1" step="0.01" value="0"><span id="glbTrimValue">0%</span>
+    <input type="range" id="glbOpacityCut" min="0" max="1" step="0.01" value="0"><span id="glbOpacityCutValue">0</span>
+    <input type="color" id="glbChromaColor" value="#00ff00">
+    <input type="range" id="glbChromaThreshold" min="0" max="1" step="0.01" value="0"><span id="glbChromaThresholdValue">0</span>
     <!-- ピクセルアート -->
     <input type="checkbox" id="pixelArtEnabled">
     <select id="pixelArtPreset"><option value="">カスタム</option><option value="gameboy">ゲームボーイ</option><option value="famicom">ファミコン</option><option value="sfc">スーパーファミコン</option></select>
@@ -894,16 +947,31 @@
     <input type="range" id="pixelSaturation" min="0" max="3" step="0.05" value="1"><span id="pixelSaturationValue">1</span>
     <input type="range" id="pixelFps" min="0" max="60" step="1" value="0"><span id="pixelFpsValue">なし</span>
     <input type="checkbox" id="pixelExcludeToon">
+    <input type="checkbox" id="pixelExcludeNotes">
     <input type="checkbox" id="pixelDepthAware">
+    <input type="checkbox" id="pixelFpsEnabled">
+    <input type="checkbox" id="pixelEdgeEnabled" checked>
+    <input type="range" id="pixelEdgeSharpness" min="0" max="1" step="0.05" value="0.7"><span id="pixelEdgeSharpnessValue">0.7</span>
+    <!-- Kuwahara -->
+    <input type="checkbox" id="kuwaharaEnabled">
+    <input type="range" id="kuwaharaRadius" min="1" max="24" step="1" value="4"><span id="kuwaharaRadiusValue">4</span>
+    <input type="range" id="kuwaharaStrength" min="0" max="1" step="0.05" value="1"><span id="kuwaharaStrengthValue">1</span>
+    <input type="checkbox" id="kuwaharaExcludeNotes">
+    <input type="checkbox" id="celBeforeKuwahara">
     <!-- トゥーンレンダリング -->
     <input type="checkbox" id="toonEnabled">
     <select id="toonOutlineMode"><option value="color">色ベース（内外）</option><option value="colorOuter">色ベース（外側）</option><option value="depth">深度ベース（外側）</option><option value="both">色+深度（内外）</option><option value="bothOuter">色+深度（外側）</option><option value="depthPreview">深度プレビュー</option></select>
     <input type="range" id="toonOutlineStrength" min="0" max="1" step="0.05" value="0"><span id="toonOutlineStrengthValue">0</span>
     <input type="range" id="toonOutlineThreshold" min="0.01" max="0.5" step="0.01" value="0.5"><span id="toonOutlineThresholdValue">0.1</span>
     <input type="color" id="toonOutlineColor" value="#000000">
+    <input type="checkbox" id="toonOutlineAutoColor">
+    <input type="range" id="toonOutlineAutoDarkness" min="0" max="1" step="0.05" value="0.5"><span id="toonOutlineAutoDarknessValue">0.5</span>
+    <input type="range" id="toonOutlineWidth" min="1" max="10" step="0.5" value="1"><span id="toonOutlineWidthValue">1</span>
+    <input type="checkbox" id="toonOutlineOuterOnly" checked>
     <input type="checkbox" id="celShadingEnabled">
     <input type="range" id="toonShades" min="0" max="10" step="1" value="4"><span id="toonShadesValue">10</span>
     <input type="range" id="toonDarkness" min="0" max="1" step="0.05" value="0"><span id="toonDarknessValue">0.5</span>
+    <input type="range" id="toonSmoothness" min="0" max="1" step="0.05" value="1"><span id="toonSmoothnessValue">1</span>
     <!-- 再生制御 -->
     <input type="checkbox" id="loopStartEnabled">
     <input type="range" id="loopStartSeek" min="0" max="1000" step="1" value="0">
@@ -1035,7 +1103,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-  <script src="src/PLYLoader172.js"></script>
+  <script src="src/PLYLoader172.js?v=20260401b"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
@@ -1057,6 +1125,6 @@
     }
   </script>
   <script src="src/presetManager.js?v=20260307a"></script>
-  <script type="module" src="src/main.js?v=20260319f"></script>
+  <script type="module" src="src/main.js?v=20260406a"></script>
 </body>
 </html>
