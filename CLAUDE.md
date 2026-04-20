@@ -1,5 +1,15 @@
 ## MIDIOrchestra プロジェクトルール
 
+## 📎 参照ルール（上位層）
+
+- **運用共通**: [COMMON_RULES.md](~/shared-claude-rules/COMMON_RULES.md)
+- **全ツール共通**: [TOOL_CRAFT_RULES.md](~/shared-claude-rules/TOOL_CRAFT_RULES.md)
+- **メディア系共通**: [TOOL_CRAFT_MEDIA.md](~/shared-claude-rules/TOOL_CRAFT_MEDIA.md)
+
+上記に書かれているルールは本ファイルには重複させない。
+
+---
+
 ### 変更後は必ずデプロイすること
 
 このプロジェクトはローカルではなく本番環境で動作確認を行っている。
@@ -43,10 +53,30 @@ document.getElementById('someControl').addEventListener('input', (e) => { ... })
 4K動画はモバイルSafariで再生不可（error code 4: MEDIA_ERR_SRC_NOT_SUPPORTED）。
 ビューワーのURL参照動画で、モバイルでは `{ファイル名}_mobile.{拡張子}` を自動的に試行する仕組みあり。
 
-- 公開時に大きい動画（床・壁）を使う場合、手動でモバイル版（720p程度）を作成しサーバーにアップロードする必要あり
+- **公開時に自動生成**: 920px超の動画は公開フローでffmpeg.wasmによりモバイル版（nearest-neighbor縮小）が自動生成・アップロードされる
 - ファイル名例: `SongName_floor.mp4` → `SongName_floor_mobile.mp4`
-- ffmpegコマンド例: `ffmpeg -i original.mp4 -vf "scale=720:720" -r 30 -c:v libx264 -crf 28 -an -movflags +faststart mobile.mp4`
 - モバイル版がない場合はオリジナルにフォールバック（4Kは再生失敗する）
+- 関連ファイル: `src/mobileVideoGenerator.js`, `src/viewerExport.js`
+
+#### ffmpeg.wasm 自前ホスト（/midi-orchestra/ffmpeg/）
+
+ffmpeg.wasmのコア・ワーカーファイルは同一オリジンに自前ホストしている。
+`worker.js`が相対importで`const.js`/`errors.js`を読むため、BlobURL化やCDN直接参照ではWorkerが起動できずハングする。
+
+| ファイル | 元パッケージ |
+|---------|------------|
+| `ffmpeg/worker.js` | `@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js` |
+| `ffmpeg/const.js` | `@ffmpeg/ffmpeg@0.12.10/dist/esm/const.js` |
+| `ffmpeg/errors.js` | `@ffmpeg/ffmpeg@0.12.10/dist/esm/errors.js` |
+| `ffmpeg/ffmpeg-core.js` | `@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js` |
+| `ffmpeg/ffmpeg-core.wasm` | `@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm` |
+
+FFmpegクラス本体のみCDN ESM importで取得（`@ffmpeg/ffmpeg@0.12.10/+esm`）。
+
+#### 過去のバグ（修正済み）
+
+- `loadVideoFromURL()`のモバイルURL変換正規表現が`noCacheUrl()`のクエリパラメータ（`?t=...`）付きURLに対応していなかった → `/(\.\w+)(\?|$)/` に修正（2026-04-03）
+- ffmpeg.wasm `worker.js`をBlobURL化すると相対importが解決できずハングする → 同一オリジン自前ホストで解決（2026-04-03）
 
 ### モバイルでは `100vh` ではなく `100dvh` を使うこと
 
