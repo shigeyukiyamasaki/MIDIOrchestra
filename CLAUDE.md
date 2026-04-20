@@ -78,25 +78,11 @@ FFmpegクラス本体のみCDN ESM importで取得（`@ffmpeg/ffmpeg@0.12.10/+es
 - `loadVideoFromURL()`のモバイルURL変換正規表現が`noCacheUrl()`のクエリパラメータ（`?t=...`）付きURLに対応していなかった → `/(\.\w+)(\?|$)/` に修正（2026-04-03）
 - ffmpeg.wasm `worker.js`をBlobURL化すると相対importが解決できずハングする → 同一オリジン自前ホストで解決（2026-04-03）
 
-### モバイルでは `100vh` ではなく `100dvh` を使うこと
+### モバイル制約（本プロジェクト固有）
 
-モバイルブラウザ（Chrome・Safari共通）では `100vh` はURLバーが隠れた状態の最大ビューポート高さを返す。
-URLバーが表示されている通常の状態では、実際の表示領域より大きい値になる。
+一般的なモバイル対応ルール（`100dvh` 使用、iOS での動的3D生成制限）は `TOOL_CRAFT_MEDIA.md` §3 参照。
 
-- `100vh`: 最大ビューポート高さ（URLバー非表示時）→ 実際の画面よりはみ出す
-- `100dvh`: 動的ビューポート高さ（現在の実際の表示領域）→ 正確
-
-モバイル向けのレイアウトでビューポート高さを参照する場合は、必ず `dvh` を使うこと。
-
-### モバイルでの3Dオブジェクト動的生成に注意
-
-iOS（Chrome/Safari共通、WKWebView）では、Three.jsのオブジェクトを大量に動的生成・蓄積すると
-HTML5 Audioの再生が停止する（プチッというノイズと共に無音になる）。
-
-**原因**: ノート発音ごとに `createPopIcon()` で新しいSpriteを生成・シーンに追加していた。
-ノート数の少ない楽曲では問題ないが、ノート数の多い楽曲ではSpriteの蓄積がiOSのメモリ/GPU閾値を超え、音声が停止する。
-
-**現在の対策**: モバイルではpopIcon生成をスキップ（`checkNoteRipples()` 内）
+**本プロジェクト固有の対策**: ノート発音ごとの `createPopIcon()` はiOSで無効化済み（`checkNoteRipples()` 内）。
 ```js
 if (!isMobileDevice && trackInfo) {
   createPopIcon(mesh.position.y, mesh.position.z, trackInfo.instrumentId);
@@ -140,11 +126,7 @@ if (!noteBloomEnabled && ((state.noteObjects && state.noteObjects.length > 0) ||
 
 ### 3Dオブジェクトの状態同期は関数に集約すること
 
-壁パネルの位置・回転・透明度などをDOM値から反映する処理は `syncWallSettingsFromDOM()` に集約されている。
-他の関数（`createNoteObjects()` 等）から壁パネルの状態を更新する必要がある場合は、
-**インラインで計算を書かず、必ず `syncWallSettingsFromDOM()` を呼ぶこと**。
-
-インラインで同じ計算を書くと、新しいパラメータ追加時に片方だけ更新してもう片方を忘れるバグが発生する。
+壁パネルの状態同期は `syncWallSettingsFromDOM()` に集約されている。他の関数から状態更新する場合は必ずこの関数を呼ぶこと（インライン重複禁止。`TOOL_CRAFT_RULES.md` §3-6 参照）。
 
 ### メディアスロット追加時のチェックリスト
 
