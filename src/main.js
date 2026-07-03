@@ -2,6 +2,22 @@
 // MIDI Orchestra Visualizer - Main Entry
 // ============================================
 
+// カスタム確認ダイアログ（Chromeがconfirm()を抑制する問題の回避）
+function showConfirmDialog(message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('customConfirmModal');
+    const msg = document.getElementById('customConfirmMessage');
+    const okBtn = document.getElementById('customConfirmOk');
+    const cancelBtn = document.getElementById('customConfirmCancel');
+    if (!modal || !msg || !okBtn || !cancelBtn) { resolve(false); return; }
+    msg.textContent = message;
+    modal.style.display = 'flex';
+    const cleanup = () => { modal.style.display = 'none'; okBtn.onclick = null; cancelBtn.onclick = null; };
+    okBtn.onclick = () => { cleanup(); resolve(true); };
+    cancelBtn.onclick = () => { cleanup(); resolve(false); };
+  });
+}
+
 // グローバル状態
 const state = {
   midi: null,           // パースしたMIDIデータ
@@ -10036,7 +10052,7 @@ function setupEventListeners() {
               deleteBtn.title = '削除';
               deleteBtn.addEventListener('click', async (ev) => {
                 ev.stopPropagation();
-                if (!confirm(`「${record.name}」を削除しますか？`)) return;
+                if (!await showConfirmDialog(`「${record.name}」を削除しますか？`)) return;
                 await window.presetManager.deleteMediaFromLibrary(record.id);
                 item.remove();
                 if (mediaLibraryGrid.children.length === 0) {
@@ -10084,7 +10100,7 @@ function setupEventListeners() {
               deleteBtn.title = '削除';
               deleteBtn.addEventListener('click', async (ev) => {
                 ev.stopPropagation();
-                if (!confirm(`「${record.name}」を削除しますか？`)) return;
+                if (!await showConfirmDialog(`「${record.name}」を削除しますか？`)) return;
                 await window.presetManager.deleteMediaFromLibrary(record.id);
                 item.remove();
                 if (mediaLibraryGrid.children.length === 0) {
@@ -10201,7 +10217,7 @@ function setupEventListeners() {
     // 一括削除
     mediaLibraryDeleteSelectedBtn?.addEventListener('click', async () => {
       if (mediaLibrarySelected.size === 0) return;
-      if (!confirm(`${mediaLibrarySelected.size}件のメディアを削除しますか？`)) return;
+      if (!await showConfirmDialog(`${mediaLibrarySelected.size}件のメディアを削除しますか？`)) return;
       for (const id of mediaLibrarySelected) {
         await window.presetManager.deleteMediaFromLibrary(id);
       }

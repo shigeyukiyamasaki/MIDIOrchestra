@@ -2,3 +2,9 @@
 node_modules/
 *.log
 config/
+
+# 成果物・一時・重量アセット（デプロイはFTP経由、gitでは管理しない）
+書き出し/
+temp/
+素材/
+assets/icons/3D/

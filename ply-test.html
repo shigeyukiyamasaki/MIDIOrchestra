@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hunyuan3D — Image to 3D / World</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+
+  .container { max-width: 1800px; margin: 0 auto; padding: 20px; }
+
+  h1 { font-size: 1.4rem; color: #a0c4ff; margin-bottom: 20px; }
+
+  .main-grid { display: grid; grid-template-columns: 340px 1fr; gap: 20px; }
+
+  /* 左パネル */
+  .panel { background: #16213e; border-radius: 12px; padding: 20px; }
+  .panel h2 { font-size: 1rem; color: #7ec8e3; margin-bottom: 16px; border-bottom: 1px solid #2a3a5c; padding-bottom: 8px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 0.82rem; color: #8899aa; margin-bottom: 4px; cursor: help; }
+  .field label[title]::after, .checkbox-row label[title]::after {
+    content: ' \u24D8'; font-size: 0.75rem; color: #556; vertical-align: super;
+  }
+  .field input[type="text"], .field select {
+    width: 100%; padding: 8px 10px; background: #0f1a30; border: 1px solid #2a3a5c;
+    border-radius: 6px; color: #e0e0e0; font-size: 0.9rem;
+  }
+
+  .range-row { display: flex; align-items: center; gap: 10px; }
+  .range-row input[type="range"] { flex: 1; accent-color: #7ec8e3; }
+  .range-row .val { min-width: 64px; text-align: right; font-size: 0.9rem; color: #a0c4ff; font-weight: 600; }
+
+  .checkbox-row { display: flex; align-items: center; gap: 8px; }
+  .checkbox-row input[type="checkbox"] { accent-color: #7ec8e3; width: 16px; height: 16px; }
+  .checkbox-row label { font-size: 0.9rem; color: #e0e0e0; margin-bottom: 0; }
+
+  /* APIキー */
+  .api-key-row { display: flex; gap: 6px; align-items: center; }
+  .api-key-row input { flex: 1; }
+  .btn-save-key {
+    padding: 8px 12px; background: #2a3a5c; border: none; border-radius: 6px;
+    color: #a0c4ff; font-size: 0.8rem; cursor: pointer; white-space: nowrap;
+  }
+  .btn-save-key:hover { background: #3a4a6c; }
+  .key-status { font-size: 0.75rem; color: #69db7c; margin-top: 4px; min-height: 16px; }
+
+  /* モード切替タブ */
+  .mode-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .mode-tab {
+    flex: 1; padding: 10px 8px; border: 1px solid #2a3a5c; border-radius: 8px;
+    background: #0f1a30; color: #8899aa; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; text-align: center; transition: all 0.2s;
+  }
+  .mode-tab.active { background: #4361ee; color: white; border-color: #4361ee; }
+  .mode-tab:hover:not(.active) { background: #1a2a4c; }
+
+  /* ドロップゾーン */
+  .dropzone {
+    border: 2px dashed #2a3a5c; border-radius: 10px; padding: 30px; text-align: center;
+    cursor: pointer; transition: border-color 0.2s; margin-bottom: 14px; position: relative;
+    min-height: 160px; display: flex; align-items: center; justify-content: center; flex-direction: column;
+  }
+  .dropzone.dragover { border-color: #7ec8e3; background: rgba(126,200,227,0.05); }
+  .dropzone img { max-width: 100%; max-height: 200px; border-radius: 6px; }
+  .dropzone p { color: #556; font-size: 0.85rem; }
+  .dropzone input { display: none; }
+
+  /* ボタン */
+  .btn-run {
+    width: 100%; padding: 12px; background: linear-gradient(135deg, #4361ee, #7209b7);
+    border: none; border-radius: 8px; color: white; font-size: 1rem; font-weight: 600;
+    cursor: pointer; transition: opacity 0.2s;
+  }
+  .btn-run:hover { opacity: 0.9; }
+  .btn-run:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* 進捗 */
+  .progress-wrap { margin-top: 12px; display: none; }
+  .progress-bar {
+    width: 100%; height: 6px; background: #0f1a30; border-radius: 3px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; width: 0%; background: linear-gradient(90deg, #4361ee, #7ec8e3);
+    border-radius: 3px; transition: width 1s linear;
+  }
+  .progress-text {
+    display: flex; justify-content: space-between; font-size: 0.78rem; color: #8899aa; margin-top: 4px;
+  }
+
+  .status { margin-top: 8px; font-size: 0.85rem; color: #8899aa; text-align: center; min-height: 20px; }
+  .status.error { color: #ff6b6b; }
+  .status.success { color: #69db7c; }
+
+  .cost { font-size: 1rem; color: #e0e0e0; margin-top: 10px; text-align: center; font-weight: 600; }
+
+  /* 右パネル: 3Dビューワー */
+  .viewer-wrap {
+    background: #16213e; border-radius: 12px; overflow: hidden; position: relative;
+    display: flex; flex-direction: column; min-height: 85vh;
+  }
+  .viewer-header {
+    display: flex; gap: 10px; align-items: center; padding: 12px 16px;
+    border-bottom: 1px solid #2a3a5c;
+  }
+  .viewer-header h2 { color: #7ec8e3; font-size: 1rem; }
+  .btn-dl-glb {
+    padding: 6px 14px; background: #2a3a5c; border: none; border-radius: 6px;
+    color: #a0c4ff; font-size: 0.82rem; cursor: pointer; display: none;
+  }
+  .btn-dl-glb:hover { background: #3a4a6c; }
+  #canvas3d { flex: 1; display: block; width: 100%; background: #0d1117; }
+
+  .placeholder-msg {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    color: #445; font-size: 0.95rem; text-align: center; pointer-events: none;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/",
+    "@fal-ai/client": "https://esm.sh/@fal-ai/client"
+  }
+}
+</script>
+</head>
+<body>
+<div class="container">
+  <h1>Hunyuan3D — Image to 3D / World</h1>
+  <div class="main-grid">
+    <!-- 左パネル -->
+    <div>
+      <div class="panel">
+        <h2>APIキー</h2>
+        <div class="field">
+          <div class="api-key-row">
+            <input type="password" id="apiKey" placeholder="fal-xxxxxxxx...">
+            <button class="btn-save-key" id="btnSaveKey">保存</button>
+          </div>
+          <div class="key-status" id="keyStatus"></div>
+        </div>
+
+        <h2>モード</h2>
+        <div class="mode-tabs">
+          <div class="mode-tab active" data-mode="object">3Dオブジェクト</div>
+          <div class="mode-tab" data-mode="world">3Dワールド</div>
+        </div>
+
+        <h2>入力画像</h2>
+        <div class="dropzone" id="dropzone">
+          <p>ドラッグ＆ドロップ<br>またはクリックで選択</p>
+          <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <!-- Object mode params -->
+        <div id="objectParams">
+          <h2>パラメータ</h2>
+          <div class="field">
+            <div class="checkbox-row">
+              <input type="checkbox" id="enablePbr" checked>
+              <label for="enablePbr" title="PBR（Physically Based Rendering）マテリアルを有効にする。ONにするとメタリック・ラフネス等のテクスチャが生成され、よりリアルな質感になる">PBRマテリアル (enable_pbr)</label>
+            </div>
+          </div>
+          <div class="field">
+            <label title="出力メッシュのポリゴン数。大きいほど高精細だがファイルサイズも増加する。40,000〜1,500,000の範囲で指定">ポリゴン数 (face_count)</label>
+            <div class="range-row">
+              <input type="range" id="faceCount" min="40000" max="1500000" value="500000" step="10000">
+              <span class="val" id="faceCountVal">500,000</span>
+            </div>
+          </div>
+          <div class="field">
+            <label title="Normal: テクスチャ付き3Dモデル。Geometry: 白色モデル（テクスチャなし）">生成タイプ (generate_type)</label>
+            <select id="generateType">
+              <option value="Normal" selected>Normal</option>
+              <option value="Geometry">Geometry</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- World mode params -->
+        <div id="worldParams" style="display:none">
+          <h2>シーンラベル</h2>
+          <div class="field">
+            <label title="前景オブジェクトのラベル（カンマ区切り）。例: tree, grass, bridge">前景1 (labels_fg1)</label>
+            <input type="text" id="labelsFg1" value="tree, grass, bridge" placeholder="tree, grass, bridge">
+          </div>
+          <div class="field">
+            <label title="追加の前景オブジェクトのラベル（カンマ区切り）。例: rock, flower, path">前景2 (labels_fg2)</label>
+            <input type="text" id="labelsFg2" value="rock, water, flower" placeholder="rock, water, flower">
+          </div>
+          <div class="field">
+            <label title="シーン全体のカテゴリ（カンマ区切り）。例: nature, landscape">カテゴリ (classes)</label>
+            <input type="text" id="worldClasses" value="nature, landscape" placeholder="nature, landscape">
+          </div>
+        </div>
+
+        <button class="btn-run" id="btnRun" disabled>3Dモデルを生成</button>
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-bar"><div class="progress-bar-fill" id="progressFill"></div></div>
+          <div class="progress-text">
+            <span id="progressPercent">0%</span>
+            <span id="progressTime">0:00 / ~2:30</span>
+          </div>
+        </div>
+        <div class="status" id="status"></div>
+        <div class="cost" id="costDisplay">推定コスト: $0.525 / 処理時間 約2〜3分</div>
+      </div>
+    </div>
+
+    <!-- 右パネル: 3Dビューワー -->
+    <div>
+      <div class="viewer-wrap" id="viewerWrap">
+        <div class="viewer-header">
+          <h2>3Dプレビュー</h2>
+          <button class="btn-dl-glb" id="btnImportGlb">GLB/PLYインポート</button>
+          <input type="file" id="glbFileInput" accept=".glb,.ply" multiple style="display:none">
+          <button class="btn-dl-glb" id="btnDlGlb">GLBダウンロード</button>
+          <button class="btn-dl-glb" id="btnDlWorld" style="display:none">画像ダウンロード</button>
+          <button class="btn-dl-glb" id="btnCopyUrl" style="display:none">URLコピー</button>
+          <button id="btnClearScene" style="padding:6px 14px; background:#5c2a2a; border:none; border-radius:6px; color:#ff9999; font-size:0.82rem; cursor:pointer;">クリア</button>
+        </div>
+        <canvas id="canvas3d"></canvas>
+        <div class="placeholder-msg" id="placeholderMsg">画像をアップロードして3Dモデルを生成<br>または GLB/PLYファイルをここにドロップ</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { fal } from '@fal-ai/client';
+
+const $ = id => document.getElementById(id);
+
+// --- モード管理 ---
+let currentMode = 'object'; // 'object' | 'world'
+
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentMode = tab.dataset.mode;
+    $('objectParams').style.display = currentMode === 'object' ? '' : 'none';
+    $('worldParams').style.display = currentMode === 'world' ? '' : 'none';
+    $('btnRun').textContent = currentMode === 'object' ? '3Dモデルを生成' : '3Dワールドを生成';
+    updateCost();
+  });
+});
+
+// --- IndexedDB (GLBキャッシュ) ---
+const IDB_NAME = 'hunyuan3d_cache';
+const IDB_STORE = 'glb';
+
+function openIDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveGlbToIDB(blob) {
+  const db = await openIDB();
+  const tx = db.transaction(IDB_STORE, 'readwrite');
+  tx.objectStore(IDB_STORE).put(blob, 'latest');
+  return new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
+}
+
+async function loadGlbFromIDB() {
+  const db = await openIDB();
+  const tx = db.transaction(IDB_STORE, 'readonly');
+  const req = tx.objectStore(IDB_STORE).get('latest');
+  return new Promise((resolve) => { req.onsuccess = () => resolve(req.result || null); req.onerror = () => resolve(null); });
+}
+
+// --- APIキー管理（localStorage共有）---
+const KEY_STORAGE = 'qwen_layered_api_key';
+
+function loadApiKey() {
+  const saved = localStorage.getItem(KEY_STORAGE);
+  if (saved) {
+    $('apiKey').value = saved;
+    $('keyStatus').textContent = '保存済み';
+  }
+}
+
+$('btnSaveKey').addEventListener('click', () => {
+  const key = $('apiKey').value.trim();
+  if (!key) { $('keyStatus').textContent = 'キーを入力してください'; return; }
+  localStorage.setItem(KEY_STORAGE, key);
+  $('keyStatus').textContent = '保存しました';
+});
+
+loadApiKey();
+
+// --- コスト計算 ---
+const TYPE_COST = { Normal: 0.375, Geometry: 0.225 };
+
+function updateCost() {
+  if (currentMode === 'world') {
+    $('costDisplay').textContent = '推定コスト: $0.300 / 処理時間 約1〜2分';
+    return;
+  }
+  const base = TYPE_COST[$('generateType').value] || 0.375;
+  const pbr = $('enablePbr').checked ? 0.15 : 0;
+  const faceCount = parseInt($('faceCount').value);
+  const face = faceCount !== 500000 ? 0.15 : 0;
+  const total = base + pbr + face;
+  const parts = [$('generateType').value + ' $' + base.toFixed(3)];
+  if (pbr) parts.push('PBR +$0.150');
+  if (face) parts.push('面数変更 +$0.150');
+  $('costDisplay').textContent = `推定コスト: $${total.toFixed(3)}（${parts.join(' / ')}）`;
+}
+
+// --- スライダー値表示 ---
+$('faceCount').addEventListener('input', () => {
+  $('faceCountVal').textContent = parseInt($('faceCount').value).toLocaleString();
+  updateCost();
+});
+$('enablePbr').addEventListener('change', updateCost);
+$('generateType').addEventListener('change', updateCost);
+updateCost();
+
+// --- ドロップゾーン ---
+const dropzone = $('dropzone');
+const fileInput = $('fileInput');
+let currentDataUrl = null;
+let currentBaseName = null;
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+
+const API_MIN_PX = 512;
+
+// 画像をJPEG圧縮（白背景で透過除去 + maxPx以下にリサイズ）
+function compressImageDataUrl(dataUrl, maxPx, quality) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      // 小さすぎる場合はニアレストネイバーで拡大
+      if (Math.min(w, h) < API_MIN_PX) {
+        const scale = Math.ceil(API_MIN_PX / Math.min(w, h));
+        w *= scale;
+        h *= scale;
+      }
+      if (Math.max(w, h) > maxPx) {
+        const s = maxPx / Math.max(w, h);
+        w = Math.round(w * s);
+        h = Math.round(h * s);
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      // 白背景を塗って透過を除去（透過PNGがdownstreamエラーの原因になりうる）
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, w, h);
+      ctx.imageSmoothingEnabled = (Math.min(img.width, img.height) >= API_MIN_PX);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataUrl;
+  });
+}
+
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  currentBaseName = file.name.replace(/\.[^.]+$/, '');
+  const reader = new FileReader();
+  reader.onload = e => {
+    const original = e.target.result;
+    dropzone.innerHTML = `<img src="${original}">`;
+    currentDataUrl = original;
+    $('btnRun').disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+// --- CDNアップロード共通関数 ---
+async function uploadToCDN(dataUrl, apiKey) {
+  const base64Data = dataUrl.split(',')[1];
+  const binaryData = atob(base64Data);
+  const uint8Array = new Uint8Array(binaryData.length);
+  for (let i = 0; i < binaryData.length; i++) uint8Array[i] = binaryData.charCodeAt(i);
+  const imageBlob = new Blob([uint8Array], { type: 'image/jpeg' });
+
+  const initResp = await fetch('https://rest.fal.ai/storage/upload/initiate', {
+    method: 'POST',
+    headers: { 'Authorization': `Key ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_name: 'input.jpg', content_type: 'image/jpeg' })
+  });
+  if (!initResp.ok) throw new Error('CDNアップロード初期化失敗: ' + initResp.status);
+  const { upload_url, file_url } = await initResp.json();
+
+  const uploadResp = await fetch(upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'image/jpeg' },
+    body: imageBlob
+  });
+  if (!uploadResp.ok) throw new Error('CDNアップロード失敗: ' + uploadResp.status);
+  console.log('[Hunyuan] Uploaded to CDN:', file_url);
+  return file_url;
+}
+
+// --- Three.js セットアップ ---
+const canvas = $('canvas3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.toneMapping = THREE.NoToneMapping;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d1117);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+camera.position.set(0, 1, 3);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0.5, 0);
+
+// --- PLYパノラマ用カスタムコントロール ---
+let plyMode = false;
+let plyYaw = 0, plyPitch = 0;
+let plyDragging = false, plyLastX = 0, plyLastY = 0;
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!plyMode) return;
+  plyDragging = true;
+  plyLastX = e.clientX;
+  plyLastY = e.clientY;
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (!plyMode || !plyDragging) return;
+  const dx = e.clientX - plyLastX;
+  const dy = e.clientY - plyLastY;
+  plyYaw -= dx * 0.0003;
+  plyPitch -= dy * 0.0003;
+  plyPitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, plyPitch));
+  plyLastX = e.clientX;
+  plyLastY = e.clientY;
+  updatePlyCamera();
+});
+window.addEventListener('mouseup', () => { plyDragging = false; });
+canvas.addEventListener('wheel', (e) => {
+  if (!plyMode) return;
+  e.preventDefault();
+  camera.fov = Math.max(20, Math.min(120, camera.fov + e.deltaY * 0.05));
+  camera.updateProjectionMatrix();
+}, { passive: false });
+
+function updatePlyCamera() {
+  const dir = new THREE.Vector3(
+    Math.cos(plyPitch) * Math.sin(plyYaw),
+    Math.sin(plyPitch),
+    Math.cos(plyPitch) * Math.cos(plyYaw)
+  );
+  camera.position.set(0, 0, 0);
+  camera.lookAt(dir);
+}
+
+// ライティング
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+dirLight.position.set(3, 5, 4);
+scene.add(dirLight);
+
+const fillLight = new THREE.DirectionalLight(0xaaccff, 0.4);
+fillLight.position.set(-3, 2, -2);
+scene.add(fillLight);
+
+// グリッド
+const grid = new THREE.GridHelper(4, 20, 0x2a3a5c, 0x1a2a4c);
+scene.add(grid);
+
+function resizeRenderer() {
+  const wrap = $('viewerWrap');
+  const header = wrap.querySelector('.viewer-header');
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight - header.offsetHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+window.addEventListener('resize', resizeRenderer);
+
+// 初期リサイズは少し遅延させてレイアウト確定後に実行
+requestAnimationFrame(() => {
+  resizeRenderer();
+  animate();
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (!plyMode) controls.update();
+  renderer.render(scene, camera);
+}
+
+// --- GLBロード ---
+let currentGlbBlobUrl = null;
+let loadedModel = null;
+let lastGlbUrl = null;
+let panoramaSphere = null;
+
+function clearScene() {
+  // PLYモード解除 → OrbitControls復帰
+  if (plyMode) {
+    plyMode = false;
+    controls.enabled = true;
+    camera.position.set(0, 1, 3);
+    controls.target.set(0, 0.5, 0);
+    camera.fov = 45;
+    camera.updateProjectionMatrix();
+    controls.update();
+  }
+  // モデル除去
+  if (loadedModel) {
+    scene.remove(loadedModel);
+    loadedModel.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+        else child.material.dispose();
+      }
+    });
+    loadedModel = null;
+  }
+  // パノラマ除去
+  if (panoramaSphere) {
+    scene.remove(panoramaSphere);
+    panoramaSphere.material.map?.dispose();
+    panoramaSphere.material.dispose();
+    panoramaSphere.geometry.dispose();
+    panoramaSphere = null;
+  }
+}
+
+function loadGLB(blobUrl) {
+  clearScene();
+  // グリッドとライトを復元
+  grid.visible = true;
+  ambientLight.intensity = 0.6;
+  dirLight.intensity = 1.2;
+  scene.background = new THREE.Color(0x0d1117);
+
+  const loader = new GLTFLoader();
+  loader.load(blobUrl, (gltf) => {
+    const model = gltf.scene;
+
+    // モデルをセンタリング＆スケール調整
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scale = 2 / maxDim;
+    model.scale.setScalar(scale);
+    model.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+
+    scene.add(model);
+    loadedModel = model;
+
+    // カメラリセット
+    controls.target.set(0, size.y * scale * 0.5, 0);
+    camera.position.set(0, size.y * scale * 0.6, 3);
+    controls.minDistance = 0;
+    controls.maxDistance = Infinity;
+    controls.update();
+
+    $('placeholderMsg').style.display = 'none';
+    $('btnClearScene').style.display = 'inline-block';
+    $('btnDlGlb').style.display = 'inline-block';
+    $('btnDlWorld').style.display = 'none';
+  }, undefined, (err) => {
+    console.error('GLB load error:', err);
+  });
+}
+
+function loadPanorama(blobUrl) {
+  clearScene();
+  // パノラマ用：グリッド非表示、ライト最大化
+  grid.visible = false;
+  ambientLight.intensity = 1.0;
+  dirLight.intensity = 0;
+
+  console.log('[Hunyuan] Loading panorama from:', blobUrl);
+  const texture = new THREE.TextureLoader().load(blobUrl, () => {
+    console.log('[Hunyuan] Panorama texture loaded:', texture.image.width, 'x', texture.image.height);
+    // 球体の内側にテクスチャを貼る
+    const geo = new THREE.SphereGeometry(50, 64, 32);
+    const mat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide });
+    panoramaSphere = new THREE.Mesh(geo, mat);
+    scene.add(panoramaSphere);
+    scene.background = null;
+
+    // カメラを中心に配置（FOVを広げてパノラマ感を出す）
+    camera.fov = 75;
+    camera.updateProjectionMatrix();
+    camera.position.set(0, 0, 0.01);
+    controls.target.set(0, 0, 0);
+    controls.minDistance = 0;
+    controls.maxDistance = 0.05;
+    controls.enableZoom = false;
+    controls.update();
+
+    $('placeholderMsg').style.display = 'none';
+    $('btnClearScene').style.display = 'inline-block';
+    $('btnDlGlb').style.display = 'none';
+    $('btnDlWorld').style.display = 'inline-block';
+  }, undefined, (err) => {
+    console.error('[Hunyuan] Panorama texture load error:', err);
+    $('status').className = 'status error';
+    $('status').textContent = 'パノラマ画像の読み込みに失敗しました';
+  });
+}
+
+// --- PLYロード（公式HunyuanWorld modelviewer.html準拠）---
+function loadPLY(arrayBuffer, fileName) {
+  if (!loadedModel) {
+    clearScene();
+    grid.visible = false;
+    ambientLight.intensity = 1.0;
+    dirLight.intensity = 0;
+    scene.background = new THREE.Color(0x0d1117);
+  }
+
+  const loader = new PLYLoader();
+  const geometry = loader.parse(arrayBuffer);
+
+  geometry.computeBoundingBox();
+  const bb = geometry.boundingBox;
+  const hasColor = !!geometry.attributes.color;
+  console.log('[PLY]', fileName,
+    '- vertices:', geometry.attributes.position?.count,
+    'faces:', geometry.index ? geometry.index.count / 3 : 0,
+    'hasColors:', hasColor,
+    'bounds:', bb.min.toArray().map(v=>v.toFixed(2)), 'to', bb.max.toArray().map(v=>v.toFixed(2)));
+
+  // 公式と同じ: MeshBasicMaterial + DoubleSide（頂点カラーにライティング済み）
+  const material = new THREE.MeshBasicMaterial({
+    vertexColors: hasColor,
+    color: hasColor ? 0xffffff : 0xaaaaaa,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+
+  // 公式と同じ座標変換: rotateX(-PI/2) → rotateZ(-PI/2)
+  mesh.rotateX(-Math.PI / 2);
+  mesh.rotateZ(-Math.PI / 2);
+
+  if (!loadedModel) {
+    const group = new THREE.Group();
+    group.add(mesh);
+    scene.add(group);
+    loadedModel = group;
+  } else {
+    loadedModel.add(mesh);
+  }
+
+  // パノラマモード: OrbitControls無効化、カスタムコントロール有効化
+  controls.enabled = false;
+  plyMode = true;
+  plyYaw = 0;
+  plyPitch = 0;
+  camera.fov = 75;
+  camera.near = 0.01;
+  camera.far = 100;
+  camera.updateProjectionMatrix();
+  updatePlyCamera();
+
+  $('placeholderMsg').style.display = 'none';
+  $('btnClearScene').style.display = 'inline-block';
+  $('btnDlGlb').style.display = 'none';
+  $('btnDlWorld').style.display = 'none';
+}
+
+// --- GLB/PLYインポート（ボタン + D&D on canvas）---
+function handleModelFile(file) {
+  if (!file) return;
+  const name = file.name.toLowerCase();
+
+  if (name.endsWith('.ply')) {
+    $('status').className = 'status';
+    $('status').textContent = `読み込み中: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)...`;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        loadPLY(e.target.result, file.name);
+        $('status').className = 'status success';
+        $('status').textContent = `PLYロード完了: ${file.name}`;
+      } catch (err) {
+        console.error('[PLY] Load error:', err);
+        $('status').className = 'status error';
+        $('status').textContent = `PLYエラー: ${err.message}`;
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    return;
+  }
+
+  if (name.endsWith('.glb')) {
+    const blobUrl = URL.createObjectURL(file);
+    if (currentGlbBlobUrl) URL.revokeObjectURL(currentGlbBlobUrl);
+    currentGlbBlobUrl = blobUrl;
+    loadGLB(currentGlbBlobUrl);
+    saveGlbToIDB(file).catch(() => {});
+    $('status').className = 'status success';
+    $('status').textContent = `インポート: ${file.name}`;
+  }
+}
+
+// 複数ファイル対応（PLYレイヤーをまとめてD&D）
+function handleModelFiles(files) {
+  // PLYファイルをファイル名でソート（layer0, layer1, layer2の順）
+  const sorted = Array.from(files).sort((a, b) => a.name.localeCompare(b.name));
+  let idx = 0;
+  function loadNext() {
+    if (idx >= sorted.length) return;
+    const file = sorted[idx++];
+    const name = file.name.toLowerCase();
+    if (name.endsWith('.ply') || name.endsWith('.glb')) {
+      $('status').textContent = `読み込み中: ${file.name} (${idx}/${sorted.length})...`;
+      if (name.endsWith('.ply')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            loadPLY(e.target.result, file.name);
+            if (idx < sorted.length) {
+              setTimeout(loadNext, 100); // 次のファイルを少し遅延して読み込み
+            } else {
+              $('status').className = 'status success';
+              $('status').textContent = `${sorted.length}ファイルのロード完了`;
+            }
+          } catch (err) {
+            $('status').className = 'status error';
+            $('status').textContent = `エラー: ${file.name} - ${err.message}`;
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        handleModelFile(file);
+        loadNext();
+      }
+    } else {
+      loadNext();
+    }
+  }
+  // 複数PLYの場合、最初にシーンをクリア
+  clearScene();
+  loadedModel = null;
+  loadNext();
+}
+
+$('btnImportGlb').addEventListener('click', () => $('glbFileInput').click());
+$('glbFileInput').addEventListener('change', () => {
+  const files = $('glbFileInput').files;
+  if (files.length > 1) handleModelFiles(files);
+  else handleModelFile(files[0]);
+});
+
+// キャンバスへのD&D
+const viewerWrap = $('viewerWrap');
+viewerWrap.addEventListener('dragover', e => { e.preventDefault(); viewerWrap.style.outline = '2px solid #7ec8e3'; });
+viewerWrap.addEventListener('dragleave', () => { viewerWrap.style.outline = ''; });
+viewerWrap.addEventListener('drop', e => {
+  e.preventDefault();
+  viewerWrap.style.outline = '';
+  const files = e.dataTransfer.files;
+  if (files.length > 1) {
+    handleModelFiles(files);
+  } else if (files.length === 1) {
+    handleModelFile(files[0]);
+  }
+});
+
+// --- GLBダウンロード ---
+$('btnDlGlb').addEventListener('click', () => {
+  if (!currentGlbBlobUrl) return;
+  const a = document.createElement('a');
+  a.href = currentGlbBlobUrl;
+  a.download = (currentBaseName || 'hunyuan3d_model') + '.glb';
+  a.click();
+});
+
+// --- シーンクリア ---
+$('btnClearScene').addEventListener('click', () => {
+  clearScene();
+  loadedModel = null;
+  if (currentGlbBlobUrl) { URL.revokeObjectURL(currentGlbBlobUrl); currentGlbBlobUrl = null; }
+  if (lastWorldBlobUrl) { URL.revokeObjectURL(lastWorldBlobUrl); lastWorldBlobUrl = null; }
+  lastGlbUrl = null;
+  grid.visible = true;
+  ambientLight.intensity = 0.6;
+  dirLight.intensity = 1.2;
+  scene.background = new THREE.Color(0x0d1117);
+  camera.fov = 45;
+  camera.position.set(0, 1, 3);
+  camera.updateProjectionMatrix();
+  controls.target.set(0, 0.5, 0);
+  controls.minDistance = 0;
+  controls.maxDistance = Infinity;
+  controls.enableZoom = true;
+  controls.update();
+  $('btnDlGlb').style.display = 'none';
+  $('btnDlWorld').style.display = 'none';
+  $('btnCopyUrl').style.display = 'none';
+  $('btnClearScene').style.display = 'none';
+  $('placeholderMsg').style.display = '';
+  $('status').className = 'status';
+  $('status').textContent = '';
+  // IndexedDBもクリア
+  openIDB().then(db => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).delete('latest');
+  }).catch(() => {});
+});
+
+// --- World画像ダウンロード ---
+let lastWorldBlobUrl = null;
+$('btnDlWorld').addEventListener('click', () => {
+  if (!lastWorldBlobUrl) return;
+  const a = document.createElement('a');
+  a.href = lastWorldBlobUrl;
+  a.download = (currentBaseName || 'hunyuan_world') + '_panorama.png';
+  a.click();
+});
+
+// --- URLコピー ---
+$('btnCopyUrl').addEventListener('click', () => {
+  if (!lastGlbUrl) return;
+  navigator.clipboard.writeText(lastGlbUrl).then(() => {
+    $('btnCopyUrl').textContent = 'コピー済み!';
+    setTimeout(() => { $('btnCopyUrl').textContent = 'URLコピー'; }, 2000);
+  });
+});
+
+// --- API実行 ---
+let timerInterval = null;
+const ESTIMATED_SEC = 150;
+
+function formatTime(sec) {
+  return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+}
+
+function startProgress() {
+  const est = currentMode === 'world' ? 90 : ESTIMATED_SEC;
+  $('progressWrap').style.display = 'block';
+  $('progressFill').style.width = '0%';
+  $('progressPercent').textContent = '0%';
+  $('progressTime').textContent = `0:00 / ~${formatTime(est)}`;
+  const startTime = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const pct = Math.min(95, (elapsed / est) * 90);
+    $('progressFill').style.width = pct + '%';
+    $('progressPercent').textContent = Math.floor(pct) + '%';
+    $('progressTime').textContent = `${formatTime(elapsed)} / ~${formatTime(est)}`;
+  }, 1000);
+}
+
+function stopProgress(success) {
+  clearInterval(timerInterval);
+  if (success) {
+    $('progressFill').style.width = '100%';
+    $('progressPercent').textContent = '100%';
+  }
+  setTimeout(() => { $('progressWrap').style.display = 'none'; }, success ? 2000 : 0);
+}
+
+// --- 共通: 同期API呼び出し（リトライ付き） ---
+async function callFalAPI(endpoint, payload, apiKey, statusEl) {
+  const MAX_ATTEMPTS = 2;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    statusEl.textContent = attempt > 1 ? `リトライ中 (${attempt}/${MAX_ATTEMPTS})...` : '処理中... (数分かかる場合があります)';
+    // 経過時間を表示するタイマー
+    const reqStart = Date.now();
+    const elapsedTimer = setInterval(() => {
+      const sec = Math.round((Date.now() - reqStart) / 1000);
+      statusEl.textContent = `処理中... ${sec}秒${attempt > 1 ? ` (リトライ${attempt})` : ''}`;
+    }, 1000);
+    let resp;
+    try {
+      resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Authorization': `Key ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (fetchErr) {
+      clearInterval(elapsedTimer);
+      console.error('[Hunyuan] Fetch error:', fetchErr);
+      if (attempt === MAX_ATTEMPTS) throw new Error('通信エラー: ' + fetchErr.message);
+      statusEl.textContent = `通信エラー、5秒後にリトライ...`;
+      await new Promise(r => setTimeout(r, 5000));
+      continue;
+    }
+    clearInterval(elapsedTimer);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      const detail = err.detail;
+      let msg = typeof detail === 'string' ? detail
+        : detail ? JSON.stringify(detail) : (err.message || resp.statusText);
+      console.error('[Hunyuan] API error:', resp.status, err);
+      const isDownstream = Array.isArray(detail) && detail.some(d => d.type === 'downstream_service_error');
+      if (isDownstream) throw new Error('この画像は処理できませんでした。別の画像を試してください。');
+      if (attempt === MAX_ATTEMPTS) throw new Error(`${resp.status}: ${msg}`);
+      statusEl.textContent = `エラー (${resp.status})、5秒後にリトライ...`;
+      await new Promise(r => setTimeout(r, 5000));
+      continue;
+    }
+    return await resp.json();
+  }
+}
+
+// --- キュー方式API呼び出し（重いモデル用: submit → poll → get result） ---
+async function callFalQueueAPI(endpoint, payload, apiKey, statusEl) {
+  // Step 1: キューに投入
+  statusEl.textContent = 'キューに投入中...';
+  const queueEndpoint = endpoint.replace('https://fal.run/', 'https://queue.fal.run/');
+  const submitResp = await fetch(queueEndpoint, {
+    method: 'POST',
+    headers: { 'Authorization': `Key ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!submitResp.ok) {
+    const err = await submitResp.json().catch(() => ({}));
+    const detail = err.detail;
+    const isDownstream = Array.isArray(detail) && detail.some(d => d.type === 'downstream_service_error');
+    if (isDownstream) throw new Error('この画像は処理できませんでした。別の画像を試してください。');
+    throw new Error(`キュー投入失敗: ${submitResp.status} ${JSON.stringify(err)}`);
+  }
+  const { request_id } = await submitResp.json();
+  console.log('[Hunyuan] Queue request_id:', request_id);
+
+  // Step 2: ステータスをポーリング
+  const statusUrl = `${queueEndpoint}/requests/${request_id}/status`;
+  const POLL_INTERVAL = 3000;
+  const MAX_WAIT = 600000; // 10分
+  const startWait = Date.now();
+
+  while (Date.now() - startWait < MAX_WAIT) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+    const pollResp = await fetch(statusUrl, {
+      headers: { 'Authorization': `Key ${apiKey}` }
+    });
+    if (!pollResp.ok) {
+      console.warn('[Hunyuan] Poll error:', pollResp.status);
+      continue;
+    }
+    const pollData = await pollResp.json();
+    console.log('[Hunyuan] Queue status:', pollData.status);
+
+    if (pollData.status === 'COMPLETED') {
+      // Step 3: 結果を取得
+      const resultUrl = `${queueEndpoint}/requests/${request_id}`;
+      const resultResp = await fetch(resultUrl, {
+        headers: { 'Authorization': `Key ${apiKey}` }
+      });
+      if (!resultResp.ok) throw new Error('結果取得失敗: ' + resultResp.status);
+      return await resultResp.json();
+    } else if (pollData.status === 'FAILED') {
+      throw new Error('モデル処理失敗: ' + (pollData.error || '不明なエラー'));
+    }
+
+    const queuePos = pollData.queue_position;
+    const elapsed = Math.round((Date.now() - startWait) / 1000);
+    if (pollData.status === 'IN_QUEUE') {
+      statusEl.textContent = `キュー待機中...${queuePos != null ? ` (位置: ${queuePos})` : ''} ${elapsed}秒`;
+    } else {
+      statusEl.textContent = `処理中... ${elapsed}秒`;
+    }
+  }
+
+  throw new Error('タイムアウト: 10分以上経過しました');
+}
+
+// --- 共通: ファイルダウンロード（リトライ付き） ---
+async function downloadFile(url, statusEl, label) {
+  const MAX_RETRIES = 3;
+  const STALL_TIMEOUT = 15000;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      statusEl.className = 'status';
+      statusEl.textContent = `${label}ダウンロード中...${attempt > 1 ? ` (リトライ ${attempt}/${MAX_RETRIES})` : ''}`;
+      const controller = new AbortController();
+      const resp = await fetch(url, { signal: controller.signal });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const contentLength = resp.headers.get('content-length');
+      const total = contentLength ? parseInt(contentLength) : 0;
+      const reader = resp.body.getReader();
+      const chunks = [];
+      let received = 0;
+      while (true) {
+        const stallTimer = setTimeout(() => controller.abort(), STALL_TIMEOUT);
+        const { done, value } = await reader.read();
+        clearTimeout(stallTimer);
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        const mb = (received / 1024 / 1024).toFixed(1);
+        if (total > 0) {
+          statusEl.textContent = `${label}ダウンロード中... ${Math.round(received / total * 100)}% (${mb}MB)`;
+        } else {
+          statusEl.textContent = `${label}ダウンロード中... ${mb}MB`;
+        }
+      }
+      return new Blob(chunks);
+    } catch (e) {
+      if (attempt === MAX_RETRIES) throw new Error(`${label}ダウンロード失敗 (${MAX_RETRIES}回試行): ${e.message}`);
+      statusEl.className = 'status error';
+      statusEl.textContent = `ダウンロード失敗、3秒後にリトライ...`;
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+}
+
+// --- メイン実行ボタン ---
+$('btnRun').addEventListener('click', async () => {
+  if (!currentDataUrl) return;
+
+  const API_KEY = $('apiKey').value.trim() || localStorage.getItem(KEY_STORAGE);
+  if (!API_KEY) {
+    $('status').className = 'status error';
+    $('status').textContent = 'APIキーを入力してください';
+    return;
+  }
+
+  const status = $('status');
+  const btn = $('btnRun');
+  btn.disabled = true;
+  status.className = 'status';
+  status.textContent = '';
+
+  const startTime = Date.now();
+  startProgress();
+
+  try {
+    // CDNアップロード
+    status.textContent = '画像を準備中...';
+    const compressedDataUrl = await compressImageDataUrl(currentDataUrl, 1024, 0.85);
+    console.log('[Hunyuan] Image size: original', Math.round(currentDataUrl.length / 1024), 'KB →', Math.round(compressedDataUrl.length / 1024), 'KB');
+    status.textContent = '画像をアップロード中...';
+    const fileUrl = await uploadToCDN(compressedDataUrl, API_KEY);
+
+    if (currentMode === 'object') {
+      // --- Object モード ---
+      const faceCount = parseInt($('faceCount').value);
+      const payload = { input_image_url: fileUrl };
+      if ($('enablePbr').checked) payload.enable_pbr = true;
+      if (faceCount !== 500000) payload.face_count = faceCount;
+      if ($('generateType').value !== 'Normal') payload.generate_type = $('generateType').value;
+      console.log('[Hunyuan] Object payload:', JSON.stringify(payload));
+
+      const result = await callFalAPI('https://fal.run/fal-ai/hunyuan-3d/v3.1/pro/image-to-3d', payload, API_KEY, status);
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      stopProgress(true);
+      status.className = 'status success';
+      status.textContent = `完了! ${elapsed}秒`;
+
+      const glbUrl = result.model_glb?.url;
+      if (!glbUrl) throw new Error('レスポンスにmodel_glb.urlがありません');
+      console.log('[Hunyuan] GLB URL:', glbUrl);
+      lastGlbUrl = glbUrl;
+      $('btnCopyUrl').style.display = 'inline-block';
+
+      const glbBlob = await downloadFile(glbUrl, status, 'GLB');
+      if (currentGlbBlobUrl) URL.revokeObjectURL(currentGlbBlobUrl);
+      currentGlbBlobUrl = URL.createObjectURL(glbBlob);
+      loadGLB(currentGlbBlobUrl);
+      saveGlbToIDB(glbBlob).catch(() => {});
+      status.className = 'status success';
+      status.textContent = `完了! ${elapsed}秒 (${(glbBlob.size / 1024 / 1024).toFixed(1)}MB)`;
+
+    } else {
+      // --- World モード ---
+      const payload = {
+        image_url: fileUrl,
+        labels_fg1: $('labelsFg1').value.trim(),
+        labels_fg2: $('labelsFg2').value.trim(),
+        classes: $('worldClasses').value.trim(),
+      };
+      console.log('[Hunyuan] World payload:', JSON.stringify(payload));
+
+      // fal.subscribe でキュー方式実行（同期APIはタイムアウトするため）
+      fal.config({ credentials: API_KEY });
+      const result = await fal.subscribe('fal-ai/hunyuan_world/image-to-world', {
+        input: payload,
+        logs: true,
+        onQueueUpdate: (update) => {
+          console.log('[Hunyuan] Queue update:', update.status);
+          const elapsed = Math.round((Date.now() - startTime) / 1000);
+          if (update.status === 'IN_QUEUE') {
+            const pos = update.queue_position;
+            status.textContent = `キュー待機中${pos != null ? ` (位置: ${pos})` : ''}... ${elapsed}秒`;
+          } else if (update.status === 'IN_PROGRESS') {
+            status.textContent = `処理中... ${elapsed}秒`;
+          }
+        }
+      });
+      console.log('[Hunyuan] World full result:', JSON.stringify(result, null, 2));
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      stopProgress(true);
+      status.className = 'status success';
+      status.textContent = `完了! ${elapsed}秒`;
+
+      const worldUrl = result.data?.world_file?.url || result.world_file?.url;
+      if (!worldUrl) throw new Error('レスポンスにworld_file.urlがありません。keys: ' + JSON.stringify(Object.keys(result.data || result)));
+      console.log('[Hunyuan] World file URL:', worldUrl);
+      lastGlbUrl = worldUrl;
+      $('btnCopyUrl').style.display = 'inline-block';
+
+      const worldBlob = await downloadFile(worldUrl, status, 'ワールド');
+      console.log('[Hunyuan] World blob size:', worldBlob.size, 'type:', worldBlob.type);
+      if (lastWorldBlobUrl) URL.revokeObjectURL(lastWorldBlobUrl);
+      lastWorldBlobUrl = URL.createObjectURL(worldBlob);
+      loadPanorama(lastWorldBlobUrl);
+      status.className = 'status success';
+      status.textContent = `完了! ${elapsed}秒 (${(worldBlob.size / 1024 / 1024).toFixed(1)}MB)`;
+    }
+  } catch(e) {
+    stopProgress(false);
+    status.className = 'status error';
+    status.textContent = `エラー: ${e.message}`;
+  }
+
+  btn.disabled = false;
+});
+
+// --- 起動時にIndexedDBからGLBを復元 ---
+(async () => {
+  try {
+    const blob = await loadGlbFromIDB();
+    if (blob) {
+      currentGlbBlobUrl = URL.createObjectURL(blob);
+      loadGLB(currentGlbBlobUrl);
+      $('status').className = 'status success';
+      $('status').textContent = '前回のモデルを復元しました';
+    }
+  } catch(e) {}
+})();
+</script>
+</body>
+</html>

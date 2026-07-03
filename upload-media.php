@@ -19,7 +19,8 @@ if (!preg_match('/^[a-zA-Z0-9_-]{1,50}$/', $song)) {
 }
 
 $slot = $_POST['slot'] ?? '';
-$validSlots = ['midi', 'audio', 'skyDome', 'innerSky', 'floor', 'floor2', 'floor3', 'leftWall', 'centerWall', 'rightWall', 'backWall', 'panel5Wall', 'panel6Wall', 'heightmap', 'heightmap2', 'heightmap3', 'glb'];
+$validSlots = ['midi', 'audio', 'skyDome', 'innerSky', 'floor', 'floor2', 'floor3', 'leftWall', 'centerWall', 'rightWall', 'backWall', 'panel5Wall', 'panel6Wall', 'heightmap', 'heightmap2', 'heightmap3', 'glb', 'plyBg0', 'plyBg1', 'plyBg2', 'plyBg3',
+    'skyDome_mobile', 'innerSky_mobile', 'floor_mobile', 'floor2_mobile', 'floor3_mobile', 'leftWall_mobile', 'centerWall_mobile', 'rightWall_mobile', 'backWall_mobile', 'panel5Wall_mobile', 'panel6Wall_mobile'];
 if (!in_array($slot, $validSlots)) {
     http_response_code(400);
     echo json_encode(['error' => 'Invalid slot name']);
@@ -32,10 +33,10 @@ if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
     exit;
 }
 
-// 200MB上限
-if ($_FILES['file']['size'] > 200 * 1024 * 1024) {
+// 500MB上限
+if ($_FILES['file']['size'] > 500 * 1024 * 1024) {
     http_response_code(413);
-    echo json_encode(['error' => 'File too large (max 200MB)']);
+    echo json_encode(['error' => 'File too large (max 500MB)']);
     exit;
 }
 

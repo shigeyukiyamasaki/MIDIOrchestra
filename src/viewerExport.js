@@ -3,7 +3,7 @@
 // ============================================
 
 const MAX_EMBED_SIZE = 2 * 1024 * 1024; // 2MB: base64埋め込みの上限（超過分は個別アップロード）
-const MAX_UPLOAD_SIZE = 200 * 1024 * 1024; // 200MB: 個別アップロードの上限
+const MAX_UPLOAD_SIZE = 500 * 1024 * 1024; // 500MB: 個別アップロードの上限
 
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -184,6 +184,39 @@ async function publishViewerData(song, onStatus) {
 
     media[slot] = { name, mimeType, url: uploadResult.url };
     console.log(`[Publish] ${slot} uploaded: ${uploadResult.url}`);
+
+    // 動画スロットの場合、モバイル版を自動生成してアップロード
+    if (mimeType && mimeType.startsWith('video/')) {
+      if (!window.mobileVideoGenerator || typeof window.mobileVideoGenerator.generateMobileVideo !== 'function') {
+        console.error(`[Publish] ${slot}: mobileVideoGenerator is unavailable; mobile video generation skipped`);
+        if (onStatus) onStatus(`${slot} のモバイル版生成を開始できません（詳細はコンソールを確認）`);
+      } else {
+        try {
+          const mobile = await window.mobileVideoGenerator.generateMobileVideo(blob, name, onStatus);
+          if (mobile) {
+            const mobileSizeMB = (mobile.blob.size / 1024 / 1024).toFixed(0);
+            if (onStatus) onStatus(`${slot} モバイル版をアップロード中 (${mobileSizeMB}MB)... 0%`);
+
+            const mobileForm = new FormData();
+            mobileForm.append('song', song);
+            mobileForm.append('slot', slot + '_mobile');
+            mobileForm.append('file', mobile.blob, mobile.name);
+
+            await uploadFileXHR('upload-media.php', mobileForm, (loaded, total) => {
+              const pct = Math.round((loaded / total) * 100);
+              if (onStatus) onStatus(`${slot} モバイル版をアップロード中 (${mobileSizeMB}MB)... ${pct}%`);
+            });
+
+            console.log(`[Publish] ${slot} mobile version uploaded`);
+          } else {
+            console.warn(`[Publish] ${slot}: mobile video was not generated`);
+          }
+        } catch (mobileError) {
+          console.error(`[Publish] ${slot}: mobile video generation failed`, mobileError);
+          if (onStatus) onStatus(`${slot} のモバイル版生成に失敗しました（詳細はコンソールを確認）`);
+        }
+      }
+    }
 
     await yieldToUI();
   }

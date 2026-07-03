@@ -190,7 +190,8 @@ class PLYLoader {
 			let geometry = new THREE.BufferGeometry();
 
 			if ( buffer.indices.length > 0 ) {
-				geometry.setIndex( buffer.indices );
+				// r128のsetIndex(array)は巨大配列でUint16にフォールバックするため明示的にUint32を使用
+				geometry.setIndex( new THREE.BufferAttribute( new Uint32Array( buffer.indices ), 1 ) );
 			}
 
 			geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( buffer.vertices, 3 ) );

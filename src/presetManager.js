@@ -413,12 +413,6 @@ function collectCurrentSettings() {
   s.backWallChromaColor = getColorValue('backWallChromaColor');
   s.backWallChromaThreshold = getRangeValue('backWallChromaThreshold');
 
-  // 音域フィルター（トラック別pitchMin/pitchMax）
-  const pitchRaw = localStorage.getItem('midiOrchestra_pitchFilters');
-  if (pitchRaw) {
-    try { s.pitchFilters = JSON.parse(pitchRaw); } catch(e) {}
-  }
-
   s._imageSizeMode = 'width';
 
   // 自動収集: 各パネル内のid付きinput/selectで未収集のものを自動追加
@@ -715,7 +709,7 @@ function applySettings(s) {
     '_imageSizeMode',
   ]);
   Object.keys(s).forEach(key => {
-    if (handled.has(key) || key.startsWith('cameraRange') || key.startsWith('bloomThreshold') || key === 'pitchFilters') return;
+    if (handled.has(key) || key.startsWith('cameraRange') || key.startsWith('bloomThreshold')) return;
     if (s[key] === undefined) return;
     const el = document.getElementById(key);
     if (!el) return;
@@ -729,19 +723,6 @@ function applySettings(s) {
       setRangeValue(key, s[key]);
     }
   });
-  // 音域フィルター復元（localStorageに書き込み → state.tracksに反映）
-  if (s.pitchFilters && typeof s.pitchFilters === 'object') {
-    localStorage.setItem('midiOrchestra_pitchFilters', JSON.stringify(s.pitchFilters));
-    if (window.state && window.state.tracks) {
-      window.state.tracks.forEach(track => {
-        const f = s.pitchFilters[track.name];
-        if (f) {
-          track.pitchMin = f.pitchMin;
-          track.pitchMax = f.pitchMax;
-        }
-      });
-    }
-  }
 }
 
 // ============================================

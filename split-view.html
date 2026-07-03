@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIDI Orchestra - Split View</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a1a; color: #fff; font-family: sans-serif; overflow: hidden; height: 100vh; }
+
+    /* Controls bar */
+    #controls {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px; background: #1a1a2e; border-bottom: 1px solid #333;
+      height: 48px; z-index: 10;
+    }
+    #controls .file-row { display: flex; align-items: center; gap: 6px; }
+    #controls .file-row label { font-size: 12px; color: #aaa; }
+    #controls input[type="file"] { display: none; }
+    #controls .file-btn {
+      padding: 4px 10px; background: #2a2a4e; border: 1px solid #555;
+      color: #ccc; border-radius: 4px; cursor: pointer; font-size: 12px;
+    }
+    #controls .file-btn:hover { background: #3a3a5e; }
+    #controls .file-name { font-size: 11px; color: #888; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #controls .separator { width: 1px; height: 28px; background: #444; }
+    #controls button {
+      padding: 6px 12px; background: #2a2a4e; border: 1px solid #555;
+      color: #ccc; border-radius: 4px; cursor: pointer; font-size: 14px;
+    }
+    #controls button:hover { background: #3a3a5e; }
+    #controls button:disabled { opacity: 0.4; cursor: default; }
+    #controls .time-display { font-size: 12px; color: #aaa; font-family: monospace; min-width: 100px; }
+    #controls .sync-row { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #aaa; }
+    #controls .sync-row input[type="range"] { width: 80px; }
+    #controls .sync-row span { min-width: 40px; text-align: right; font-family: monospace; }
+
+    /* Grid */
+    #grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 2px;
+      background: #333;
+      aspect-ratio: 16 / 9;
+      max-width: calc(100vw - 200px);
+      max-height: calc(100vh - 48px);
+      margin: auto 0;
+    }
+    .panel {
+      position: relative;
+      background: #0a0a1a;
+      overflow: hidden;
+    }
+    .panel canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .panel-label {
+      position: absolute; top: 8px; left: 12px;
+      font-size: 13px; font-weight: bold;
+      padding: 2px 10px; border-radius: 4px;
+      pointer-events: none; z-index: 5;
+      background: rgba(0,0,0,0.6);
+    }
+    .panel-label.strings    { color: #d4956a; border-left: 3px solid #c9784a; }
+    .panel-label.woodwind   { color: #9ccc65; border-left: 3px solid #7cb342; }
+    .panel-label.brass      { color: #ffb300; border-left: 3px solid #ffc107; }
+    .panel-label.percussion { color: #42a5f5; border-left: 3px solid #1565c0; }
+
+    .panel-tracks {
+      position: absolute; bottom: 8px; left: 12px;
+      font-size: 10px; color: #666;
+      pointer-events: none; z-index: 5;
+      max-width: calc(100% - 24px);
+    }
+
+    /* Library dropdown */
+    .lib-wrapper { position: relative; }
+    .lib-btn {
+      padding: 4px 8px; background: #2a2a4e; border: 1px solid #555;
+      color: #ccc; border-radius: 4px; cursor: pointer; font-size: 11px;
+    }
+    .lib-btn:hover { background: #3a3a5e; }
+    .lib-btn:disabled { opacity: 0.4; cursor: default; }
+    .lib-dropdown {
+      display: none; position: absolute; top: 100%; left: 0; margin-top: 4px;
+      background: #1e1e3a; border: 1px solid #555; border-radius: 4px;
+      min-width: 220px; max-height: 300px; overflow-y: auto; z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .lib-dropdown.open { display: block; }
+    .lib-item {
+      padding: 6px 12px; font-size: 12px; color: #ccc; cursor: pointer;
+      border-bottom: 1px solid #2a2a4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .lib-item:last-child { border-bottom: none; }
+    .lib-item:hover { background: #2a2a5e; }
+    .lib-item.active { color: #7cb342; }
+    .lib-empty { padding: 8px 12px; font-size: 11px; color: #666; }
+
+    /* Settings panel */
+    #settingsPanel {
+      position: fixed; top: 48px; right: 0;
+      width: 200px; background: #1a1a2e; border-left: 1px solid #444;
+      padding: 12px; z-index: 50;
+      height: calc(100vh - 48px); overflow-y: auto;
+    }
+    #settingsPanel h4 {
+      font-size: 11px; color: #888; margin: 10px 0 4px; padding-bottom: 2px;
+      border-bottom: 1px solid #333;
+    }
+    #settingsPanel h4:first-child { margin-top: 0; }
+    .setting-row {
+      display: flex; align-items: center; gap: 6px;
+      margin: 4px 0; font-size: 11px; color: #aaa;
+    }
+    .setting-row label { min-width: 70px; flex-shrink: 0; }
+    .setting-row input[type="range"] { flex: 1; min-width: 0; }
+    .setting-row .val { min-width: 32px; text-align: right; font-family: monospace; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <div class="file-row">
+      <label>MIDI</label>
+      <button class="file-btn" onclick="document.getElementById('midiInput').click()">選択</button>
+      <input type="file" id="midiInput" accept=".mid,.midi">
+      <span class="file-name" id="midiFileName">未選択</span>
+      <div class="lib-wrapper">
+        <button class="lib-btn" id="midiLibBtn" disabled>履歴</button>
+        <div class="lib-dropdown" id="midiLibDropdown"></div>
+      </div>
+    </div>
+    <div class="separator"></div>
+    <div class="file-row">
+      <label>音源</label>
+      <button class="file-btn" onclick="document.getElementById('audioInput').click()">選択</button>
+      <input type="file" id="audioInput" accept="audio/*">
+      <span class="file-name" id="audioFileName">未選択</span>
+      <div class="lib-wrapper">
+        <button class="lib-btn" id="audioLibBtn" disabled>履歴</button>
+        <div class="lib-dropdown" id="audioLibDropdown"></div>
+      </div>
+    </div>
+    <div class="separator"></div>
+    <button id="playBtn" disabled><i class="fa-solid fa-play"></i></button>
+    <button id="stopBtn" disabled><i class="fa-solid fa-stop"></i></button>
+    <span class="time-display" id="timeDisplay">0:00 / 0:00</span>
+    <div class="separator"></div>
+    <div class="sync-row">
+      <label>MIDI遅延</label>
+      <input type="range" id="midiDelay" min="-2" max="3" step="0.05" value="0">
+      <span id="midiDelayValue">0.00s</span>
+    </div>
+    <div class="sync-row">
+      <label>音源遅延</label>
+      <input type="range" id="audioDelay" min="-2" max="3" step="0.05" value="0">
+      <span id="audioDelayValue">0.00s</span>
+    </div>
+  </div>
+
+  <div id="settingsPanel">
+    <h4>分割モード</h4>
+    <div class="setting-row">
+      <select id="splitMode" style="width:100%;padding:3px;background:#2a2a4e;color:#ccc;border:1px solid #555;border-radius:4px;font-size:11px;">
+        <option value="section">セクション（4分割）</option>
+        <option value="track">全トラック分割</option>
+      </select>
+    </div>
+    <h4>表示モード</h4>
+    <div class="setting-row">
+      <select id="displayMode" style="width:100%;padding:3px;background:#2a2a4e;color:#ccc;border:1px solid #555;border-radius:4px;font-size:11px;">
+        <option value="bar">バー</option>
+        <option value="dot">ドット</option>
+        <option value="line">折れ線</option>
+        <option value="stem">ステム</option>
+        <option value="diamond">ダイヤモンド</option>
+        <option value="triangle">トライアングル</option>
+        <option value="wave">波形</option>
+        <option value="particle">パーティクル</option>
+        <option value="rain">雨粒</option>
+        <option value="spectrogram">スペクトログラム</option>
+        <option value="star">星空</option>
+        <option value="ribbon">リボン</option>
+        <option value="trail">軌跡</option>
+      </select>
+    </div>
+    <h4>外観</h4>
+    <div class="setting-row">
+      <label>ノート高さ</label>
+      <input type="range" id="noteHeight" min="1" max="10" step="0.5" value="3">
+      <span class="val" id="noteHeightValue">3</span>
+    </div>
+    <div class="setting-row">
+      <label>透明度</label>
+      <input type="range" id="noteOpacity" min="0.1" max="1" step="0.05" value="1">
+      <span class="val" id="noteOpacityValue">1</span>
+    </div>
+    <div class="setting-row">
+      <label>鮮やかさ</label>
+      <input type="range" id="saturation" min="0" max="2" step="0.05" value="1">
+      <span class="val" id="saturationValue">1</span>
+    </div>
+    <div class="setting-row">
+      <label>明度</label>
+      <input type="range" id="brightness" min="0.5" max="3" step="0.05" value="1">
+      <span class="val" id="brightnessValue">1</span>
+    </div>
+    <div class="setting-row">
+      <label>パララックス</label>
+      <input type="range" id="parallax" min="0" max="1" step="0.05" value="0.3">
+      <span class="val" id="parallaxValue">0.3</span>
+    </div>
+    <h4>バウンス</h4>
+    <div class="setting-row">
+      <label>大きさ</label>
+      <input type="range" id="bounceSize" min="0" max="30" step="1" value="8">
+      <span class="val" id="bounceSizeValue">8</span>
+    </div>
+    <div class="setting-row">
+      <label>時間</label>
+      <input type="range" id="bounceDuration" min="0.05" max="1" step="0.05" value="0.3">
+      <span class="val" id="bounceDurationValue">0.3</span>
+    </div>
+    <div class="setting-row">
+      <label>フラッシュ</label>
+      <input type="range" id="bounceFlash" min="0" max="1" step="0.05" value="0.5">
+      <span class="val" id="bounceFlashValue">0.5</span>
+    </div>
+    <h4>レイアウト</h4>
+    <div class="setting-row">
+      <label>時間スケール</label>
+      <input type="range" id="timeScale" min="5" max="1000" step="5" value="40">
+      <span class="val" id="timeScaleValue">40</span>
+    </div>
+    <div class="setting-row">
+      <label>縦スケール</label>
+      <input type="range" id="pitchScale" min="1" max="20" step="0.5" value="4">
+      <span class="val" id="pitchScaleValue">4</span>
+    </div>
+  </div>
+
+  <div id="grid">
+    <div class="panel" id="panel-woodwind">
+      <canvas id="canvas-woodwind"></canvas>
+      <div class="panel-label woodwind">木管 Woodwind</div>
+      <div class="panel-tracks" id="tracks-woodwind"></div>
+    </div>
+    <div class="panel" id="panel-brass">
+      <canvas id="canvas-brass"></canvas>
+      <div class="panel-label brass">金管 Brass</div>
+      <div class="panel-tracks" id="tracks-brass"></div>
+    </div>
+    <div class="panel" id="panel-strings">
+      <canvas id="canvas-strings"></canvas>
+      <div class="panel-label strings">弦 Strings</div>
+      <div class="panel-tracks" id="tracks-strings"></div>
+    </div>
+    <div class="panel" id="panel-percussion">
+      <canvas id="canvas-percussion"></canvas>
+      <div class="panel-label percussion">打楽器 Percussion</div>
+      <div class="panel-tracks" id="tracks-percussion"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
+  <script src="src/split-view.js"></script>
+</body>
+</html>
